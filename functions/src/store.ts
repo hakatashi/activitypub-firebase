@@ -33,6 +33,7 @@ export default class Store extends IApexStore {
 	}
 
 	async getObject(id: string, includeMeta?: boolean) {
+		logger.info('getObject', id);
 		const objectDoc = await this.db.collection('objects').doc(escapeFirestoreKey(id)).get();
 
 		if (!objectDoc.exists) {
@@ -42,7 +43,8 @@ export default class Store extends IApexStore {
 		const object = objectDoc.data()!;
 
 		if (includeMeta !== true) {
-			delete object.meta;
+			// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
+			delete object._meta;
 		}
 
 		return object;
