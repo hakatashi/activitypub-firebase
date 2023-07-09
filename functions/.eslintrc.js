@@ -4,4 +4,7 @@ module.exports = {
 	ignorePatterns: [
 		'/lib/**/*', // Ignore built files.
 	],
+	rules: {
+		'import/no-namespace': 'off',
+	},
 };
