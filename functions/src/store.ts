@@ -44,4 +44,10 @@ export default class Store extends IApexStore {
 
 		return object;
 	}
+
+	async saveObject(object: any) {
+		logger.info('saveObject', object.id);
+		await this.db.collection('objects').doc(escapeFirestoreKey(object.id)).set(object);
+		return true;
+	}
 }
