@@ -25,8 +25,11 @@ export default class Store extends IApexStore {
 		this.db = firebase.firestore();
 	}
 
-	setup(optionalActor?: string) {
+	async setup(initialUser?: any) {
 		logger.info('setup');
+		if (initialUser !== undefined) {
+			await this.saveObject(initialUser);
+		}
 	}
 
 	async getObject(id: string, includeMeta?: boolean) {
