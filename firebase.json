@@ -25,6 +25,16 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/.well-known/**",
+        "function": "handler"
+      },
+      {
+        "source": "/nodeinfo/**",
+        "function": "handler"
+      }
     ]
   }
 }
