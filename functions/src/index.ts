@@ -1,45 +1,37 @@
 // @ts-expect-error: Not typed
 import * as ActivitypubExpress from 'activitypub-express';
 import * as express from 'express';
-import {https} from 'firebase-functions';
+import {https, logger} from 'firebase-functions';
 import Store from './store';
-
-// // Start writing functions
-// // https://firebase.google.com/docs/functions/typescript
-//
-// export const helloWorld = functions.https.onRequest((request, response) => {
-//   functions.logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
 
 const app = express();
 const routes = {
-	actor: '/u/:actor',
-	object: '/o/:id',
-	activity: '/s/:id',
-	inbox: '/u/:actor/inbox',
-	outbox: '/u/:actor/outbox',
-	followers: '/u/:actor/followers',
-	following: '/u/:actor/following',
-	liked: '/u/:actor/liked',
-	collections: '/u/:actor/c/:id',
-	blocked: '/u/:actor/blocked',
-	rejections: '/u/:actor/rejections',
-	rejected: '/u/:actor/rejected',
-	shares: '/s/:id/shares',
-	likes: '/s/:id/likes',
+	actor: '/activitypub/u/:actor',
+	object: '/activitypub/o/:id',
+	activity: '/activitypub/s/:id',
+	inbox: '/activitypub/u/:actor/inbox',
+	outbox: '/activitypub/u/:actor/outbox',
+	followers: '/activitypub/u/:actor/followers',
+	following: '/activitypub/u/:actor/following',
+	liked: '/activitypub/u/:actor/liked',
+	collections: '/activitypub/u/:actor/c/:id',
+	blocked: '/activitypub/u/:actor/blocked',
+	rejections: '/activitypub/u/:actor/rejections',
+	rejected: '/activitypub/u/:actor/rejected',
+	shares: '/activitypub/s/:id/shares',
+	likes: '/activitypub/s/:id/likes',
 };
 
 const apex = ActivitypubExpress({
-	name: 'Apex Example',
+	name: 'HakataFediverse',
 	version: '1.0.0',
-	domain: 'localhost',
+	domain: 'hakatashi.com',
 	actorParam: 'actor',
 	objectParam: 'id',
 	activityParam: 'id',
 	routes,
 	endpoints: {
-		proxyUrl: 'https://localhost/proxy',
+		proxyUrl: 'https://hakatashi.com/activitypub/proxy',
 	},
 });
 
@@ -48,7 +40,7 @@ app.use(
 	express.urlencoded({extended: true}),
 	apex,
 );
-// define routes using prepacakged middleware collections
+
 app.route(routes.inbox)
 	.get(apex.net.inbox.get)
 	.post(apex.net.inbox.post);
@@ -66,16 +58,16 @@ app.get(routes.likes, apex.net.likes.get);
 app.get('/.well-known/webfinger', apex.net.webfinger.get);
 app.get('/.well-known/nodeinfo', apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', apex.net.nodeInfo.get);
-app.post('/proxy', apex.net.proxy.post);
+app.post('/activitypub/proxy', apex.net.proxy.post);
 
 app.on('apex-outbox', (msg: any) => {
 	if (msg.activity.type === 'Create') {
-		console.log(`New ${msg.object.type} from ${msg.actor}`);
+		logger.info(`New ${msg.object.type} from ${msg.actor}`);
 	}
 });
 app.on('apex-inbox', (msg: any) => {
 	if (msg.activity.type === 'Create') {
-		console.log(`New ${msg.object.type} from ${msg.actor} to ${msg.recipient}`);
+		logger.info(`New ${msg.object.type} from ${msg.actor} to ${msg.recipient}`);
 	}
 });
 

@@ -32,6 +32,10 @@
         "function": "handler"
       },
       {
+        "source": "/activitypub/**",
+        "function": "handler"
+      },
+      {
         "source": "/nodeinfo/**",
         "function": "handler"
       }
