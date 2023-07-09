@@ -14,7 +14,7 @@ jobs:
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{secrets.GITHUB_TOKEN}}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE }}'
+          firebaseServiceAccount: '${{secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE}}'
           channelId: live
           projectId: activitypub-firebase
   firebase:
@@ -28,4 +28,4 @@ jobs:
         with:
           args: deploy --only functions,firestore
         env:
-          GCP_SA_KEY: '${{secrets.GCP_SA_KEY}}'
+          GCP_SA_KEY: '${{secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE}}'
