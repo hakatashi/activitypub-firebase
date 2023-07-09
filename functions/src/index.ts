@@ -35,6 +35,8 @@ const apex = ActivitypubExpress({
 	},
 });
 
+apex.store = new Store();
+
 app.use(
 	express.json({type: apex.consts.jsonldTypes}),
 	express.urlencoded({extended: true}),
@@ -60,6 +62,14 @@ app.get('/.well-known/nodeinfo', apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', apex.net.nodeInfo.get);
 app.post('/activitypub/proxy', apex.net.proxy.post);
 
+app.get('/activitypub/createAdmin', async (req: express.Request, res: express.Response) => {
+	const actor = await apex.createActor('hakatashi', 'hakatashi', '博多市です。', null, 'Person');
+	await apex.store.setup(actor);
+	// eslint-disable-next-line require-atomic-updates
+	apex.systemUser = actor;
+	res.json(actor);
+});
+
 app.on('apex-outbox', (msg: any) => {
 	if (msg.activity.type === 'Create') {
 		logger.info(`New ${msg.object.type} from ${msg.actor}`);
@@ -70,7 +80,5 @@ app.on('apex-inbox', (msg: any) => {
 		logger.info(`New ${msg.object.type} from ${msg.actor} to ${msg.recipient}`);
 	}
 });
-
-apex.store = new Store();
 
 export const handler = https.onRequest(app);
