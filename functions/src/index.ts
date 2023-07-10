@@ -1,7 +1,7 @@
 // @ts-expect-error: Not typed
 import * as ActivitypubExpress from 'activitypub-express';
 import * as express from 'express';
-import {https, logger} from 'firebase-functions';
+import {https, logger} from 'firebase-functions/v2';
 import Store from './store';
 
 const app = express();
