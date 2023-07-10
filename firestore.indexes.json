@@ -1,4 +1,19 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "streams",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "_meta.collection",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "_id",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
