@@ -42,6 +42,12 @@ app.use((req, res, next) => {
 	if (apex.consts.jsonldTypes.includes(req.headers['content-type']) && req.body) {
 		req.body = JSON.parse(req.body);
 	}
+	logger.info({
+		method: req.method,
+		path: req.path,
+		headers: req.headers,
+		body: req.body,
+	});
 	next();
 });
 
