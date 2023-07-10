@@ -1,8 +1,10 @@
+/* eslint-disable private-props/no-use-outside, no-underscore-dangle */
 import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import * as IApexStore from 'activitypub-express/store/interface';
 import * as firebase from 'firebase-admin';
 import {logger} from 'firebase-functions/v1';
+import {mapValues} from 'lodash';
 
 firebase.initializeApp();
 
@@ -102,5 +104,55 @@ export default class Store extends IApexStore {
 	async getUserCount() {
 		const count = await this.db.collection('objects').count().get();
 		return count.data().count;
+	}
+
+	async updateObject(obj: {id: string, [key: string]: any}, actorId: string, fullReplace: boolean) {
+		const objectDoc = this.db.collection('objects').doc(escapeFirestoreKey(obj.id));
+		if (fullReplace) {
+			await objectDoc.set(obj);
+			return obj;
+		}
+		await objectDoc.update(this.objectToUpdateDoc(obj));
+		await this.updateObjectCopies(obj);
+		return objectDoc.get().then((doc) => doc.data()!);
+	}
+
+	objectToUpdateDoc(object: {id: string, [key: string]: any}) {
+		return mapValues(object, (value) => {
+			if (value === null) {
+				return firebase.firestore.FieldValue.delete();
+			}
+			return value;
+		});
+	}
+
+	async updateObjectCopies(object: {id: string, [key: string]: any}) {
+		await this.db.runTransaction(async (transaction) => {
+			const matchedDocs = await transaction.get(
+				this.db.collection('streams')
+					.where('object.id', '==', object.id),
+			);
+			matchedDocs.forEach((doc) => {
+				const newObjectDict = mapValues(doc.get('object'), (value) => {
+					if (value.id === object.id) {
+						return object;
+					}
+					return value;
+				});
+				transaction.update(doc.ref, {object: newObjectDict});
+			});
+		});
+
+		if (object._meta?.privateKey) {
+			await this.db.runTransaction(async (transaction) => {
+				const matchedDocs = await transaction.get(
+					this.db.collection('deliveryQueue')
+						.where('actorId', '==', object.id),
+				);
+				matchedDocs.forEach((doc) => {
+					transaction.update(doc.ref, {signingKey: object._meta.privateKey});
+				});
+			});
+		}
 	}
 }
