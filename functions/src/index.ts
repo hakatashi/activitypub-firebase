@@ -37,8 +37,15 @@ const apex = ActivitypubExpress({
 
 apex.store = new Store();
 
+// Default express.json() parser doesn't properly work with cloud functions
+app.use((req, res, next) => {
+	if (apex.consts.jsonldTypes.includes(req.headers['content-type']) && req.body) {
+		req.body = JSON.parse(req.body);
+	}
+	next();
+});
+
 app.use(
-	express.json({type: apex.consts.jsonldTypes}),
 	express.urlencoded({extended: true}),
 	apex,
 );
