@@ -55,4 +55,47 @@ export default class Store extends IApexStore {
 		await this.db.collection('objects').doc(escapeFirestoreKey(object.id)).set(object);
 		return true;
 	}
+
+	/**
+	 * Return a specific collection (stream of activitites), e.g. a user's inbox
+	 * @param  {string} collectionId - _meta.collection identifier
+	 * @param  {number} limit - max number of activities to return
+	 * @param  {string} [after] - mongodb _id to begin querying after (i.e. last item of last page)
+	 * @param  {string[]} [blockList] - list of ids of actors whose activities should be excluded
+	 * @param  {object[]} [query] - additional aggretation pipeline stages to include
+	 * @returns {Promise<object[]>} - result
+	 */
+	async getStream(collectionId: string, limit: number | null, after: string | null, blockList?: string[], additionalQuery?: any[]) {
+		logger.info('getStream', collectionId, limit, after, blockList, additionalQuery);
+		let query = this.db.collection('streams')
+			.where('_meta.collection', '==', collectionId);
+
+		if (after) {
+			query = query.where('_id', '>', after);
+		}
+		if (Array.isArray(blockList) && blockList.length > 0) {
+			query = query.where('actor', 'not-in', blockList);
+		}
+		if (additionalQuery && additionalQuery.length > 0) {
+			logger.error('getStream: additionalQuery is not supported yet', query);
+		}
+
+		query = query.orderBy('_id', 'desc');
+
+		if (limit) {
+			query = query.limit(limit);
+		}
+
+		const streams = await query.get();
+
+		return streams.docs.map((doc) => doc.data());
+	}
+
+	async getStreamCount(collectionId: string) {
+		const count = await this.db.collection('streams')
+			.where('_meta.collection', '==', collectionId)
+			.count()
+			.get();
+		return count.data().count;
+	}
 }
