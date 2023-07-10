@@ -98,4 +98,9 @@ export default class Store extends IApexStore {
 			.get();
 		return count.data().count;
 	}
+
+	async getUserCount() {
+		const count = await this.db.collection('objects').count().get();
+		return count.data().count;
+	}
 }
