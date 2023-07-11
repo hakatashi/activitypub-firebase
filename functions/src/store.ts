@@ -19,6 +19,11 @@ const escapeFirestoreKey = (key: string) => (
 
 // Implements IApexStore:
 // https://github.com/immers-space/activitypub-express/blob/master/store/interface.js
+
+interface ObjectWithId {
+	id: string,
+	[key: string]: any,
+}
 export default class Store extends IApexStore {
 	db: Firestore;
 
@@ -106,10 +111,11 @@ export default class Store extends IApexStore {
 		return count.data().count;
 	}
 
-	async updateObject(obj: {id: string, [key: string]: any}, actorId: string, fullReplace: boolean) {
+	async updateObject(obj: ObjectWithId, actorId: string, fullReplace: boolean) {
 		const objectDoc = this.db.collection('objects').doc(escapeFirestoreKey(obj.id));
 		if (fullReplace) {
 			await objectDoc.set(obj);
+			await this.updateObjectCopies(obj);
 			return obj;
 		}
 		await objectDoc.update(this.objectToUpdateDoc(obj));
@@ -117,7 +123,46 @@ export default class Store extends IApexStore {
 		return objectDoc.get().then((doc) => doc.data()!);
 	}
 
-	objectToUpdateDoc(object: {id: string, [key: string]: any}) {
+	async saveActivity(activity: ObjectWithId) {
+		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
+		let inserted: undefined | true = undefined;
+		await this.db.runTransaction(async (transaction) => {
+			const activityDoc = await transaction.get(activityRef);
+			if (activityDoc.exists) {
+				return;
+			}
+			transaction.set(activityRef, activity);
+			inserted = true;
+		});
+		return inserted;
+	}
+
+	async removeActivity(activity: ObjectWithId, actorId: string) {
+		await this.db.runTransaction(async (transaction) => {
+			const matchedDocs = await transaction.get(
+				this.db.collection('streams')
+					.where('id', '==', activity.id)
+					.where('actorId', '==', actorId),
+			);
+			matchedDocs.forEach((doc) => {
+				transaction.delete(doc.ref);
+			});
+		});
+	}
+
+	async updateActivity(activity: ObjectWithId, fullReplace: boolean) {
+		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
+		if (fullReplace) {
+			await activityRef.set(activity);
+			await this.updateObjectCopies(activity);
+			return activity;
+		}
+		await activityRef.update(this.objectToUpdateDoc(activity));
+		await this.updateObjectCopies(activity);
+		return activityRef.get().then((doc) => doc.data()!);
+	}
+
+	private objectToUpdateDoc(object: ObjectWithId) {
 		return mapValues(object, (value) => {
 			if (value === null) {
 				return firebase.firestore.FieldValue.delete();
@@ -126,7 +171,7 @@ export default class Store extends IApexStore {
 		});
 	}
 
-	async updateObjectCopies(object: {id: string, [key: string]: any}) {
+	private async updateObjectCopies(object: ObjectWithId) {
 		await this.db.runTransaction(async (transaction) => {
 			const matchedDocs = await transaction.get(
 				this.db.collection('streams')

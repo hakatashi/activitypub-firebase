@@ -37,18 +37,22 @@ const apex = ActivitypubExpress({
 
 apex.store = new Store();
 
-// Default express.json() parser doesn't properly work with cloud functions
 app.use((req, res, next) => {
+	// Default express.json() parser doesn't properly work with cloud functions
 	if (apex.consts.jsonldTypes.includes(req.headers['content-type']) && req.body) {
 		req.body = JSON.parse(req.body);
 	}
+
 	logger.info({
 		method: req.method,
 		path: req.path,
 		headers: req.headers,
 		body: req.body,
 	});
+
+	// Required to make the HTTP signature verification work
 	req.headers.host = 'hakatashi.com';
+
 	next();
 });
 
