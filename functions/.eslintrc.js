@@ -6,5 +6,6 @@ module.exports = {
 	],
 	rules: {
 		'import/no-namespace': 'off',
+		'no-undef-init': 'off',
 	},
 };
