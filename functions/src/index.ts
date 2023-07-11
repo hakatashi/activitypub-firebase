@@ -29,6 +29,7 @@ const apex = ActivitypubExpress({
 	actorParam: 'actor',
 	objectParam: 'id',
 	activityParam: 'id',
+	logger,
 	routes,
 	endpoints: {
 		proxyUrl: 'https://hakatashi.com/activitypub/proxy',
