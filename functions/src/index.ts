@@ -48,6 +48,7 @@ app.use((req, res, next) => {
 		headers: req.headers,
 		body: req.body,
 	});
+	req.headers.host = 'hakatashi.com';
 	next();
 });
 
