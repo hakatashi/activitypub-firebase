@@ -40,7 +40,6 @@ export default class Store extends IApexStore {
 	}
 
 	async getObject(id: string, includeMeta?: boolean) {
-		logger.info('getObject', id);
 		const objectDoc = await this.db.collection('objects').doc(escapeFirestoreKey(id)).get();
 
 		if (!objectDoc.exists) {
@@ -58,7 +57,6 @@ export default class Store extends IApexStore {
 	}
 
 	async saveObject(object: any) {
-		logger.info('saveObject', object.id);
 		await this.db.collection('objects').doc(escapeFirestoreKey(object.id)).set(object);
 		return true;
 	}
@@ -121,6 +119,23 @@ export default class Store extends IApexStore {
 		await objectDoc.update(this.objectToUpdateDoc(obj));
 		await this.updateObjectCopies(obj);
 		return objectDoc.get().then((doc) => doc.data()!);
+	}
+
+	async getActivity(id: string, includeMeta?: boolean) {
+		const activityDoc = await this.db.collection('streams').doc(escapeFirestoreKey(id)).get();
+
+		if (!activityDoc.exists) {
+			return undefined;
+		}
+
+		const activity = activityDoc.data()!;
+
+		if (includeMeta !== true) {
+			// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
+			delete activity._meta;
+		}
+
+		return activity;
 	}
 
 	async saveActivity(activity: ObjectWithId) {
