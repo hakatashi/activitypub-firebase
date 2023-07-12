@@ -123,3 +123,5 @@ app.on('apex-inbox', async (message: any) => {
 });
 
 export const handler = https.onRequest(app);
+
+export * from './mastodon';

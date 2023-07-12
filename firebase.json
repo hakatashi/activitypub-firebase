@@ -57,6 +57,12 @@
           "destination": "https://hakatashi.com/",
           "type": 301
         }
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "function": "mastodonApi"
+        }
       ]
     }
   ]
