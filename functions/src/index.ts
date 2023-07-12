@@ -100,21 +100,26 @@ app.on('apex-inbox', async (message: any) => {
 
 	// Auto-accept follow
 	if (message.activity.type === 'Follow') {
-		logger.info(`New follow request from ${message.actor}`);
+		logger.info(`New follow request from ${message.actor.id}`);
 		const accept = await apex.buildActivity('Accept', message.recipient.id, message.actor.id, {
 			object: message.activity.id,
 		});
 		const {postTask: publishUpdatedFollowers} = await apex.acceptFollow(message.recipient, message.activity);
+
+		logger.info(`Accepting follow request from ${message.actor.id}`);
 		await apex.addToOutbox(message.recipient, accept);
-		return publishUpdatedFollowers();
+
+		logger.info('Publishing updated followers');
+		await publishUpdatedFollowers();
+
+		logger.info(`Follow request from ${message.actor.id} accepted`);
+
+		return;
 	}
 
 	if (message.activity.type === 'Create') {
 		logger.info(`New ${message.object.type} from ${message.actor} to ${message.recipient}`);
-		return null;
 	}
-
-	return null;
 });
 
 export const handler = https.onRequest(app);
