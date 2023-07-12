@@ -56,6 +56,21 @@
           "source": "/",
           "destination": "https://hakatashi.com/",
           "type": 301
+        },
+        {
+          "source": "/.well-known/webfinger",
+          "destination": "https://hakatashi.com/.well-known/webfinger",
+          "type": 301
+        },
+        {
+          "source": "/.well-known/nodeinfo",
+          "destination": "https://hakatashi.com/.well-known/nodeinfo",
+          "type": 301
+        },
+        {
+          "source": "/nodeinfo/:version*",
+          "destination": "https://hakatashi.com/nodeinfo/:version",
+          "type": 301
         }
       ],
       "rewrites": [
