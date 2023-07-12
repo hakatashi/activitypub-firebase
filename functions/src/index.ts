@@ -1,6 +1,6 @@
 // @ts-expect-error: Not typed
-import * as ActivitypubExpress from 'activitypub-express';
-import * as express from 'express';
+import ActivitypubExpress from 'activitypub-express';
+import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
 import Store from './store';
 
@@ -31,12 +31,11 @@ const apex = ActivitypubExpress({
 	activityParam: 'id',
 	logger,
 	routes,
+	store: new Store(),
 	endpoints: {
 		proxyUrl: 'https://hakatashi.com/activitypub/proxy',
 	},
 });
-
-apex.store = new Store();
 
 app.use((req, res, next) => {
 	// Default express.json() parser doesn't properly work with cloud functions
@@ -45,6 +44,7 @@ app.use((req, res, next) => {
 	}
 
 	logger.info({
+		type: 'request',
 		method: req.method,
 		path: req.path,
 		headers: req.headers,
@@ -89,14 +89,28 @@ app.get('/activitypub/createAdmin', async (req: express.Request, res: express.Re
 	res.json(actor);
 });
 
-app.on('apex-outbox', (msg: any) => {
-	if (msg.activity.type === 'Create') {
-		logger.info(`New ${msg.object.type} from ${msg.actor}`);
+app.on('apex-outbox', (message: any) => {
+	logger.info({type: 'outbox', message});
+	if (message.activity.type === 'Create') {
+		logger.info(`New ${message.object.type} from ${message.actor}`);
 	}
 });
-app.on('apex-inbox', (msg: any) => {
-	if (msg.activity.type === 'Create') {
-		logger.info(`New ${msg.object.type} from ${msg.actor} to ${msg.recipient}`);
+app.on('apex-inbox', async (message: any) => {
+	logger.info({type: 'inbox', message});
+
+	// Auto-accept follow
+	if (message.activity.type === 'Follow') {
+		logger.info(`New follow request from ${message.actor}`);
+		const accept = await apex.buildActivity('Accept', message.recipient.id, message.actor.id, {
+			object: message.activity.id,
+		});
+		const {postTask: publishUpdatedFollowers} = await apex.acceptFollow(message.recipient, message.activity);
+		await apex.addToOutbox(message.recipient, accept);
+		return publishUpdatedFollowers();
+	}
+
+	if (message.activity.type === 'Create') {
+		logger.info(`New ${message.object.type} from ${message.actor} to ${message.recipient}`);
 	}
 });
 
