@@ -81,6 +81,10 @@ app.get('/.well-known/nodeinfo', apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', apex.net.nodeInfo.get);
 app.post('/activitypub/proxy', apex.net.proxy.post);
 app.get('/activitypub/createAdmin', async (req: express.Request, res: express.Response) => {
+	if (process.env.FUNCTIONS_EMULATOR !== 'true') {
+		res.status(403).send('Forbidden');
+		return;
+	}
 	const actor = await apex.createActor('hakatashi', 'hakatashi', '博多市です。', 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png', 'Person');
 	await apex.store.setup(actor);
 	// eslint-disable-next-line require-atomic-updates
