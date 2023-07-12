@@ -1,8 +1,8 @@
 /* eslint-disable private-props/no-use-outside, no-underscore-dangle */
 import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
-import * as IApexStore from 'activitypub-express/store/interface';
-import * as firebase from 'firebase-admin';
+import IApexStore from 'activitypub-express/store/interface';
+import firebase from 'firebase-admin';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash';
 
@@ -37,6 +37,10 @@ export default class Store extends IApexStore {
 		if (initialUser !== undefined) {
 			await this.saveObject(initialUser);
 		}
+	}
+
+	generateId() {
+		return firebase.firestore().collection('objects').doc().id;
 	}
 
 	async getObject(id: string, includeMeta?: boolean) {
@@ -191,6 +195,75 @@ export default class Store extends IApexStore {
 		}
 		// FIXME: This is not atomic
 		return activityRef.get().then((doc) => doc.data()!);
+	}
+
+	// eslint-disable-next-line max-params
+	async deliveryEnqueue(actorId: string, body: any, addresses: string | string[], signingKey: string) {
+		if (!addresses || !addresses.length) {
+			return false;
+		}
+
+		const normalizedAddresses = Array.isArray(addresses) ? addresses : [addresses];
+
+		const batch = this.db.batch();
+		const deliveryQueueRef = this.db.collection('deliveryQueue');
+		for (const address of normalizedAddresses) {
+			batch.set(deliveryQueueRef.doc(), {
+				address,
+				actorId,
+				signingKey,
+				body,
+				attempt: 0,
+				after: new Date(),
+			});
+		}
+		await batch.commit();
+
+		return true;
+	}
+
+	deliveryDequeue() {
+		return this.db.runTransaction(async (transaction) => {
+			const matchedDocs = await transaction.get(
+				this.db.collection('deliveryQueue')
+					.where('after', '<=', new Date())
+					.orderBy('after')
+					.orderBy(firebase.firestore.FieldPath.documentId())
+					.limit(1),
+			);
+
+			if (!matchedDocs.empty) {
+				const doc = matchedDocs.docs[0];
+				transaction.delete(doc.ref);
+				const delivery = doc.data();
+				return {
+					...delivery,
+					after: delivery.after.toDate(),
+				};
+			}
+
+			// if no deliveries available now, check for scheduled deliveries
+			const next = await transaction.get(
+				this.db.collection('deliveryQueue')
+					.orderBy('after')
+					.limit(1),
+			);
+
+			if (!next.empty) {
+				return {waitUntil: next.docs[0].get('after').toDate()};
+			}
+
+			return null;
+		});
+	}
+
+	async deliveryRequeue(delivery: {after: Date, attempt: number}) {
+		const nextTime = delivery.after.getTime() + 10 ** delivery.attempt++;
+		await this.db.collection('deliveryQueue').add({
+			...delivery,
+			after: new Date(nextTime),
+		});
+		return true;
 	}
 
 	private objectToUpdateDoc(object: ObjectWithId) {
