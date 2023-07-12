@@ -7,5 +7,6 @@ module.exports = {
 	rules: {
 		'import/no-namespace': 'off',
 		'no-undef-init': 'off',
+		'import/no-named-as-default-member': 'off',
 	},
 };

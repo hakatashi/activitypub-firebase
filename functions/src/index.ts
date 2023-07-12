@@ -111,7 +111,10 @@ app.on('apex-inbox', async (message: any) => {
 
 	if (message.activity.type === 'Create') {
 		logger.info(`New ${message.object.type} from ${message.actor} to ${message.recipient}`);
+		return null;
 	}
+
+	return null;
 });
 
 export const handler = https.onRequest(app);
