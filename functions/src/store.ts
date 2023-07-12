@@ -182,19 +182,25 @@ export default class Store extends IApexStore {
 	}
 
 	// eslint-disable-next-line max-params
-	async updateActivityMeta(activity: ObjectWithId, key: string, value: any, remove: boolean) {
+	updateActivityMeta(activity: ObjectWithId, key: string, value: any, remove: boolean) {
 		if (key.includes('.')) {
 			throw new Error('updateActivityMeta: key must not include "."');
 		}
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
-		const result = await activityRef.update({
-			[`_meta.${key}`]: remove ? firebase.firestore.FieldValue.delete() : value,
+		return this.db.runTransaction(async (transaction) => {
+			const activityDoc = await transaction.get(activityRef);
+			if (!activityDoc.exists) {
+				throw new Error('Error updating activity meta: not found');
+			}
+			const activityData = activityDoc.data()!;
+			if (remove) {
+				delete activityData._meta[key];
+			} else {
+				activityData._meta[key] = value;
+			}
+			transaction.update(activityRef, activityData);
+			return activityData;
 		});
-		if (!result.writeTime) {
-			throw new Error('Error updating activity meta: not found');
-		}
-		// FIXME: This is not atomic
-		return activityRef.get().then((doc) => doc.data()!);
 	}
 
 	// eslint-disable-next-line max-params
