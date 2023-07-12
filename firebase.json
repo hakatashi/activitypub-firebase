@@ -19,26 +19,45 @@
       ]
     }
   ],
-  "hosting": {
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "/.well-known/**",
-        "function": "handler"
-      },
-      {
-        "source": "/activitypub/**",
-        "function": "handler"
-      },
-      {
-        "source": "/nodeinfo/**",
-        "function": "handler"
-      }
-    ]
-  }
+  "hosting": [
+    {
+      "target": "activitypub",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "/.well-known/**",
+          "function": "handler"
+        },
+        {
+          "source": "/activitypub/**",
+          "function": "handler"
+        },
+        {
+          "source": "/nodeinfo/**",
+          "function": "handler"
+        }
+      ]
+    },
+    {
+      "target": "mastodon",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "redirects": [
+        {
+          "source": "/",
+          "destination": "https://hakatashi.com/",
+          "type": 301
+        }
+      ]
+    }
+  ]
 }

@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "activitypub-firebase"
-  }
+  },
+  "targets": {
+    "activitypub-firebase": {
+      "hosting": {
+        "mastodon": [
+          "hakatashi-mastodon"
+        ],
+        "activitypub": [
+          "activitypub-firebase"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
