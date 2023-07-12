@@ -31,15 +31,15 @@
       "rewrites": [
         {
           "source": "/.well-known/**",
-          "function": "handler"
+          "function": "activitypub"
         },
         {
           "source": "/activitypub/**",
-          "function": "handler"
+          "function": "activitypub"
         },
         {
           "source": "/nodeinfo/**",
-          "function": "handler"
+          "function": "activitypub"
         }
       ]
     },
