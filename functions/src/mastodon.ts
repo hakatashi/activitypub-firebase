@@ -7,6 +7,7 @@ import type {CamelToSnake} from './utils';
 const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
 	id: '1',
 	created_at: '2021-08-01T00:00:00.000Z',
+	edited_at: null,
 	in_reply_to_id: null,
 	in_reply_to_account_id: null,
 	sensitive: false,
