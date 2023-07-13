@@ -33,7 +33,7 @@ const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
 	account: {
 		id: '1',
 		username: 'hakatashi',
-		acct: 'hakatashi@hakatashi.com',
+		acct: 'hakatashi',
 		display_name: 'hakatashi',
 		locked: false,
 		bot: false,
