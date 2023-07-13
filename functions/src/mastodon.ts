@@ -1,6 +1,6 @@
 import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
-import instance from './instanceInformation';
+import {instanceV1, instanceV2} from './instanceInformation';
 
 const app = express();
 
@@ -16,7 +16,11 @@ app.use((req, res, next) => {
 });
 
 app.get('/api/v1/instance', (req, res) => {
-	res.json(instance);
+	res.json(instanceV1);
+});
+
+app.get('/api/v2/instance', (req, res) => {
+	res.json(instanceV2);
 });
 
 // fallback all /api routes to 501
