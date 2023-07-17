@@ -12,8 +12,10 @@ jobs:
     strategy:
       matrix:
         project:
-          - activitypub-firebase
-          - activitypub-firebase-dev
+          - id: activitypub-firebase
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+          - id: activitypub-firebase-dev
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
     steps:
       - uses: actions/checkout@v2
         with:
@@ -21,16 +23,18 @@ jobs:
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{secrets.GITHUB_TOKEN}}'
-          firebaseServiceAccount: '${{secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE}}'
+          firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
           channelId: live
-          projectId: '${{matrix.project}}'
+          projectId: '${{matrix.project.id}}'
   firebase:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         project:
-          - activitypub-firebase
-          - activitypub-firebase-dev
+          - id: activitypub-firebase
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+          - id: activitypub-firebase-dev
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
@@ -40,5 +44,5 @@ jobs:
         with:
           args: deploy --only functions,firestore
         env:
-          GCP_SA_KEY: '${{secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE}}'
-          PROJECT_ID: '${{matrix.project}}'
+          GCP_SA_KEY: '${{secrets[matrix.project.key]}}'
+          PROJECT_ID: '${{matrix.project.id}}'

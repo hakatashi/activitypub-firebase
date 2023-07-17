@@ -10,8 +10,10 @@ jobs:
     strategy:
       matrix:
         project:
-          - activitypub-firebase
-          - activitypub-firebase-dev
+          - id: activitypub-firebase
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+          - id: activitypub-firebase-dev
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
     steps:
       - uses: actions/checkout@v2
         with:
@@ -19,5 +21,5 @@ jobs:
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{secrets.GITHUB_TOKEN}}'
-          firebaseServiceAccount: '${{secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE}}'
-          projectId: '${{matrix.project}}'
+          firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
+          projectId: '${{matrix.project.id}}'
