@@ -80,7 +80,7 @@ export default class Store extends IApexStore {
 			.where('_meta.collection', '==', collectionId);
 
 		if (after) {
-			query = query.where('_id', '>', after);
+			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
 		}
 		if (Array.isArray(blockList) && blockList.length > 0) {
 			query = query.where('actor', 'not-in', blockList);
@@ -89,7 +89,7 @@ export default class Store extends IApexStore {
 			logger.error('getStream: additionalQuery is not supported yet', query);
 		}
 
-		query = query.orderBy('_id', 'desc');
+		query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
 
 		if (limit) {
 			query = query.limit(limit);
@@ -143,6 +143,7 @@ export default class Store extends IApexStore {
 	}
 
 	async saveActivity(activity: ObjectWithId) {
+		logger.info({type: 'saveActivity', activity});
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		let inserted: undefined | true = undefined;
 		await this.db.runTransaction(async (transaction) => {
@@ -209,26 +210,44 @@ export default class Store extends IApexStore {
 			return false;
 		}
 
+		logger.info({
+			type: 'deliveryEnqueue',
+			actorId,
+			addresses,
+			signingKey,
+			body,
+		});
+
 		const normalizedAddresses = Array.isArray(addresses) ? addresses : [addresses];
 
 		const batch = this.db.batch();
 		const deliveryQueueRef = this.db.collection('deliveryQueue');
+		const deliveries = [];
 		for (const address of normalizedAddresses) {
-			batch.set(deliveryQueueRef.doc(), {
+			const delivery = {
 				address,
 				actorId,
 				signingKey,
 				body,
 				attempt: 0,
 				after: new Date(),
-			});
+			};
+			deliveries.push(delivery);
+			batch.set(deliveryQueueRef.doc(), delivery);
 		}
 		await batch.commit();
+
+		logger.info({
+			type: 'deliveryEnqueueResult',
+			deliveries,
+		});
 
 		return true;
 	}
 
 	deliveryDequeue() {
+		logger.info({type: 'deliveryDequeue'});
+
 		return this.db.runTransaction(async (transaction) => {
 			const matchedDocs = await transaction.get(
 				this.db.collection('deliveryQueue')
@@ -242,6 +261,10 @@ export default class Store extends IApexStore {
 				const doc = matchedDocs.docs[0];
 				transaction.delete(doc.ref);
 				const delivery = doc.data();
+				logger.info({
+					type: 'deliveryDequeueResult',
+					delivery,
+				});
 				return {
 					...delivery,
 					after: delivery.after.toDate(),
