@@ -5,8 +5,7 @@ import IApexStore from 'activitypub-express/store/interface';
 import firebase from 'firebase-admin';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash';
-
-firebase.initializeApp();
+import {db} from './firebase';
 
 const escapeFirestoreKey = (key: string) => (
 	key
@@ -29,7 +28,7 @@ export default class Store extends IApexStore {
 
 	constructor() {
 		super();
-		this.db = firebase.firestore();
+		this.db = db;
 	}
 
 	async setup(initialUser?: any) {

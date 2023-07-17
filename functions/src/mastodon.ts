@@ -1,6 +1,7 @@
 import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
 import type {mastodon} from 'masto';
+import {domain} from './firebase';
 import {instanceV1, instanceV2} from './instanceInformation';
 import type {CamelToSnake} from './utils';
 
@@ -14,8 +15,8 @@ const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
 	spoiler_text: '',
 	visibility: 'public',
 	language: 'ja',
-	uri: 'https://hakatashi.com/@hakatashi/1',
-	url: 'https://hakatashi.com/@hakatashi/1',
+	uri: `https://${domain}/@hakatashi/1`,
+	url: `https://${domain}/@hakatashi/1`,
 	replies_count: 0,
 	reblogs_count: 0,
 	favourites_count: 0,
@@ -28,12 +29,12 @@ const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
 	reblog: null,
 	application: {
 		name: 'HakataFediverse',
-		website: 'https://hakatashi.com',
+		website: `https://${domain}`,
 	},
 	account: {
 		id: '1',
 		username: 'hakatashi',
-		acct: 'hakatashi@hakatashi.com',
+		acct: `hakatashi@${domain}`,
 		display_name: 'hakatashi',
 		locked: false,
 		bot: false,

@@ -3,6 +3,7 @@ import {inspect} from 'util';
 import ActivitypubExpress from 'activitypub-express';
 import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
+import {domain} from './firebase';
 import Store from './store';
 
 const app = express();
@@ -26,7 +27,7 @@ const routes = {
 const apex = ActivitypubExpress({
 	name: 'HakataFediverse',
 	version: '1.0.0',
-	domain: 'hakatashi.com',
+	domain,
 	actorParam: 'actor',
 	objectParam: 'id',
 	activityParam: 'id',
@@ -34,7 +35,7 @@ const apex = ActivitypubExpress({
 	routes,
 	store: new Store(),
 	endpoints: {
-		proxyUrl: 'https://hakatashi.com/activitypub/proxy',
+		proxyUrl: `https://${domain}/activitypub/proxy`,
 	},
 });
 
@@ -53,7 +54,7 @@ app.use((req, res, next) => {
 	});
 
 	// Required to make the HTTP signature verification work
-	req.headers.host = 'hakatashi.com';
+	req.headers.host = domain;
 
 	next();
 });
@@ -100,9 +101,9 @@ app.post('/activitypub/createPost', async (req: express.Request, res: express.Re
 
 	const url = apex.utils.objectIdToIRI();
 	const published = new Date().toISOString();
-	const actorId = 'https://hakatashi.com/activitypub/u/hakatashi';
+	const actorId = `https://${domain}/activitypub/u/hakatashi`;
 	const actor = await apex.store.getObject(actorId, true);
-	const followersId = 'https://hakatashi.com/activitypub/u/hakatashi/followers';
+	const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
 	const object = {
 		id: url,
 		url,

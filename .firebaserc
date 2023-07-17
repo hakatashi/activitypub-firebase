@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "activitypub-firebase"
+    "default": "activitypub-firebase",
+    "dev": "activitypub-firebase-dev"
   },
   "targets": {
     "activitypub-firebase": {
