@@ -17,10 +17,10 @@
     "activitypub-firebase-dev": {
       "hosting": {
         "mastodon": [
-          "hakatashi-mastodon"
+          "hakatashi-mastodon-dev"
         ],
         "activitypub": [
-          "activitypub-firebase"
+          "activitypub-firebase-dev"
         ]
       }
     }
