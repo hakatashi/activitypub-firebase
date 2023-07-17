@@ -13,6 +13,16 @@
           "activitypub-firebase"
         ]
       }
+    },
+    "activitypub-firebase-dev": {
+      "hosting": {
+        "mastodon": [
+          "hakatashi-mastodon"
+        ],
+        "activitypub": [
+          "activitypub-firebase"
+        ]
+      }
     }
   },
   "etags": {}
