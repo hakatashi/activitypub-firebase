@@ -1,3 +1,4 @@
+import {inspect} from 'util';
 // @ts-expect-error: Not typed
 import ActivitypubExpress from 'activitypub-express';
 import express from 'express';
@@ -90,6 +91,42 @@ app.get('/activitypub/createAdmin', async (req: express.Request, res: express.Re
 	// eslint-disable-next-line require-atomic-updates
 	apex.systemUser = actor;
 	res.json(actor);
+});
+app.post('/activitypub/createPost', async (req: express.Request, res: express.Response) => {
+	if (process.env.FUNCTIONS_EMULATOR !== 'true') {
+		res.status(403).send('Forbidden');
+		return;
+	}
+
+	const url = apex.utils.objectIdToIRI();
+	const published = new Date().toISOString();
+	const actorId = 'https://hakatashi.com/activitypub/u/hakatashi';
+	const actor = await apex.store.getObject(actorId, true);
+	const followersId = 'https://hakatashi.com/activitypub/u/hakatashi/followers';
+	const object = {
+		id: url,
+		url,
+		published,
+		type: 'Note',
+		attributedTo: actor.id,
+		to: 'as:Public',
+		cc: followersId,
+		content: 'Hello, world!',
+	};
+
+	await apex.store.saveObject(object);
+	const message = await apex.buildActivity('Create', actor.id, ['as:Public'], {
+		cc: followersId,
+		object,
+	});
+
+	console.log(inspect({message}, {depth: null}));
+
+	const result = await apex.addToOutbox(actor, message);
+
+	console.log(inspect({result}, {depth: null}));
+
+	res.send('ok');
 });
 
 app.on('apex-outbox', (message: any) => {
