@@ -74,6 +74,7 @@ app.use((req, res, next) => {
 });
 
 app.use(
+	express.json(),
 	express.urlencoded({extended: true}),
 	apex,
 );
@@ -104,6 +105,12 @@ app.get('/activitypub/createAdmin', adminOnly, async (req: express.Request, res:
 	res.json(actor);
 });
 app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res: express.Response) => {
+	const text = req.body?.text;
+	if (typeof text !== 'string') {
+		res.status(400).send('Text is not correct type');
+		return;
+	}
+
 	const url = apex.utils.objectIdToIRI();
 	const published = new Date().toISOString();
 	const actorId = `https://${domain}/activitypub/u/hakatashi`;
@@ -117,7 +124,7 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 		attributedTo: actor.id,
 		to: 'as:Public',
 		cc: followersId,
-		content: 'Hello, world!',
+		content: text,
 	};
 
 	await apex.store.saveObject(object);
@@ -126,11 +133,11 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 		object,
 	});
 
-	console.log(inspect({message}, {depth: null}));
+	logger.info({type: 'createPostMessage', message});
 
 	const result = await apex.addToOutbox(actor, message);
 
-	console.log(inspect({result}, {depth: null}));
+	logger.info({type: 'createPostAddToOutboxResult', result});
 
 	res.send('ok');
 });
