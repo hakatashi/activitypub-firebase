@@ -151,6 +151,12 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 
 	res.send('ok');
 });
+app.get('/activitypub/publishProfileUpdate', adminOnly, async (req: express.Request, res: express.Response) => {
+	const actorId = `https://${domain}/activitypub/u/hakatashi`;
+	const actor = await apex.store.getObject(actorId);
+	await apex.publishUpdate(actor, actor);
+	res.json('ok');
+});
 
 app.on('apex-outbox', (message: any) => {
 	logger.info({type: 'outbox', message});
