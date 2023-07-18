@@ -154,7 +154,8 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 app.get('/activitypub/publishProfileUpdate', adminOnly, async (req: express.Request, res: express.Response) => {
 	const actorId = `https://${domain}/activitypub/u/hakatashi`;
 	const actor = await apex.store.getObject(actorId);
-	await apex.publishUpdate(actor, actor);
+	const actorWithMeta = await apex.store.getObject(actorId, true);
+	await apex.publishUpdate(actorWithMeta, actor);
 	res.json('ok');
 });
 
