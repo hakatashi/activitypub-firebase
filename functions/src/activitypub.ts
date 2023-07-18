@@ -202,9 +202,12 @@ express.response.send = function (body) {
 			});
 
 			try {
-				await Promise.all(
-					apexLocal.postWork
-						.map((task: any) => task(this)),
+				// execute postWork tasks in sequence (not parallel)
+				await apexLocal.postWork.reduce(
+					(acc: Promise<void>, task: (res: express.Response) => Promise<void>) => (
+						acc.then(() => task(this))
+					),
+					Promise.resolve(),
 				);
 
 				if (apexLocal.eventName) {
