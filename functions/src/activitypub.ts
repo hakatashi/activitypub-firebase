@@ -166,8 +166,13 @@ app.on('apex-inbox', async (message: any) => {
 	// Auto-accept follow
 	if (message.activity.type === 'Follow') {
 		logger.info(`New follow request from ${message.actor.id}`);
+
+		const object = {...message.activity};
+		// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
+		delete object._meta;
+
 		const accept = await apex.buildActivity('Accept', message.recipient.id, message.actor.id, {
-			object: message.activity.id,
+			object,
 		});
 		const {postTask: publishUpdatedFollowers} = await apex.acceptFollow(message.recipient, message.activity);
 
