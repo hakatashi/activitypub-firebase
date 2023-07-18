@@ -72,6 +72,16 @@ app.use((req, res, next) => {
 	next();
 });
 
+app.get(routes.actor, (req: express.Request, res: express.Response, next: express.NextFunction) => {
+	logger.info({type: 'getActor', actor: req.params.actor});
+	next();
+});
+
+app.get('/activitypub/u/:actor', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+	logger.info({type: 'getActor2', actor: req.params.actor});
+	next();
+});
+
 app.use(
 	express.json(),
 	express.urlencoded({extended: true}),
@@ -143,6 +153,7 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 
 app.on('apex-outbox', (message: any) => {
 	logger.info({type: 'outbox', message});
+
 	if (message.activity.type === 'Create') {
 		logger.info(`New ${message.object.type} from ${message.actor}`);
 	}
