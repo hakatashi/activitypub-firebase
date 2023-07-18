@@ -100,7 +100,11 @@ app.get(routes.actor, (req: express.Request, res: express.Response, next: expres
 	next();
 });
 
-app.get(routes.actor, apex.net.actor.get, (req: express.Request, res: express.Response) => {
+app.get(routes.actor, (req: express.Request, res: express.Response, next: express.NextFunction) => {
+	logger.info({type: 'getActor4', actor: req.params.actor});
+	next();
+}, apex.net.actor.get, (req: express.Request, res: express.Response) => {
+	logger.info({type: 'getActor5', actor: req.params.actor});
 	const actor = req.params.actor;
 	if (typeof actor !== 'string') {
 		res.status(400).send('Actor is not specified');
