@@ -64,6 +64,33 @@ export default class Store extends IApexStore {
 		return object;
 	}
 
+	async getObjects(field: string, value: any) {
+		logger.info({
+			type: 'getObjects',
+			field,
+			value,
+		});
+		const objectDocs = await this.db.collection('objects').where(field, '==', value).get();
+
+		return objectDocs.docs.map((doc) => {
+			const object = doc.data();
+			// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
+			delete object._meta;
+			return object;
+		});
+	}
+
+	async getObjectsCount(field: string, value: any) {
+		logger.info({
+			type: 'countObjects',
+			field,
+			value,
+		});
+		const objectDocs = await this.db.collection('objects').where(field, '==', value).count().get();
+
+		return objectDocs.data().count;
+	}
+
 	async saveObject(object: any) {
 		await this.db.collection('objects').doc(escapeFirestoreKey(object.id)).set(object);
 		return true;

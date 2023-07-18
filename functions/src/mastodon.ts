@@ -1,6 +1,7 @@
 import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
 import type {mastodon} from 'masto';
+import {apex} from './activitypub';
 import {domain} from './firebase';
 import {instanceV1, instanceV2} from './instanceInformation';
 import type {CamelToSnake} from './utils';
@@ -62,6 +63,38 @@ const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
 	poll: null,
 };
 
+const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
+	const actorId = `https://${domain}/activitypub/u/${username}`;
+	const actor = await apex.store.getObject(actorId);
+	if (actor === undefined) {
+		return undefined;
+	}
+
+	const statuses = await apex.store.getObjects('attributedTo', actorId);
+
+	return {
+		id: '1', // FIXME: rank it
+		username: actor.preferredUsername[0],
+		acct: username,
+		display_name: actor.name[0],
+		url: `https://elk.zone/mastodon.hakatashi.com/@${acct}`,
+		avatar: actor.icon[0].url,
+		avatar_static: actor.icon[0].url,
+		header: '',
+		header_static: '',
+		note: '',
+		locked: false,
+		emojis: [],
+		fields: [],
+		discoverable: true,
+		created_at: new Date(2020, 1, 1).toISOString(),
+		statuses_count: statuses.length,
+		followers_count: 0,
+		following_count: 0,
+		last_status_at: statuses.length === 0 ? null : statuses[0].published,
+		roles: [],
+	};
+};
 
 const app = express();
 
@@ -82,6 +115,33 @@ app.get('/api/v1/instance', (req, res) => {
 
 app.get('/api/v2/instance', (req, res) => {
 	res.json(instanceV2);
+});
+
+app.get('/api/v1/accounts/lookup', async (req, res) => {
+	const acct = req.query.acct;
+	if (typeof acct !== 'string') {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
+	const [username, lookupDomain = domain] = acct.split('@');
+
+	if (lookupDomain !== domain) {
+		res.status(501).send('Not implemented');
+		return;
+	}
+
+	const account = await actorUsernameToAccount(username);
+
+	if (account === undefined) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+	}
+
+	res.json(account);
 });
 
 app.get('/api/v1/timelines/public', (req, res) => {
