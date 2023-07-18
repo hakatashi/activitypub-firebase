@@ -82,8 +82,8 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 		url: `https://elk.zone/mastodon.hakatashi.com/@${username}`,
 		avatar: actor.icon.url,
 		avatar_static: actor.icon.url,
-		header: '',
-		header_static: '',
+		header: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/ogimage.png',
+		header_static: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/ogimage.png',
 		note: actor.summary,
 		locked: false,
 		emojis: [],
@@ -144,6 +144,10 @@ app.get('/api/v1/accounts/lookup', async (req, res) => {
 	}
 
 	res.json(account);
+});
+
+app.get('/api/v1/accounts/:id/statuses', (req, res) => {
+	res.json([exampleStatus]);
 });
 
 app.get('/api/v1/timelines/public', (req, res) => {
