@@ -65,24 +65,26 @@ const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
 
 const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
 	const actorId = `https://${domain}/activitypub/u/${username}`;
-	const actor = await apex.store.getObject(actorId);
-	if (actor === undefined) {
+	const object = await apex.store.getObject(actorId);
+	if (object === undefined) {
 		return undefined;
 	}
+
+	const actor = await apex.toJSONLD(object);
 
 	const statuses = await apex.store.getObjects('attributedTo', actorId);
 
 	return {
 		id: '1', // FIXME: rank it
-		username: actor.preferredUsername[0],
+		username: actor.preferredUsername,
 		acct: username,
-		display_name: actor.name[0],
+		display_name: actor.name,
 		url: `https://elk.zone/mastodon.hakatashi.com/@${username}`,
-		avatar: actor.icon[0].url[0],
-		avatar_static: actor.icon[0].url[0],
+		avatar: actor.icon.url,
+		avatar_static: actor.icon.url,
 		header: '',
 		header_static: '',
-		note: actor.summary[0],
+		note: actor.summary,
 		locked: false,
 		emojis: [],
 		fields: [],
