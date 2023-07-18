@@ -3,6 +3,7 @@ import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface';
 import firebase from 'firebase-admin';
+import {DocumentData} from 'firebase-admin/firestore';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash';
 import {db} from './firebase';
@@ -96,6 +97,13 @@ export default class Store extends IApexStore {
 		return true;
 	}
 
+	private normalizeActivity(activity: DocumentData) {
+		if (typeof activity?._meta?.collection === 'string') {
+			activity._meta.collection = [activity._meta.collection];
+		}
+		return activity;
+	}
+
 	/**
 	 * Return a specific collection (stream of activitites), e.g. a user's inbox
 	 * @param  {string} collectionId - _meta.collection identifier
@@ -136,7 +144,7 @@ export default class Store extends IApexStore {
 
 		const streams = await query.get();
 
-		return streams.docs.map((doc) => doc.data());
+		return streams.docs.map((doc) => this.normalizeActivity(doc.data()));
 	}
 
 	async getStreamCount(collectionId: string) {
@@ -178,7 +186,7 @@ export default class Store extends IApexStore {
 			delete activity._meta;
 		}
 
-		return activity;
+		return this.normalizeActivity(activity);
 	}
 
 	async saveActivity(activity: ObjectWithId) {
@@ -218,7 +226,7 @@ export default class Store extends IApexStore {
 		}
 		await activityRef.update(this.objectToUpdateDoc(activity));
 		await this.updateObjectCopies(activity);
-		return activityRef.get().then((doc) => doc.data()!);
+		return activityRef.get().then((doc) => this.normalizeActivity(doc.data()!));
 	}
 
 	// eslint-disable-next-line max-params
@@ -239,7 +247,7 @@ export default class Store extends IApexStore {
 				activityData._meta[key] = value;
 			}
 			transaction.update(activityRef, activityData);
-			return activityData;
+			return this.normalizeActivity(activityData);
 		});
 	}
 
