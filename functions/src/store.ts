@@ -43,6 +43,11 @@ export default class Store extends IApexStore {
 	}
 
 	async getObject(id: string, includeMeta?: boolean) {
+		logger.info({
+			type: 'getObject',
+			id,
+			includeMeta,
+		});
 		const objectDoc = await this.db.collection('objects').doc(escapeFirestoreKey(id)).get();
 
 		if (!objectDoc.exists) {
