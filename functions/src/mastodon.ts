@@ -77,7 +77,7 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 		username: actor.preferredUsername[0],
 		acct: username,
 		display_name: actor.name[0],
-		url: `https://elk.zone/mastodon.hakatashi.com/@${acct}`,
+		url: `https://elk.zone/mastodon.hakatashi.com/@${username}`,
 		avatar: actor.icon[0].url,
 		avatar_static: actor.icon[0].url,
 		header: '',
