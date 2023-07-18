@@ -210,19 +210,21 @@ express.response.send = function (body) {
 					Promise.resolve(),
 				);
 
+				// eslint-disable-next-line require-atomic-updates
+				apexLocal.postWork = [];
+
 				if (apexLocal.eventName) {
 					await Promise.all(
 						this.app.listeners(apexLocal.eventName)
 							.map((listener) => listener.call(this.app, apexLocal.eventMessage)),
 					);
+					// eslint-disable-next-line require-atomic-updates
+					apexLocal.eventName = null;
 				}
 			} catch (err: any) {
 				logger.error('post-response error:', err.message);
 				logger.error(err);
 			}
-
-			// eslint-disable-next-line require-atomic-updates
-			apexLocal.postWork = [];
 		}
 
 		originalSend.call(this, body);
