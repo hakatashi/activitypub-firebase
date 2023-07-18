@@ -93,7 +93,7 @@ app.get(routes.actor, (req: express.Request, res: express.Response) => {
 		res.status(400).send('Actor is not specified');
 		return;
 	}
-	res.redirect(`https://elk.zone/${mastodonDomain}/@${actor}`);
+	res.redirect(`https://elk.zone/${mastodonDomain}/@${actor}@${domain}`);
 });
 
 app.get(routes.followers, apex.net.followers.get);
