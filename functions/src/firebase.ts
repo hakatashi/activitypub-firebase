@@ -7,3 +7,6 @@ export const projectId = getInstallations().app.options.projectId;
 export const domain = projectId === 'activitypub-firebase'
 	? 'hakatashi.com'
 	: 'activitypub-dev.hakatashi.com';
+export const mastodonDomain = projectId === 'activitypub-firebase'
+	? 'mastodon.hakatashi.com'
+	: 'mastodon-dev.hakatashi.com';

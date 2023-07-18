@@ -77,7 +77,7 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 	return {
 		id: '1', // FIXME: rank it
 		username: actor.preferredUsername,
-		acct: username,
+		acct: `${username}@${domain}`,
 		display_name: actor.name,
 		url: `https://elk.zone/mastodon.hakatashi.com/@${username}`,
 		avatar: actor.icon.url,

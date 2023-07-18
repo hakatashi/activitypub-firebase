@@ -2,7 +2,7 @@
 import ActivitypubExpress from 'activitypub-express';
 import express from 'express';
 import {https, logger, params} from 'firebase-functions/v2';
-import {domain} from './firebase';
+import {domain, mastodonDomain} from './firebase';
 import Store from './store';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
@@ -94,7 +94,16 @@ app.route(routes.inbox)
 app.route(routes.outbox)
 	.get(apex.net.outbox.get)
 	.post(apex.net.outbox.post);
-app.get(routes.actor, apex.net.actor.get);
+
+app.get(routes.actor, apex.net.actor.get, (req: express.Request, res: express.Response) => {
+	const actor = req.params.actor;
+	if (typeof actor !== 'string') {
+		res.status(400).send('Actor is not specified');
+		return;
+	}
+	res.redirect(`https://elk.zone/${mastodonDomain}/@${actor}`);
+});
+
 app.get(routes.followers, apex.net.followers.get);
 app.get(routes.following, apex.net.following.get);
 app.get(routes.liked, apex.net.liked.get);
