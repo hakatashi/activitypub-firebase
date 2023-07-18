@@ -2,7 +2,7 @@ import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
 import type {mastodon} from 'masto';
 import {apex} from './activitypub';
-import {domain} from './firebase';
+import {domain, mastodonDomain} from './firebase';
 import {instanceV1, instanceV2} from './instanceInformation';
 import type {CamelToSnake} from './utils';
 
@@ -79,7 +79,7 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 		username: actor.preferredUsername,
 		acct: `${username}@${domain}`,
 		display_name: actor.name,
-		url: `https://elk.zone/mastodon.hakatashi.com/@${username}`,
+		url: `https://elk.zone/${mastodonDomain}/@${username}@${domain}`,
 		avatar: actor.icon.url,
 		avatar_static: actor.icon.url,
 		header: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/ogimage.png',
