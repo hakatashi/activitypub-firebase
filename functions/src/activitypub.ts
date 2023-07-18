@@ -1,4 +1,3 @@
-import {inspect} from 'util';
 // @ts-expect-error: Not typed
 import ActivitypubExpress from 'activitypub-express';
 import express from 'express';
