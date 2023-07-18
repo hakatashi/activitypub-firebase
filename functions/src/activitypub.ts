@@ -2,9 +2,11 @@ import {inspect} from 'util';
 // @ts-expect-error: Not typed
 import ActivitypubExpress from 'activitypub-express';
 import express from 'express';
-import {https, logger} from 'firebase-functions/v2';
+import {https, logger, params} from 'firebase-functions/v2';
 import {domain} from './firebase';
 import Store from './store';
+
+const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 
 const app = express();
 const routes = {
@@ -22,6 +24,18 @@ const routes = {
 	rejected: '/activitypub/u/:actor/rejected',
 	shares: '/activitypub/s/:id/shares',
 	likes: '/activitypub/s/:id/likes',
+};
+
+const adminOnly = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+	if (process.env.FUNCTIONS_EMULATOR === 'true') {
+		next();
+		return;
+	}
+	if (req.headers['x-hakatashi-token'] === hakatashiToken.value()) {
+		next();
+		return;
+	}
+	res.status(403).send('Forbidden');
 };
 
 const apex = ActivitypubExpress({
@@ -82,23 +96,14 @@ app.get('/.well-known/webfinger', apex.net.webfinger.get);
 app.get('/.well-known/nodeinfo', apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', apex.net.nodeInfo.get);
 app.post('/activitypub/proxy', apex.net.proxy.post);
-app.get('/activitypub/createAdmin', async (req: express.Request, res: express.Response) => {
-	if (process.env.FUNCTIONS_EMULATOR !== 'true') {
-		res.status(403).send('Forbidden');
-		return;
-	}
+app.get('/activitypub/createAdmin', adminOnly, async (req: express.Request, res: express.Response) => {
 	const actor = await apex.createActor('hakatashi', 'hakatashi', '博多市です。', 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png', 'Person');
 	await apex.store.setup(actor);
 	// eslint-disable-next-line require-atomic-updates
 	apex.systemUser = actor;
 	res.json(actor);
 });
-app.post('/activitypub/createPost', async (req: express.Request, res: express.Response) => {
-	if (process.env.FUNCTIONS_EMULATOR !== 'true') {
-		res.status(403).send('Forbidden');
-		return;
-	}
-
+app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res: express.Response) => {
 	const url = apex.utils.objectIdToIRI();
 	const published = new Date().toISOString();
 	const actorId = `https://${domain}/activitypub/u/hakatashi`;
@@ -164,6 +169,6 @@ app.on('apex-inbox', async (message: any) => {
 	}
 });
 
-export const activitypub = https.onRequest(app);
+export const activitypub = https.onRequest({secrets: [hakatashiToken]}, app);
 
 export {apex};
