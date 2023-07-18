@@ -187,6 +187,48 @@ app.on('apex-inbox', async (message: any) => {
 	}
 });
 
+// Hook into res.send and execute postWork tasks manually
+const originalSend = express.response.send;
+express.response.send = function (body) {
+	(async () => {
+		const apexLocal = this.locals.apex;
+		if (apexLocal) {
+			logger.info({
+				type: 'response',
+				status: this.statusCode,
+				headers: this.getHeaders(),
+				body,
+				locals: apexLocal,
+			});
+
+			try {
+				await Promise.all(
+					apexLocal.postWork
+						.map((task: any) => task(this)),
+				);
+
+				if (apexLocal.eventName) {
+					await Promise.all(
+						this.app.listeners(apexLocal.eventName)
+							.map((listener) => listener.call(this.app, apexLocal.eventMessage)),
+					);
+				}
+			} catch (err: any) {
+				logger.error('post-response error:', err.message);
+				logger.error(err);
+			}
+
+			// eslint-disable-next-line require-atomic-updates
+			apexLocal.postWork = [];
+		}
+
+		originalSend.call(this, body);
+	})();
+
+	return this;
+};
+
+
 export const activitypub = https.onRequest({secrets: [hakatashiToken]}, app);
 
 export {apex};
