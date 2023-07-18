@@ -79,7 +79,15 @@ export default class Store extends IApexStore {
 	 * @returns {Promise<object[]>} - result
 	 */
 	async getStream(collectionId: string, limit: number | null, after: string | null, blockList?: string[], additionalQuery?: any[]) {
-		logger.info('getStream', collectionId, limit, after, blockList, additionalQuery);
+		logger.info({
+			type: 'getStream',
+			collectionId,
+			limit,
+			after,
+			blockList,
+			additionalQuery,
+		});
+
 		let query = this.db.collection('streams')
 			.where('_meta.collection', '==', collectionId);
 
