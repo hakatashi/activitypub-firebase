@@ -77,16 +77,16 @@ app.get(routes.actor, (req: express.Request, res: express.Response, next: expres
 	next();
 });
 
-app.get('/activitypub/u/:actor', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-	logger.info({type: 'getActor2', actor: req.params.actor});
-	next();
-});
-
 app.use(
 	express.json(),
 	express.urlencoded({extended: true}),
 	apex,
 );
+
+app.get(routes.actor, (req: express.Request, res: express.Response, next: express.NextFunction) => {
+	logger.info({type: 'getActor2', actor: req.params.actor});
+	next();
+});
 
 app.route(routes.inbox)
 	.get(apex.net.inbox.get)
@@ -94,6 +94,11 @@ app.route(routes.inbox)
 app.route(routes.outbox)
 	.get(apex.net.outbox.get)
 	.post(apex.net.outbox.post);
+
+app.get(routes.actor, (req: express.Request, res: express.Response, next: express.NextFunction) => {
+	logger.info({type: 'getActor3', actor: req.params.actor});
+	next();
+});
 
 app.get(routes.actor, apex.net.actor.get, (req: express.Request, res: express.Response) => {
 	const actor = req.params.actor;
