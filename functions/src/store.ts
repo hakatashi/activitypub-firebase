@@ -3,9 +3,9 @@ import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface';
 import firebase from 'firebase-admin';
-import {DocumentData} from 'firebase-admin/firestore';
+import {DocumentData, Query} from 'firebase-admin/firestore';
 import {logger} from 'firebase-functions/v2';
-import {mapValues} from 'lodash';
+import {mapValues, sum} from 'lodash';
 import {db} from './firebase';
 
 const escapeFirestoreKey = (key: string) => (
@@ -104,6 +104,28 @@ export default class Store extends IApexStore {
 		return activity;
 	}
 
+	private getStreamQuery(baseQuery: Query<DocumentData>, limit: number | null, after: string | null, blockList?: string[], additionalQuery?: any[]) {
+		let query = baseQuery;
+
+		if (after) {
+			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
+		}
+		if (Array.isArray(blockList) && blockList.length > 0) {
+			query = query.where('actor', 'not-in', blockList);
+		}
+		if (additionalQuery && additionalQuery.length > 0) {
+			logger.error('getStream: additionalQuery is not supported yet', query);
+		}
+
+		query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
+
+		if (limit) {
+			query = query.limit(limit);
+		}
+
+		return query;
+	}
+
 	/**
 	 * Return a specific collection (stream of activitites), e.g. a user's inbox
 	 * @param  {string} collectionId - _meta.collection identifier
@@ -123,36 +145,38 @@ export default class Store extends IApexStore {
 			additionalQuery,
 		});
 
-		let query = this.db.collection('streams')
-			.where('_meta.collection', '==', collectionId);
+		const streamsList = await Promise.all([
+			this.getStreamQuery(
+				this.db.collection('streams')
+					.where('_meta.collection', '==', collectionId),
+				limit, after, blockList, additionalQuery,
+			).get(),
+			this.getStreamQuery(
+				this.db.collection('streams')
+					.where('_meta.collection', 'array-contains', collectionId),
+				limit, after, blockList, additionalQuery,
+			).get(),
+		]);
 
-		if (after) {
-			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
-		}
-		if (Array.isArray(blockList) && blockList.length > 0) {
-			query = query.where('actor', 'not-in', blockList);
-		}
-		if (additionalQuery && additionalQuery.length > 0) {
-			logger.error('getStream: additionalQuery is not supported yet', query);
-		}
-
-		query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
-
-		if (limit) {
-			query = query.limit(limit);
-		}
-
-		const streams = await query.get();
-
-		return streams.docs.map((doc) => this.normalizeActivity(doc.data()));
+		return streamsList
+			.map((streams) => (
+				streams.docs.map((doc) => this.normalizeActivity(doc.data()))
+			))
+			.flat();
 	}
 
 	async getStreamCount(collectionId: string) {
-		const count = await this.db.collection('streams')
-			.where('_meta.collection', '==', collectionId)
-			.count()
-			.get();
-		return count.data().count;
+		const counts = await Promise.all([
+			this.db.collection('streams')
+				.where('_meta.collection', '==', collectionId)
+				.count()
+				.get(),
+			this.db.collection('streams')
+				.where('_meta.collection', 'array-contains', collectionId)
+				.count()
+				.get(),
+		]);
+		return sum(counts.map((count) => count.data().count));
 	}
 
 	async getUserCount() {
