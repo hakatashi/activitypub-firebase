@@ -141,6 +141,7 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 	const message = await apex.buildActivity('Create', actor.id, ['https://www.w3.org/ns/activitystreams#Public'], {
 		cc: followersId,
 		object,
+		published,
 	});
 
 	logger.info({type: 'createPostMessage', message});
