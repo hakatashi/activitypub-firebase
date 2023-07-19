@@ -88,6 +88,10 @@
         {
           "source": "/api/**",
           "function": "mastodonApi"
+        },
+        {
+          "source": "/oauth/**",
+          "function": "mastodonApi"
         }
       ]
     }
