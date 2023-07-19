@@ -26,7 +26,11 @@ export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (ev
 	const objects = stream.object ?? [];
 	// eslint-disable-next-line private-props/no-use-outside, no-underscore-dangle
 	const oldObjectTypes = new Set<string>(stream._meta?.objectTypes ?? []);
-	const newObjectTypes = new Set<string>(objects.map((object: any) => object.type));
+	const newObjectTypes = new Set<string>(
+		objects
+			.map((object: any) => object.type)
+			.filter((objectType: any) => typeof objectType === 'string'),
+	);
 
 	if (!setEqual(oldObjectTypes, newObjectTypes)) {
 		await event.data?.after?.ref?.update?.({
