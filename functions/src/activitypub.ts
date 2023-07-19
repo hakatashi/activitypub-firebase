@@ -38,7 +38,7 @@ const adminOnly = (req: express.Request, res: express.Response, next: express.Ne
 };
 
 const apex = ActivitypubExpress({
-	name: 'HakataFediverse',
+	name: 'activitypub-firebase',
 	version: '1.0.0',
 	domain,
 	actorParam: 'actor',
@@ -49,6 +49,10 @@ const apex = ActivitypubExpress({
 	store: new Store(),
 	endpoints: {
 		proxyUrl: `https://${domain}/activitypub/proxy`,
+	},
+	nodeInfoMetadata: {
+		nodeName: '博多市',
+		name: '博多市',
 	},
 });
 
