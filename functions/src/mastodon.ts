@@ -259,26 +259,30 @@ app.get('/oauth/authorize', (req, res) => {
 		return;
 	}
 
-	res.status(200).send(html`
-		<!DOCTYPE html>
-		<html lang="en">
-			<head>
-				<meta charset="utf-8">
-				<title>Authorize</title>
-			</head>
-			<body>
-				<pre>${JSON.stringify(req.query, null, 2)}</pre>
-				<form action="/oauth/authorize" accept-charset="UTF-8" method="post">
-					<input type="hidden" name="client_id" id="client_id" value="${clientId}" autocomplete="off">
-					<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
-					<!-- <input type="hidden" name="state" id="state" autocomplete="off"> -->
-					<input type="hidden" name="response_type" id="response_type" value="${responseType}" autocomplete="off">
-					<input type="hidden" name="scope" id="scope" value="${scope}" autocomplete="off">
-					<button name="button" type="submit">承認</button>
-				</form>
-			</body>
-		</html>
-	`);
+	res.status(200)
+		.contentType('text/html')
+		.send(
+			html`
+				<!DOCTYPE html>
+				<html lang="en">
+					<head>
+						<meta charset="utf-8">
+						<title>Authorize</title>
+					</head>
+					<body>
+						<pre>${JSON.stringify(req.query, null, 2)}</pre>
+						<form action="/oauth/authorize" accept-charset="UTF-8" method="post">
+							<input type="hidden" name="client_id" id="client_id" value="${clientId}" autocomplete="off">
+							<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
+							<!-- <input type="hidden" name="state" id="state" autocomplete="off"> -->
+							<input type="hidden" name="response_type" id="response_type" value="${responseType}" autocomplete="off">
+							<input type="hidden" name="scope" id="scope" value="${scope}" autocomplete="off">
+							<button name="button" type="submit">承認</button>
+						</form>
+					</body>
+				</html>
+			`,
+		);
 });
 
 app.get('/oauth/token', async (req, res) => {
