@@ -132,13 +132,13 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 		published,
 		type: 'Note',
 		attributedTo: actor.id,
-		to: 'as:Public',
+		to: 'https://www.w3.org/ns/activitystreams#Public',
 		cc: followersId,
 		content: text,
 	};
 
 	await apex.store.saveObject(object);
-	const message = await apex.buildActivity('Create', actor.id, ['as:Public'], {
+	const message = await apex.buildActivity('Create', actor.id, ['https://www.w3.org/ns/activitystreams#Public'], {
 		cc: followersId,
 		object,
 	});
