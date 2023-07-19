@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import OAuth2Server, {Request as OauthRequest, Response as OauthResponse} from '@node-oauth/oauth2-server';
-import {html} from 'common-tags';
+import {htmlEscape} from 'escape-goat';
 import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
 import type {mastodon} from 'masto';
@@ -262,7 +262,7 @@ app.get('/oauth/authorize', (req, res) => {
 	res.status(200)
 		.contentType('text/html')
 		.send(
-			html`
+			htmlEscape`
 				<!DOCTYPE html>
 				<html lang="en">
 					<head>
