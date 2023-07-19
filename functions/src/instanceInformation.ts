@@ -1,5 +1,5 @@
 import type {mastodon} from 'masto';
-import type {CamelToSnake} from './utils';
+import type {CamelToSnake} from './utils.js';
 
 const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
 	domain: 'hakatashi.com',

@@ -4,11 +4,11 @@ import {htmlEscape} from 'escape-goat';
 import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
 import type {mastodon} from 'masto';
-import {apex} from './activitypub';
-import {domain, mastodonDomain} from './firebase';
-import {instanceV1, instanceV2} from './instanceInformation';
-import {Clients, Oauth2Model} from './oauth2Model';
-import type {CamelToSnake} from './utils';
+import {apex} from './activitypub.js';
+import {domain, mastodonDomain} from './firebase.js';
+import {instanceV1, instanceV2} from './instanceInformation.js';
+import {Clients, Oauth2Model} from './oauth2Model.js';
+import type {CamelToSnake} from './utils.js';
 
 const validScopes = ['follow', 'push', 'read', 'read:accounts', 'read:blocks', 'read:blocks', 'read:bookmarks', 'read:favourites', 'read:filters', 'read:follows', 'read:follows', 'read:lists', 'read:mutes', 'read:mutes', 'read:notifications', 'read:search', 'read:statuses', 'write', 'write:accounts', 'write:blocks', 'write:blocks', 'write:bookmarks', 'write:conversations', 'write:favourites', 'write:filters', 'write:follows', 'write:follows', 'write:lists', 'write:media', 'write:mutes', 'write:mutes', 'write:notifications', 'write:reports', 'write:statuses'];
 

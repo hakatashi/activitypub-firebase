@@ -1,3 +1,3 @@
-export {activitypub} from './activitypub';
-export {mastodonApi} from './mastodon';
-export * from './denormalizations';
+export {activitypub} from './activitypub.js';
+export {mastodonApi} from './mastodon.js';
+export * from './denormalizations.js';

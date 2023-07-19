@@ -1,6 +1,6 @@
 import type {CollectionReference} from '@google-cloud/firestore';
 import type {AuthorizationCodeModel, PasswordModel, ClientCredentialsModel, Token, AuthorizationCode, Client, User, RefreshToken} from '@node-oauth/oauth2-server';
-import {db} from './firebase';
+import {db} from './firebase.js';
 
 export interface MastodonClient extends Client {
 	clientId: string,

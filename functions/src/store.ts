@@ -1,12 +1,12 @@
 /* eslint-disable private-props/no-use-outside, no-underscore-dangle */
 import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
-import IApexStore from 'activitypub-express/store/interface';
+import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
 import {DocumentData, Query} from 'firebase-admin/firestore';
 import {logger} from 'firebase-functions/v2';
-import {mapValues, sum} from 'lodash';
-import {db} from './firebase';
+import {mapValues, sum} from 'lodash-es';
+import {db} from './firebase.js';
 
 const escapeFirestoreKey = (key: string) => (
 	key

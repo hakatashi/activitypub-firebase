@@ -2,8 +2,8 @@
 import ActivitypubExpress from 'activitypub-express';
 import express from 'express';
 import {https, logger, params} from 'firebase-functions/v2';
-import {domain, mastodonDomain} from './firebase';
-import Store from './store';
+import {domain, mastodonDomain} from './firebase.js';
+import Store from './store.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 
