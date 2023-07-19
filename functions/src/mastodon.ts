@@ -238,7 +238,7 @@ app.get('/oauth/authenticate', async (req, res) => {
 	res.status(response.status ?? 200).send(response.body);
 });
 
-app.get('/oauth/authorize', (req, res) => {
+app.post('/oauth/authorize', (req, res) => {
 	logger.info({
 		type: 'oauthAuthorize',
 		params: req.query,
@@ -270,7 +270,7 @@ app.get('/oauth/authorize', (req, res) => {
 						<title>Authorize</title>
 					</head>
 					<body>
-						<pre>${JSON.stringify(req.query, null, 2)}</pre>
+						<pre>${JSON.stringify(req.query, null, '  ')}</pre>
 						<form action="/oauth/authorize" accept-charset="UTF-8" method="post">
 							<input type="hidden" name="client_id" id="client_id" value="${clientId}" autocomplete="off">
 							<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
