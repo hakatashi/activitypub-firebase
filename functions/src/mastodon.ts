@@ -220,27 +220,9 @@ app.use('/api', (req, res) => {
 	res.status(501).send('Not implemented');
 });
 
-app.post('/oauth/authenticate', async (req, res) => {
-	const request = new OauthRequest(req);
-	const response = new OauthResponse(res);
-	const token = await oauth.authorize(request, response);
-
-	logger.info({
-		type: 'oauthAuthenticate',
-		token,
-		response: response.body,
-	});
-
-	// eslint-disable-next-line require-atomic-updates
-	res.locals.oauth = {token};
-
-	res.set(response.headers);
-	res.status(response.status ?? 200).send(response.body);
-});
-
 app.get('/oauth/authorize', (req, res) => {
 	logger.info({
-		type: 'oauthAuthorize',
+		type: 'oauthAuthorizeGet',
 		params: req.query,
 	});
 
@@ -283,6 +265,24 @@ app.get('/oauth/authorize', (req, res) => {
 				</html>
 			`,
 		);
+});
+
+app.post('/oauth/authorize', async (req, res) => {
+	const request = new OauthRequest(req);
+	const response = new OauthResponse(res);
+	const token = await oauth.authorize(request, response);
+
+	logger.info({
+		type: 'oauthAuthorizePost',
+		token,
+		response: response.body,
+	});
+
+	// eslint-disable-next-line require-atomic-updates
+	res.locals.oauth = {token};
+
+	res.set(response.headers);
+	res.status(response.status ?? 200).send(response.body);
 });
 
 app.get('/oauth/token', async (req, res) => {
