@@ -220,7 +220,7 @@ app.use('/api', (req, res) => {
 	res.status(501).send('Not implemented');
 });
 
-app.get('/oauth/authenticate', async (req, res) => {
+app.post('/oauth/authenticate', async (req, res) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 	const token = await oauth.authorize(request, response);
@@ -238,7 +238,7 @@ app.get('/oauth/authenticate', async (req, res) => {
 	res.status(response.status ?? 200).send(response.body);
 });
 
-app.post('/oauth/authorize', (req, res) => {
+app.get('/oauth/authorize', (req, res) => {
 	logger.info({
 		type: 'oauthAuthorize',
 		params: req.query,
