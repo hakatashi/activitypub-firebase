@@ -270,37 +270,55 @@ app.get('/oauth/authorize', (req, res) => {
 app.post('/oauth/authorize', async (req, res) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
-	const token = await oauth.authorize(request, response);
 
-	logger.info({
-		type: 'oauthAuthorizePost',
-		token,
-		response: response.body,
-	});
+	try {
+		const token = await oauth.authorize(request, response);
 
-	// eslint-disable-next-line require-atomic-updates
-	res.locals.oauth = {token};
+		logger.info({
+			type: 'oauthAuthorizePost',
+			token,
+			response: response.body,
+		});
 
-	res.set(response.headers);
-	res.status(response.status ?? 200).send(response.body);
+		// eslint-disable-next-line require-atomic-updates
+		res.locals.oauth = {token};
+
+		res.set(response.headers);
+		res.status(response.status ?? 200).send(response.body);
+	} catch (error) {
+		logger.error({
+			type: 'oauthAuthorizePost',
+			error,
+		});
+		res.status(400).send('Bad request');
+	}
 });
 
 app.get('/oauth/token', async (req, res) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
-	const token = await oauth.token(request, response, {
-		accessTokenLifetime: 24 * 60 * 60,
-		refreshTokenLifetime: 30 * 24 * 60 * 60,
-	});
 
-	logger.info({
-		type: 'oauthToken',
-		token,
-		response: response.body,
-	});
+	try {
+		const token = await oauth.token(request, response, {
+			accessTokenLifetime: 24 * 60 * 60,
+			refreshTokenLifetime: 30 * 24 * 60 * 60,
+		});
 
-	res.set(response.headers);
-	res.status(response.status ?? 200).send(token);
+		logger.info({
+			type: 'oauthToken',
+			token,
+			response: response.body,
+		});
+
+		res.set(response.headers);
+		res.status(response.status ?? 200).send(token);
+	} catch (error) {
+		logger.error({
+			type: 'oauthTokenPost',
+			error,
+		});
+		res.status(400).send('Bad request');
+	}
 });
 
 app.get('/oauth/revoke', (req, res) => {
