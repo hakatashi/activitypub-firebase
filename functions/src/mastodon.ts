@@ -304,7 +304,7 @@ app.post('/oauth/authorize', async (req, res) => {
 	}
 });
 
-app.get('/oauth/token', async (req, res) => {
+app.post('/oauth/token', async (req, res) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 
@@ -331,7 +331,7 @@ app.get('/oauth/token', async (req, res) => {
 	}
 });
 
-app.get('/oauth/revoke', (req, res) => {
+app.post('/oauth/revoke', (req, res) => {
 	res.sendStatus(501);
 });
 
