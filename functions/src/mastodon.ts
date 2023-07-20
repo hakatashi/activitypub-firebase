@@ -272,7 +272,17 @@ app.post('/oauth/authorize', async (req, res) => {
 	const response = new OauthResponse(res);
 
 	try {
-		const token = await oauth.authorize(request, response);
+		const token = await oauth.authorize(request, response, {
+			allowEmptyState: true,
+			authenticateHandler: {
+				handle() {
+					// TODO: Implement session handling
+					return {
+						userId: '1337',
+					};
+				},
+			},
+		});
 
 		logger.info({
 			type: 'oauthAuthorizePost',
