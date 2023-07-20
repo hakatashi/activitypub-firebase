@@ -327,7 +327,7 @@ app.post('/oauth/token', async (req, res) => {
 		});
 
 		res.set(response.headers);
-		res.status(response.status ?? 200).send(token);
+		res.status(response.status ?? 200).send(response.body);
 	} catch (error) {
 		logger.error({
 			type: 'oauthTokenPost',
