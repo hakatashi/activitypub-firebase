@@ -31,7 +31,12 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		if (results.empty) {
 			return false;
 		}
-		return results.docs[0].data();
+		const authorizationCodeData = results.docs[0].data();
+		return {
+			...authorizationCodeData,
+			// @ts-expect-error: Return type is different from the interface
+			expiresAt: authorizationCodeData.expiresAt.toDate(),
+		};
 	}
 
 	async saveAuthorizationCode(
