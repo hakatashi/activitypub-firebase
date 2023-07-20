@@ -309,6 +309,12 @@ app.post('/oauth/token', async (req, res) => {
 	const response = new OauthResponse(res);
 
 	try {
+		// Some application sends JSON instead of form-data (why?). This is a workaround.
+		// https://github.com/elk-zone/elk/issues/2244
+		if (request.headers?.['content-type'] === 'application/json') {
+			request.headers['content-type'] = 'application/x-www-form-urlencoded';
+		}
+
 		const token = await oauth.token(request, response, {
 			accessTokenLifetime: 24 * 60 * 60,
 			refreshTokenLifetime: 30 * 24 * 60 * 60,
