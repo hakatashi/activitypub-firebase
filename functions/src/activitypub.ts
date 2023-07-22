@@ -136,14 +136,14 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 		published,
 		type: 'Note',
 		attributedTo: actor.id,
-		to: followersId,
-		cc: 'as:Public',
+		to: 'as:Public',
+		cc: followersId,
 		content: text,
 	};
 
 	await apex.store.saveObject(object);
-	const message = await apex.buildActivity('Create', actor.id, followersId, {
-		cc: 'as:Public',
+	const message = await apex.buildActivity('Create', actor.id, 'as:Public', {
+		cc: followersId,
 		object,
 		published,
 	});
