@@ -276,7 +276,7 @@ export default class Store extends IApexStore {
 	}
 
 	// eslint-disable-next-line max-params
-	async deliveryEnqueue(actorId: string, body: string, addresses: string | string[], signingKey: string) {
+	async deliveryEnqueue(actorId: string, body: any, addresses: string | string[], signingKey: string) {
 		if (!addresses || !addresses.length) {
 			return false;
 		}
@@ -291,9 +291,6 @@ export default class Store extends IApexStore {
 
 		const normalizedAddresses = Array.isArray(addresses) ? addresses : [addresses];
 
-		// XXX: Debug only
-		const normalizedBody = body.replaceAll('as:Public', 'https://www.w3.org/ns/activitystreams#Public');
-
 		const batch = this.db.batch();
 		const deliveryQueueRef = this.db.collection('deliveryQueue');
 		const deliveries = [];
@@ -302,7 +299,7 @@ export default class Store extends IApexStore {
 				address,
 				actorId,
 				signingKey,
-				body: normalizedBody,
+				body,
 				attempt: 0,
 				after: new Date(),
 			};
