@@ -366,6 +366,29 @@ export default class Store extends IApexStore {
 		return true;
 	}
 
+	async getContext(documentUrl: string) {
+		logger.info({type: 'getContext', documentUrl});
+
+		const contextDoc = await this.db.collection('contexts').doc(escapeFirestoreKey(documentUrl)).get();
+		if (contextDoc.exists) {
+			const contextData = contextDoc.data()!;
+			contextData.document = JSON.parse(contextData.document);
+			return contextData;
+		}
+
+		return undefined;
+	}
+
+	async saveContext ({contextUrl, documentUrl, document}: { contextUrl: string, documentUrl: string, document: any }) {
+		logger.info({type: 'saveContext', contextUrl, documentUrl, document});
+
+		await this.db.collection('contexts').doc(escapeFirestoreKey(documentUrl)).set({
+			contextUrl,
+			documentUrl,
+			document: typeof document === 'object' ? JSON.stringify(document) : document,
+		}, {merge: true});
+	}
+
 	private objectToUpdateDoc(object: ObjectWithId) {
 		return mapValues(object, (value) => {
 			if (value === null) {
