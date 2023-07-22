@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import OAuth2Server, {Request as OauthRequest, Response as OauthResponse} from '@node-oauth/oauth2-server';
+import cors from 'cors';
 import {htmlEscape} from 'escape-goat';
 import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
@@ -120,6 +121,12 @@ app.use((req, res, next) => {
 	});
 	next();
 });
+
+app.use('/api', cors({
+	origin: true,
+	methods: ['GET', 'POST'],
+	allowedHeaders: ['Authorization', 'Content-Type'],
+}));
 
 app.get('/api/v1/instance', (req, res) => {
 	res.json(instanceV1);
