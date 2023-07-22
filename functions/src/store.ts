@@ -237,7 +237,7 @@ export default class Store extends IApexStore {
 			const matchedDocs = await transaction.get(
 				this.db.collection('streams')
 					.where('id', '==', activity.id)
-					.where('actorId', '==', actorId),
+					.where('actor', 'array-contains', actorId),
 			);
 			matchedDocs.forEach((doc) => {
 				transaction.delete(doc.ref);
