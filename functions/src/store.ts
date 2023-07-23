@@ -3,7 +3,7 @@ import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
-import {DocumentData, Query} from 'firebase-admin/firestore';
+import {DocumentData, Filter} from 'firebase-admin/firestore';
 import {logger} from 'firebase-functions/v2';
 import {mapValues, sum} from 'lodash-es';
 import {db} from './firebase.js';
@@ -104,28 +104,6 @@ export default class Store extends IApexStore {
 		return activity;
 	}
 
-	private getStreamQuery(baseQuery: Query<DocumentData>, limit: number | null, after: string | null, blockList?: string[], additionalQuery?: any[]) {
-		let query = baseQuery;
-
-		if (after) {
-			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
-		}
-		if (Array.isArray(blockList) && blockList.length > 0) {
-			query = query.where('actor', 'not-in', blockList);
-		}
-		if (additionalQuery && additionalQuery.length > 0) {
-			logger.error('getStream: additionalQuery is not supported yet', query);
-		}
-
-		query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
-
-		if (limit) {
-			query = query.limit(limit);
-		}
-
-		return query;
-	}
-
 	/**
 	 * Return a specific collection (stream of activitites), e.g. a user's inbox
 	 * @param  {string} collectionId - _meta.collection identifier
@@ -145,24 +123,44 @@ export default class Store extends IApexStore {
 			additionalQuery,
 		});
 
-		const streamsList = await Promise.all([
-			this.getStreamQuery(
-				this.db.collection('streams')
-					.where('_meta.collection', '==', collectionId),
-				limit, after, blockList, additionalQuery,
-			).get(),
-			this.getStreamQuery(
-				this.db.collection('streams')
-					.where('_meta.collection', 'array-contains', collectionId),
-				limit, after, blockList, additionalQuery,
-			).get(),
-		]);
+		let query = this.db.collection('streams')
+			.where(
+				Filter.or(
+					Filter.where('_meta.collection', '==', collectionId),
+					Filter.where('_meta.collection', 'array-contains', collectionId),
+				),
+			);
 
-		return streamsList
-			.map((streams) => (
-				streams.docs.map((doc) => this.normalizeActivity(doc.data()))
-			))
-			.flat();
+		if (after) {
+			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
+		}
+		if (Array.isArray(blockList) && blockList.length > 0) {
+			query = query.where('actor', 'not-in', blockList);
+		}
+		if (additionalQuery && additionalQuery.length > 0) {
+			for (const queryObject of additionalQuery) {
+				for (const [key, value] of Object.entries(queryObject)) {
+					if (key.startsWith('$')) {
+						throw new Error('getStream: additionalQuery: $-prefixed keys are not supported yet');
+					}
+					if (typeof value === 'object' && value !== null) {
+						throw new Error('getStream: additionalQuery: object values are not supported yet');
+					}
+
+					query = query.where(key, '==', value);
+				}
+			}
+		}
+
+		query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
+
+		if (limit) {
+			query = query.limit(limit);
+		}
+
+		const streams = await query.get();
+
+		return streams.docs.map((doc) => this.normalizeActivity(doc.data()));
 	}
 
 	async getStreamCount(collectionId: string) {

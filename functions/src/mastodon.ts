@@ -83,7 +83,15 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 
 	const actor = await apex.toJSONLD(object);
 
-	const statuses = await apex.store.getObjects('attributedTo', actorId);
+	const statuses = await apex.store.getStream(
+		`https://${domain}/activitypub/u/${username}/outbox`,
+		/* limit= */ 1,
+		/* after= */ null,
+		/* blockList= */ [],
+		[{
+			'_meta.objectTypes': 'Note',
+		}],
+	);
 
 	return {
 		id: '1', // FIXME: rank it
