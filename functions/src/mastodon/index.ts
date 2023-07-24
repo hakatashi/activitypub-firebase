@@ -26,7 +26,6 @@ app.use((req, res, next) => {
 
 app.use('/api', apiRouter);
 app.use('/oauth', oauthRouter);
-
 app.get('/.well-known/nodeinfo', nodeinfoCors, apex, apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', nodeinfoCors, apex, apex.net.nodeInfo.get);
 

@@ -157,6 +157,10 @@ router.get('/v1/accounts/:id/statuses', (req, res) => {
 	res.json([exampleStatus]);
 });
 
+router.get('/v1/accounts/verify_credentials', (req, res) => {
+	res.json([exampleStatus]);
+});
+
 router.get('/v1/timelines/public', (req, res) => {
 	res.json([exampleStatus]);
 });
