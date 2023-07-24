@@ -97,10 +97,13 @@ router.get('/authorize', async (req, res) => {
 
 							const auth = app.auth();
 
-							auth.onAuthStateChanged((user) => {
-								console.log({user});
-								document.getElementById('firebaseui-auth-container').style.display = user ? 'none' : 'block';
-								document.getElementById('authenticated').style.display = user ? 'block' : 'none';
+							auth.onAuthStateChanged(async (user) => {
+								if (user) {
+									document.getElementById('firebaseui-auth-container').style.display = 'none';
+									document.getElementById('authenticated').style.display = 'block';
+									const idToken = await user.getIdToken();
+									document.getElementById('idToken').value = idToken;
+								}
 							});
 
 							const ui = new firebaseui.auth.AuthUI(auth);
@@ -125,9 +128,9 @@ router.get('/authorize', async (req, res) => {
 							<form action="/oauth/authorize" accept-charset="UTF-8" method="post">
 								<input type="hidden" name="client_id" id="client_id" value="${clientId}" autocomplete="off">
 								<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
-								<!-- <input type="hidden" name="state" id="state" autocomplete="off"> -->
 								<input type="hidden" name="response_type" id="response_type" value="${responseType}" autocomplete="off">
 								<input type="hidden" name="scope" id="scope" value="${scope}" autocomplete="off">
+								<input type="hidden" name="idToken" id="idToken" value="" autocomplete="off">
 								<button name="button" type="submit">承認</button>
 							</form>
 						</div>
@@ -141,14 +144,26 @@ router.post('/authorize', async (req, res) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 
+	const idToken = req.body.idToken;
+	if (typeof idToken !== 'string') {
+		res.sendStatus(400);
+		return;
+	}
+
+	const authUser = await firebase.auth().verifyIdToken(idToken);
+	logger.info({
+		type: 'oauthAuthorizePost',
+		idToken,
+		authUser,
+	});
+
 	try {
 		const token = await oauth.authorize(request, response, {
 			allowEmptyState: true,
 			authenticateHandler: {
 				handle() {
-					// TODO: Implement session handling
 					return {
-						userId: '1337',
+						userId: authUser.uid,
 					};
 				},
 			},
