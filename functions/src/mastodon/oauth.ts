@@ -2,7 +2,7 @@ import OAuth2Server, {Request as OauthRequest, Response as OauthResponse} from '
 import {htmlEscape} from 'escape-goat';
 import express from 'express';
 import {logger} from 'firebase-functions/v2';
-import {Oauth2Model} from '../oauth2Model.js';
+import {Oauth2Model} from './oauth2Model.js';
 
 export const oauth = new OAuth2Server({
 	model: new Oauth2Model(),

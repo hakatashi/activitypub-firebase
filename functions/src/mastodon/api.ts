@@ -4,9 +4,9 @@ import express from 'express';
 import type {mastodon} from 'masto';
 import {apex} from '../activitypub.js';
 import {domain, mastodonDomain} from '../firebase.js';
-import {instanceV1, instanceV2} from '../instanceInformation.js';
-import {Clients} from '../oauth2Model.js';
-import type {CamelToSnake} from '../utils.js';
+import {instanceV1, instanceV2} from './instanceInformation.js';
+import {Clients} from './oauth2Model.js';
+import type {CamelToSnake} from './utils.js';
 
 const validScopes = ['follow', 'push', 'read', 'read:accounts', 'read:blocks', 'read:blocks', 'read:bookmarks', 'read:favourites', 'read:filters', 'read:follows', 'read:follows', 'read:lists', 'read:mutes', 'read:mutes', 'read:notifications', 'read:search', 'read:statuses', 'write', 'write:accounts', 'write:blocks', 'write:blocks', 'write:bookmarks', 'write:conversations', 'write:favourites', 'write:filters', 'write:follows', 'write:follows', 'write:lists', 'write:media', 'write:mutes', 'write:mutes', 'write:notifications', 'write:reports', 'write:statuses'];
 
