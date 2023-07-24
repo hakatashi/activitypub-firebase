@@ -226,24 +226,24 @@ express.response.send = function (body) {
 			});
 
 			try {
+				const originalPostWork = apexLocal.postWork;
+				apexLocal.postWork = [];
+
 				// execute postWork tasks in sequence (not parallel)
-				await apexLocal.postWork.reduce(
+				await originalPostWork.reduce(
 					(acc: Promise<void>, task: (res: express.Response) => Promise<void>) => (
 						acc.then(() => task(this))
 					),
 					Promise.resolve(),
 				);
 
-				// eslint-disable-next-line require-atomic-updates
-				apexLocal.postWork = [];
-
 				if (apexLocal.eventName) {
+					const originalEventName = apexLocal.eventName;
+					apexLocal.eventName = null;
 					await Promise.all(
-						this.app.listeners(apexLocal.eventName)
+						this.app.listeners(originalEventName)
 							.map((listener) => listener.call(this.app, apexLocal.eventMessage)),
 					);
-					// eslint-disable-next-line require-atomic-updates
-					apexLocal.eventName = null;
 				}
 			} catch (err: any) {
 				logger.error('post-response error:', err.message);
