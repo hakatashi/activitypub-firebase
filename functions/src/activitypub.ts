@@ -1,5 +1,6 @@
 // @ts-expect-error: Not typed
 import ActivitypubExpress from 'activitypub-express';
+import cors from 'cors';
 import express from 'express';
 import {https, logger, params} from 'firebase-functions/v2';
 import {domain, mastodonDomain} from './firebase.js';
@@ -36,6 +37,12 @@ const adminOnly = (req: express.Request, res: express.Response, next: express.Ne
 	}
 	res.status(403).send('Forbidden');
 };
+
+const nodeinfoCors = cors({
+	origin: true,
+	methods: ['GET'],
+	allowedHeaders: ['Content-Type'],
+});
 
 const apex = ActivitypubExpress({
 	name: 'activitypub-firebase',
@@ -108,8 +115,8 @@ app.get(routes.activity, apex.net.activityStream.get);
 app.get(routes.shares, apex.net.shares.get);
 app.get(routes.likes, apex.net.likes.get);
 app.get('/.well-known/webfinger', apex.net.webfinger.get);
-app.get('/.well-known/nodeinfo', apex.net.nodeInfoLocation.get);
-app.get('/nodeinfo/:version', apex.net.nodeInfo.get);
+app.get('/.well-known/nodeinfo', nodeinfoCors, apex.net.nodeInfoLocation.get);
+app.get('/nodeinfo/:version', nodeinfoCors, apex.net.nodeInfo.get);
 app.post('/activitypub/proxy', apex.net.proxy.post);
 app.get('/activitypub/createAdmin', adminOnly, async (req: express.Request, res: express.Response) => {
 	const actor = await apex.createActor('hakatashi', 'hakatashi', '博多市です。', 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png', 'Person');
