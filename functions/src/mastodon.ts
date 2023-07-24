@@ -356,4 +356,7 @@ app.post('/oauth/revoke', (req, res) => {
 	res.sendStatus(501);
 });
 
+app.get('/.well-known/nodeinfo', apex.net.nodeInfoLocation.get);
+app.get('/nodeinfo/:version', apex.net.nodeInfo.get);
+
 export const mastodonApi = https.onRequest(app);
