@@ -99,6 +99,8 @@ router.get('/authorize', async (req, res) => {
 
 							auth.onAuthStateChanged((user) => {
 								console.log({user});
+								document.getElementById('firebaseui-auth-container').style.display = user ? 'none' : 'block';
+								document.getElementById('authenticated').style.display = user ? 'block' : 'none';
 							});
 
 							const ui = new firebaseui.auth.AuthUI(auth);
@@ -111,9 +113,6 @@ router.get('/authorize', async (req, res) => {
 										console.log({authResult, redirectUrl});
 										return false;
 									},
-									uiShown() {
-										document.getElementById('loader').style.display = 'none';
-									},
 								},
 								signInFlow: 'popup',
 							});
@@ -121,16 +120,17 @@ router.get('/authorize', async (req, res) => {
 					</head>
 					<body>
 						<div id="firebaseui-auth-container"></div>
-						<div id="loader">Loading...</div>
-						<pre>${JSON.stringify(req.query, null, '  ')}</pre>
-						<form action="/oauth/authorize" accept-charset="UTF-8" method="post">
-							<input type="hidden" name="client_id" id="client_id" value="${clientId}" autocomplete="off">
-							<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
-							<!-- <input type="hidden" name="state" id="state" autocomplete="off"> -->
-							<input type="hidden" name="response_type" id="response_type" value="${responseType}" autocomplete="off">
-							<input type="hidden" name="scope" id="scope" value="${scope}" autocomplete="off">
-							<button name="button" type="submit">承認</button>
-						</form>
+						<div id="authenticated" style="display: none;">
+							<pre>${JSON.stringify(req.query, null, '  ')}</pre>
+							<form action="/oauth/authorize" accept-charset="UTF-8" method="post">
+								<input type="hidden" name="client_id" id="client_id" value="${clientId}" autocomplete="off">
+								<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
+								<!-- <input type="hidden" name="state" id="state" autocomplete="off"> -->
+								<input type="hidden" name="response_type" id="response_type" value="${responseType}" autocomplete="off">
+								<input type="hidden" name="scope" id="scope" value="${scope}" autocomplete="off">
+								<button name="button" type="submit">承認</button>
+							</form>
+						</div>
 					</body>
 				</html>
 			`,
