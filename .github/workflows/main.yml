@@ -10,7 +10,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20.x
       - name: Install Dependencies
         run: npm --prefix functions ci
       - name: Run test
@@ -19,8 +22,10 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@master
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20.x
       - name: Install Dependencies
         run: npm --prefix functions ci
       - name: Run lint
@@ -36,9 +41,12 @@ jobs:
           - id: activitypub-firebase-dev
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: recursive
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20.x
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{secrets.GITHUB_TOKEN}}'
@@ -56,7 +64,10 @@ jobs:
           - id: activitypub-firebase-dev
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20.x
       - name: Install dependencies
         run: npm --prefix functions ci
       - name: Deploy to Firebase
