@@ -7,7 +7,26 @@ name: Deploy
     branches:
       - main
 jobs:
-  hosting:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Dependencies
+        run: npm --prefix functions ci
+      - name: Run test
+        run: npm --prefix functions test
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@master
+      - name: Install Dependencies
+        run: npm --prefix functions ci
+      - name: Run lint
+        run: npm --prefix functions run lint
+  deploy-hosting:
+    needs: [test, lint]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -26,7 +45,8 @@ jobs:
           firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
           channelId: live
           projectId: '${{matrix.project.id}}'
-  firebase:
+  deploy-firebase:
+    needs: [test, lint]
     runs-on: ubuntu-latest
     strategy:
       matrix:
