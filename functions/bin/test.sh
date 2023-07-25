@@ -1,3 +1,3 @@
 #!/bin/sh
 echo "Running tests..."
-node --experimental-vm-modules node_modules/.bin/jest
+GCLOUD_PROJECT=activitypub-firebase-dev node --experimental-vm-modules node_modules/.bin/jest --runInBand
