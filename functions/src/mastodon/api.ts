@@ -1,11 +1,15 @@
+import assert from 'assert';
 import crypto from 'crypto';
+import {Request as OauthRequest, Response as OauthResponse} from '@node-oauth/oauth2-server';
 import cors from 'cors';
 import express from 'express';
+import {logger} from 'firebase-functions/v2';
 import type {mastodon} from 'masto';
 import {apex} from '../activitypub.js';
 import {domain, escapeFirestoreKey, mastodonDomain} from '../firebase.js';
 import {UserInfos} from '../schema.js';
 import {instanceV1, instanceV2} from './instanceInformation.js';
+import {oauth} from './oauth.js';
 import {Clients} from './oauth2Model.js';
 import type {CamelToSnake} from './utils.js';
 
@@ -97,6 +101,26 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 	};
 };
 
+const authRequired = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+	const request = new OauthRequest(req);
+	const response = new OauthResponse(res);
+	const token = await oauth.authenticate(request, response);
+
+	const uid = token.user?.userId;
+	assert(typeof uid === 'string');
+
+	const userInfoDocs = await UserInfos.where('uid', '==', uid).get();
+	assert(!userInfoDocs.empty);
+	assert(userInfoDocs.size === 1);
+
+	const userInfoDoc = userInfoDocs.docs[0];
+
+	// eslint-disable-next-line require-atomic-updates
+	res.locals.auth = userInfoDoc.data();
+
+	next();
+};
+
 const router = express.Router();
 
 router.use('/', cors({
@@ -144,8 +168,8 @@ router.get('/v1/accounts/:id/statuses', (req, res) => {
 	res.json([exampleStatus]);
 });
 
-router.get('/v1/accounts/verify_credentials', (req, res) => {
-	res.json([exampleStatus]);
+router.get('/v1/accounts/verify_credentials', authRequired, (req, res) => {
+	res.json(res.locals.auth);
 });
 
 router.get('/v1/timelines/public', (req, res) => {
