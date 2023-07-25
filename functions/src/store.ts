@@ -6,14 +6,7 @@ import firebase from 'firebase-admin';
 import {DocumentData, Filter} from 'firebase-admin/firestore';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash-es';
-import {db} from './firebase.js';
-
-const escapeFirestoreKey = (key: string) => (
-	key
-		.replaceAll(/%/g, '%25')
-		.replaceAll(/\//g, '%2F')
-		.replaceAll(/\./g, '%2E')
-);
+import {db, escapeFirestoreKey} from './firebase.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
 

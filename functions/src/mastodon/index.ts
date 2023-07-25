@@ -3,7 +3,7 @@ import express from 'express';
 import {https, logger} from 'firebase-functions/v2';
 import {beforeUserCreated, HttpsError} from 'firebase-functions/v2/identity';
 import {apex} from '../activitypub.js';
-import {db, domain} from '../firebase.js';
+import {db, domain, escapeFirestoreKey} from '../firebase.js';
 import {UserInfos} from '../schema.js';
 import apiRouter from './api.js';
 import oauthRouter from './oauth.js';
@@ -44,7 +44,7 @@ export const beforeUserCreate = beforeUserCreated(async (user) => {
 	await db.runTransaction(async (transaction) => {
 		const nextUserId = (await transaction.get(UserInfos.count())).data().count + 1;
 
-		transaction.set(UserInfos.doc(actorId), {
+		transaction.set(UserInfos.doc(escapeFirestoreKey(actorId)), {
 			id: nextUserId.toString(),
 			uid: user.data.uid,
 			locked: false,

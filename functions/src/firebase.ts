@@ -10,3 +10,10 @@ export const domain = projectId === 'activitypub-firebase'
 export const mastodonDomain = projectId === 'activitypub-firebase'
 	? 'mastodon.hakatashi.com'
 	: 'mastodon-dev.hakatashi.com';
+
+export const escapeFirestoreKey = (key: string) => (
+	key
+		.replaceAll(/%/g, '%25')
+		.replaceAll(/\//g, '%2F')
+		.replaceAll(/\./g, '%2E')
+);
