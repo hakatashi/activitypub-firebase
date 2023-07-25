@@ -1,6 +1,6 @@
 import {countBy} from 'lodash-es';
-import {db, unescapeFirestoreKey} from '../src/firebase';
-import {UserInfos} from '../src/schema';
+import {db, unescapeFirestoreKey} from '../src/firebase.js';
+import {UserInfos} from '../src/schema.js';
 
 const setEqual = <T>(a: Set<T>, b: Set<T>) => {
 	if (a.size !== b.size) {
@@ -16,14 +16,29 @@ const setEqual = <T>(a: Set<T>, b: Set<T>) => {
 
 db.runTransaction(async (transaction) => {
 	const streams = await transaction.get(db.collection('streams'));
+	console.log(`streams: ${streams.docs.length}`);
+
 	const userInfos = await transaction.get(UserInfos);
+	console.log(`userInfos: ${userInfos.docs.length}`);
 
 	const statusCounts = countBy(
 		streams.docs.filter((streamDoc) => (
-			(streamDoc.data().objects ?? []).some((object) => object.type === 'Note')
+			(streamDoc.data().object ?? []).some((object: any) => object.type === 'Note')
 		)),
 		(streamDoc) => streamDoc.data().actor[0],
 	);
+
+	const follows = streams.docs
+		.filter((streamDoc) => streamDoc.data().type === 'Follow')
+		.flatMap((streamDoc) => streamDoc.data().object ?? []);
+	const followCounts = countBy(follows, (object: any) => object);
+
+	const unfollows = streams.docs
+		.filter((streamDoc) => streamDoc.data().type === 'Undo')
+		.flatMap((streamDoc) => streamDoc.data().object ?? [])
+		.filter((object: any) => object.type === 'Follow')
+		.flatMap((object: any) => object.object ?? []);
+	const unfollowCounts = countBy(unfollows, (object: any) => object);
 
 	streams.docs.forEach((streamDoc) => {
 		const stream = streamDoc.data();
@@ -70,6 +85,15 @@ db.runTransaction(async (transaction) => {
 		if (oldStatusCount !== newStatusCount) {
 			transaction.update(userInfoDoc.ref, {
 				statuses_count: newStatusCount,
+			});
+		}
+
+		// Denormalize followers_count
+		const oldFollowersCount = userInfo.followers_count;
+		const newFollowersCount = (followCounts[actorId] ?? 0) - (unfollowCounts[actorId] ?? 0);
+		if (oldFollowersCount !== newFollowersCount) {
+			transaction.update(userInfoDoc.ref, {
+				followers_count: newFollowersCount,
 			});
 		}
 	});

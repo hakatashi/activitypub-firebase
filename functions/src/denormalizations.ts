@@ -84,5 +84,26 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 		});
 	}
 
+	// Denormalize userInfos.followers_count
+	if (stream.type === 'Follow') {
+		for (const object of objects) {
+			batch.update(UserInfos.doc(escapeFirestoreKey(object)), {
+				followers_count: firebase.firestore.FieldValue.increment(1),
+			});
+		}
+	}
+
+	if (stream.type === 'Undo') {
+		for (const object of objects) {
+			if (object.type === 'Follow') {
+				for (const followObject of object.object ?? []) {
+					batch.update(UserInfos.doc(escapeFirestoreKey(followObject)), {
+						followers_count: firebase.firestore.FieldValue.increment(-1),
+					});
+				}
+			}
+		}
+	}
+
 	await batch.commit();
 });
