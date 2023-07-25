@@ -164,17 +164,16 @@ export default class Store extends IApexStore {
 	}
 
 	async getStreamCount(collectionId: string) {
-		const counts = await Promise.all([
-			this.db.collection('streams')
-				.where('_meta.collection', '==', collectionId)
-				.count()
-				.get(),
-			this.db.collection('streams')
-				.where('_meta.collection', 'array-contains', collectionId)
-				.count()
-				.get(),
-		]);
-		return sum(counts.map((count) => count.data().count));
+		const result = await this.db.collection('streams')
+			.where(
+				Filter.or(
+					Filter.where('_meta.collection', '==', collectionId),
+					Filter.where('_meta.collection', 'array-contains', collectionId),
+				),
+			)
+			.count()
+			.get();
+		return result.data().count;
 	}
 
 	async getUserCount() {
