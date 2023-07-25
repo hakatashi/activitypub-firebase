@@ -3,7 +3,8 @@ import cors from 'cors';
 import express from 'express';
 import type {mastodon} from 'masto';
 import {apex} from '../activitypub.js';
-import {domain, mastodonDomain} from '../firebase.js';
+import {domain, escapeFirestoreKey, mastodonDomain} from '../firebase.js';
+import {UserInfos} from '../schema.js';
 import {instanceV1, instanceV2} from './instanceInformation.js';
 import {Clients} from './oauth2Model.js';
 import type {CamelToSnake} from './utils.js';
@@ -69,25 +70,20 @@ const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
 
 const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
 	const actorId = `https://${domain}/activitypub/u/${username}`;
-	const object = await apex.store.getObject(actorId);
-	if (object === undefined) {
+	const [object, userInfoDoc] = await Promise.all([
+		apex.store.getObject(actorId) as Promise<any>,
+		UserInfos.doc(escapeFirestoreKey(actorId)).get(),
+	]);
+	if (object === undefined || !userInfoDoc.exists) {
 		return undefined;
 	}
 
+	const userInfo = userInfoDoc.data()!;
+
 	const actor = await apex.toJSONLD(object);
 
-	const statuses = await apex.store.getStream(
-		`https://${domain}/activitypub/u/${username}/outbox`,
-		/* limit= */ 1,
-		/* after= */ null,
-		/* blockList= */ [],
-		[{
-			'_meta.objectTypes': 'Note',
-		}],
-	);
-
 	return {
-		id: '1', // FIXME: rank it
+		...userInfo,
 		username: actor.preferredUsername,
 		acct: `${username}@${domain}`,
 		display_name: actor.name,
@@ -97,16 +93,7 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 		header: actor?.image?.url,
 		header_static: actor?.image?.url,
 		note: actor.summary,
-		locked: false,
-		emojis: [],
-		fields: [],
-		discoverable: true,
-		created_at: new Date(2020, 1, 1).toISOString(),
-		statuses_count: statuses.length,
-		followers_count: 0,
-		following_count: 0,
-		last_status_at: statuses.length === 0 ? null : statuses[0].published,
-		roles: [],
+		discoverable: actor.discoverable,
 	};
 };
 
