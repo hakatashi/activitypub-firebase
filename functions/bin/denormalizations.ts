@@ -1,4 +1,6 @@
-import {db} from '../src/firebase';
+import {countBy} from 'lodash-es';
+import {db, unescapeFirestoreKey} from '../src/firebase';
+import {UserInfos} from '../src/schema';
 
 const setEqual = <T>(a: Set<T>, b: Set<T>) => {
 	if (a.size !== b.size) {
@@ -14,6 +16,14 @@ const setEqual = <T>(a: Set<T>, b: Set<T>) => {
 
 db.runTransaction(async (transaction) => {
 	const streams = await transaction.get(db.collection('streams'));
+	const userInfos = await transaction.get(UserInfos);
+
+	const statusCounts = countBy(
+		streams.docs.filter((streamDoc) => (
+			(streamDoc.data().objects ?? []).some((object) => object.type === 'Note')
+		)),
+		(streamDoc) => streamDoc.data().actor[0],
+	);
 
 	streams.docs.forEach((streamDoc) => {
 		const stream = streamDoc.data();
@@ -46,6 +56,20 @@ db.runTransaction(async (transaction) => {
 		if (oldObjectType !== newObjectType) {
 			transaction.update(streamDoc.ref, {
 				'_meta.objectType': newObjectType,
+			});
+		}
+	});
+
+	userInfos.docs.forEach((userInfoDoc) => {
+		const userInfo = userInfoDoc.data();
+		const actorId = unescapeFirestoreKey(userInfoDoc.id);
+
+		// Denormalize statuses_count
+		const oldStatusCount = userInfo.statuses_count;
+		const newStatusCount = statusCounts[actorId] ?? 0;
+		if (oldStatusCount !== newStatusCount) {
+			transaction.update(userInfoDoc.ref, {
+				statuses_count: newStatusCount,
 			});
 		}
 	});

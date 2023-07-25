@@ -17,3 +17,7 @@ export const escapeFirestoreKey = (key: string) => (
 		.replaceAll(/\//g, '%2F')
 		.replaceAll(/\./g, '%2E')
 );
+
+export const unescapeFirestoreKey = (key: string) => (
+	decodeURIComponent(key)
+);
