@@ -35,12 +35,7 @@ app.get('/nodeinfo/:version', nodeinfoCors, apex, apex.net.nodeInfo.get);
 export const mastodonApi = https.onRequest(app);
 
 export const beforeUserCreate = beforeUserCreated(async (user) => {
-	logger.info({
-		type: 'beforeUserCreate',
-		user,
-	});
-
-	if (user.credential?.providerId !== 'google.com' || user.data.email !== 'hakatasiloving@gmail.com') {
+	if (user.additionalUserInfo?.providerId !== 'google.com' || user.data.email !== 'hakatasiloving@gmail.com') {
 		throw new HttpsError('permission-denied', 'Only hakatashi can create new account');
 	}
 
