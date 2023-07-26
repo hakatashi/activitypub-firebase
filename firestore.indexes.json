@@ -15,6 +15,20 @@
       ]
     },
     {
+      "collectionGroup": "objects",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "published",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "streams",
       "queryScope": "COLLECTION",
       "fields": [

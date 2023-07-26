@@ -58,18 +58,50 @@ export default class Store extends IApexStore {
 		return object;
 	}
 
-	async getObjects(field: string, value: any) {
+	// Extended by us
+	async getObjects(ids: string[], includeMeta = false) {
+		logger.info({
+			type: 'getObjects',
+			ids,
+			includeMeta,
+		});
+
+		if (ids.length === 0) {
+			return [];
+		}
+
+		const objectDocs = await this.db.collection('objects')
+			.where(firebase.firestore.FieldPath.documentId(), 'in', ids.map(escapeFirestoreKey))
+			.get();
+
+		return objectDocs.docs.map((doc) => {
+			const object = doc.data();
+			if (includeMeta !== true) {
+				// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
+				delete object._meta;
+			}
+			return object;
+		});
+	}
+
+	// Extended by us
+	async getObjectsByFieldValue(field: string, value: any, includeMeta = false) {
 		logger.info({
 			type: 'getObjects',
 			field,
 			value,
 		});
-		const objectDocs = await this.db.collection('objects').where(field, '==', value).get();
+		const objectDocs = await this.db.collection('objects')
+			.where(field, '==', value)
+			.orderBy('published', 'desc')
+			.get();
 
 		return objectDocs.docs.map((doc) => {
 			const object = doc.data();
-			// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
-			delete object._meta;
+			if (includeMeta !== true) {
+				// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
+				delete object._meta;
+			}
 			return object;
 		});
 	}
