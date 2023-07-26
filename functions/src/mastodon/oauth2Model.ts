@@ -23,7 +23,14 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		if (results.empty) {
 			return false;
 		}
-		return results.docs[0].data();
+		const accessTokenData = results.docs[0].data();
+		return {
+			...accessTokenData,
+			// @ts-expect-error: Return type is different from the interface
+			accessTokenExpiresAt: accessTokenData.accessTokenExpiresAt.toDate(),
+			// @ts-expect-error: Return type is different from the interface
+			refreshTokenExpiresAt: accessTokenData.refreshTokenExpiresAt.toDate(),
+		};
 	}
 
 	async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | false> {
