@@ -10,7 +10,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "test": "firebase emulators:exec --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev node --experimental-vm-modules node_modules/jest/bin/jest --runInBand\"",
-    "test:watch": "firebase emulators:exec --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev node --experimental-vm-modules node_modules/jest/bin/jest --runInBand --watch\""
+    "test:watch": "firebase emulators:exec --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev node --experimental-vm-modules node_modules/jest/bin/jest --runInBand --watchAll\""
   },
   "engines": {
     "node": "20"
