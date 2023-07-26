@@ -3,7 +3,6 @@ import crypto from 'crypto';
 import {Request as OauthRequest, Response as OauthResponse} from '@node-oauth/oauth2-server';
 import cors from 'cors';
 import express from 'express';
-import {logger} from 'firebase-functions/v2';
 import type {mastodon} from 'masto';
 import {apex} from '../activitypub.js';
 import {domain, escapeFirestoreKey, mastodonDomain} from '../firebase.js';
