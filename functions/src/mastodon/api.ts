@@ -171,7 +171,27 @@ router.get('/v1/accounts/verify_credentials', authRequired, (req, res) => {
 	res.json(res.locals.auth);
 });
 
+router.get('/v1/preferences', authRequired, (req, res) => {
+	res.send({
+		'posting:default:visibility': 'public',
+		'posting:default:sensitive': false,
+		'posting:default:language': 'ja',
+		'reading:expand:media': 'show_all',
+		'reading:expand:spoilers': true,
+	});
+});
+
+router.get('/v1/push/subscription', authRequired, (req, res) => {
+	res.status(404).json({
+		error: 'Record not found',
+	});
+});
+
 router.get('/v1/timelines/public', (req, res) => {
+	res.json([exampleStatus]);
+});
+
+router.get('/v1/timelines/home', authRequired, (req, res) => {
 	res.json([exampleStatus]);
 });
 
