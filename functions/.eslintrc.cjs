@@ -8,6 +8,7 @@ module.exports = {
 		'import/no-namespace': 'off',
 		'no-undef-init': 'off',
 		'import/no-named-as-default-member': 'off',
-		'no-underscore-dangle': ['error', {allow: ['foo_', '_bar']}],
+		'no-underscore-dangle': ['error', {allow: ['_meta']}],
+		'private-props/no-use-outside': 'off',
 	},
 };

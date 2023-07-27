@@ -8,7 +8,7 @@ import firebase from 'firebase-admin';
 import {last} from 'lodash-es';
 import type {mastodon} from 'masto';
 import {apex} from '../activitypub.js';
-import {domain, escapeFirestoreKey, mastodonDomain, unescapeFirestoreKey} from '../firebase.js';
+import {db, domain, escapeFirestoreKey, mastodonDomain, unescapeFirestoreKey} from '../firebase.js';
 import {UserInfo, UserInfos} from '../schema.js';
 import {instanceV1, instanceV2} from './instanceInformation.js';
 import {oauth} from './oauth.js';
