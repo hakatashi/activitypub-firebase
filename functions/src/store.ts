@@ -2,7 +2,7 @@ import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
-import {DocumentData, Filter} from 'firebase-admin/firestore';
+import {DocumentData} from 'firebase-admin/firestore';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash-es';
 import {db, escapeFirestoreKey} from './firebase.js';
