@@ -10,6 +10,12 @@ const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 describe('activitypub', () => {
 	jest.setTimeout(10000);
 
+	beforeEach(() => {
+		if (firestoreHost === undefined || projectId === undefined) {
+			throw new Error('Firestore emulator is not running');
+		}
+	});
+
 	// Teardown firestore database after each test
 	afterEach(async () => {
 		await fetch(
