@@ -1,8 +1,9 @@
 import type {mastodon} from 'masto';
+import {mastodonDomain} from '../firebase.js';
 import type {CamelToSnake} from '../utils.js';
 
 const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
-	domain: 'hakatashi.com',
+	domain: mastodonDomain,
 	title: 'HakataFediverse',
 	description: 'HakataFediverse is the only instance created for hakatashi',
 	version: '4.0.0',
