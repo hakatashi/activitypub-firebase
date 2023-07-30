@@ -34,7 +34,7 @@ describe('mastodon', () => {
 			test('Returns instance information', async () => {
 				const response = await request(mastodon).get('/api/v1/instance');
 				expect(response.status).toBe(200);
-				expect(response.body.uri).toBe('hakatashi.com');
+				expect(response.body.uri).toBe('mastodon-dev.hakatashi.com');
 				expect(response.body.title).toBe('HakataFediverse');
 			});
 		});
@@ -43,7 +43,7 @@ describe('mastodon', () => {
 			test('Returns instance information', async () => {
 				const response = await request(mastodon).get('/api/v2/instance');
 				expect(response.status).toBe(200);
-				expect(response.body.domain).toBe('hakatashi.com');
+				expect(response.body.domain).toBe('mastodon-dev.hakatashi.com');
 				expect(response.body.title).toBe('HakataFediverse');
 			});
 		});
