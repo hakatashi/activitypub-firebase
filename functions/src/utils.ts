@@ -24,3 +24,25 @@ export type CamelToSnake<T extends object> = {
 				)
 			)
 };
+
+export class Counter<T> {
+	#counter = new Map<T, number>();
+
+	increment(key: T, amount = 1) {
+		const current = this.#counter.get(key) ?? 0;
+		this.#counter.set(key, current + amount);
+		return current + amount;
+	}
+
+	get(key: T) {
+		return this.#counter.get(key) ?? 0;
+	}
+
+	[Symbol.iterator]() {
+		return this.#counter[Symbol.iterator]();
+	}
+
+	entries() {
+		return this.#counter.entries();
+	}
+}

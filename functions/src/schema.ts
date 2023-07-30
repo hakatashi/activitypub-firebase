@@ -1,7 +1,7 @@
 import type {CollectionReference} from '@google-cloud/firestore';
 import type {mastodon} from 'masto';
 import {db} from './firebase.js';
-import type {CamelToSnake} from './mastodon/utils.js';
+import type {CamelToSnake} from './utils.js';
 
 export type UserInfo = Pick<
   CamelToSnake<mastodon.v1.Account>,
