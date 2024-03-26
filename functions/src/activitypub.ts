@@ -187,7 +187,6 @@ app.on('apex-inbox', async (message: any) => {
 		logger.info(`New follow request from ${message.actor.id}`);
 
 		const object = {...message.activity};
-		// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
 		delete object._meta;
 
 		const accept = await apex.buildActivity('Accept', message.recipient.id, message.actor.id, {

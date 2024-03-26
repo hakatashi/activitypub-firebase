@@ -1,94 +1,47 @@
 import assert from 'assert';
 import crypto from 'crypto';
 import {Request as OauthRequest, Response as OauthResponse} from '@node-oauth/oauth2-server';
+import type {APNote, APActor, APObject} from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
+import firebase from 'firebase-admin';
+import {last, zip} from 'lodash-es';
 import type {mastodon} from 'masto';
 import {apex} from '../activitypub.js';
-import {domain, escapeFirestoreKey, mastodonDomain} from '../firebase.js';
-import {UserInfos} from '../schema.js';
+import {db, domain, escapeFirestoreKey, mastodonDomain, unescapeFirestoreKey} from '../firebase.js';
+import {UserInfo, UserInfos} from '../schema.js';
+import type {CamelToSnake} from '../utils.js';
+import {Counter} from '../utils.js';
 import {instanceV1, instanceV2} from './instanceInformation.js';
 import {oauth} from './oauth.js';
 import {Clients} from './oauth2Model.js';
-import type {CamelToSnake} from './utils.js';
 
 const validScopes = ['follow', 'push', 'read', 'read:accounts', 'read:blocks', 'read:blocks', 'read:bookmarks', 'read:favourites', 'read:filters', 'read:follows', 'read:follows', 'read:lists', 'read:mutes', 'read:mutes', 'read:notifications', 'read:search', 'read:statuses', 'write', 'write:accounts', 'write:blocks', 'write:blocks', 'write:bookmarks', 'write:conversations', 'write:favourites', 'write:filters', 'write:follows', 'write:follows', 'write:lists', 'write:media', 'write:mutes', 'write:mutes', 'write:notifications', 'write:reports', 'write:statuses'];
 
-const exampleStatus: CamelToSnake<mastodon.v1.Status> = {
-	id: '1',
-	created_at: '2021-08-01T00:00:00.000Z',
-	edited_at: null,
-	in_reply_to_id: null,
-	in_reply_to_account_id: null,
-	sensitive: false,
-	spoiler_text: '',
-	visibility: 'public',
-	language: 'ja',
-	uri: `https://${domain}/@hakatashi/1`,
-	url: `https://${domain}/@hakatashi/1`,
-	replies_count: 0,
-	reblogs_count: 0,
-	favourites_count: 0,
-	reblogged: false,
-	favourited: false,
-	muted: false,
-	bookmarked: false,
-	pinned: false,
-	content: 'Hello, world!',
-	reblog: null,
-	application: {
-		name: 'HakataFediverse',
-		website: `https://${domain}`,
-	},
-	account: {
-		id: '1',
-		username: 'hakatashi',
-		acct: `hakatashi@${domain}`,
-		display_name: 'hakatashi',
-		locked: false,
-		bot: false,
-		discoverable: true,
-		created_at: '2016-03-16T00:00:00.000Z',
-		note: '博多市です。',
-		url: 'https://mastodon.social/@Gargron',
-		avatar: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-		avatar_static: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-		header: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-		header_static: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-		followers_count: 1,
-		following_count: 1,
-		statuses_count: 0,
-		last_status_at: '2022-08-24',
-		emojis: [],
-		fields: [],
-		roles: [],
-	},
-	media_attachments: [],
-	mentions: [],
-	tags: [],
+const externalUserInfo: UserInfo = {
+	bot: false,
+	created_at: '2021-01-01T00:00:00.000Z',
 	emojis: [],
-	card: null,
-	poll: null,
+	fields: [],
+	followers_count: 0,
+	following_count: 0,
+	id: '1',
+	last_status_at: '',
+	locked: false,
+	roles: [],
+	statuses_count: 0,
+	uid: null,
 };
 
-const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
-	const actorId = `https://${domain}/activitypub/u/${username}`;
-	const [object, userInfoDoc] = await Promise.all([
-		apex.store.getObject(actorId) as Promise<any>,
-		UserInfos.doc(escapeFirestoreKey(actorId)).get(),
-	]);
-	if (object === undefined || !userInfoDoc.exists) {
-		return undefined;
-	}
-
-	const userInfo = userInfoDoc.data()!;
-
-	const actor = await apex.toJSONLD(object);
+const actorObjectToAccount = async (actorObject: APActor, userInfo: UserInfo = externalUserInfo): Promise<CamelToSnake<mastodon.v1.Account>> => {
+	const actor = await apex.toJSONLD(actorObject);
+	const username = actor?.preferredUsername ?? last(actor?.id?.split('/'));
+	const actorDomain = new URL(actor.id).host;
 
 	return {
 		...userInfo,
 		username: actor.preferredUsername,
-		acct: `${username}@${domain}`,
+		acct: `${username}@${actorDomain}`,
 		display_name: actor.name,
 		url: `https://elk.zone/${mastodonDomain}/@${username}@${domain}`,
 		avatar: actor?.icon?.url,
@@ -98,6 +51,162 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 		note: actor.summary,
 		discoverable: actor.discoverable,
 	};
+};
+
+const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
+	const actorId = `https://${domain}/activitypub/u/${username}`;
+	const [object, userInfoDoc] = await Promise.all([
+		apex.store.getObject(actorId) as Promise<APActor>,
+		UserInfos.doc(escapeFirestoreKey(actorId)).get(),
+	]);
+	if (object === undefined || !userInfoDoc.exists) {
+		return undefined;
+	}
+	return actorObjectToAccount(object, userInfoDoc.data()!);
+};
+
+const noteObjectToStatus = (note: APNote, account: CamelToSnake<mastodon.v1.Account>): CamelToSnake<mastodon.v1.Status> => {
+	const id = note.id!.split('/').pop()!;
+	return {
+		id,
+		created_at: note.published!.toString(),
+		edited_at: null,
+		in_reply_to_id: null,
+		in_reply_to_account_id: null,
+		sensitive: false,
+		spoiler_text: '',
+		visibility: 'public',
+		language: 'ja',
+		uri: `https://${domain}/@${account.username}@${domain}/${id}`,
+		url: `https://${domain}/@${account.username}@${domain}/${id}`,
+		replies_count: 0,
+		reblogs_count: 0,
+		favourites_count: 0,
+		reblogged: false,
+		favourited: false,
+		muted: false,
+		bookmarked: false,
+		pinned: false,
+		content: Array.isArray(note.content) ? note.content[0] : note.content,
+		reblog: null,
+		application: {
+			name: 'activitypub-firebase',
+			website: `https://${domain}`,
+		},
+		account,
+		media_attachments: [],
+		mentions: [],
+		tags: [],
+		emojis: [],
+		card: null,
+		poll: null,
+	};
+};
+
+const getAttributedTo = (object: APObject): string | undefined => {
+	if (object.attributedTo === undefined) {
+		return undefined;
+	}
+
+	if (Array.isArray(object.attributedTo)) {
+		const [user] = object.attributedTo;
+		if (typeof user === 'string') {
+			return user;
+		}
+		return undefined;
+	}
+
+	if (typeof object.attributedTo === 'string') {
+		return object.attributedTo;
+	}
+
+	return undefined;
+};
+
+const userIdsToAcconts = async (userIds: string[]): Promise<CamelToSnake<mastodon.v1.Account>[]> => {
+	if (userIds.length === 0) {
+		return [];
+	}
+
+	const [actorObjects, userInfos] = await Promise.all([
+		apex.store.getObjects(userIds) as Promise<APActor[]>,
+		UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', userIds.map(escapeFirestoreKey)).get(),
+	]);
+
+	const actorMap = new Map<string, APActor>(
+		actorObjects.map((actor) => [actor.id!, actor]),
+	);
+	const userInfoMap = new Map<string, UserInfo>(
+		userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()]),
+	);
+
+	return Promise.all(userIds.map((userId) => {
+		const actor = actorMap.get(userId);
+		assert(actor !== undefined, 'actor is undefined');
+
+		const userInfo = userInfoMap.get(userId);
+
+		return actorObjectToAccount(actor, userInfo);
+	}));
+};
+
+const getAllNotes = async () => {
+	const notes = (await apex.store.getObjectsByFieldValue('type', 'Note')) as APNote[];
+	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
+	const userIds = validNotes.map((note) => getAttributedTo(note)!);
+	const accountsMap = new Map(zip(userIds, await userIdsToAcconts(userIds)));
+
+	return Promise.all(validNotes.map((note) => {
+		const attributedTo = getAttributedTo(note);
+		assert(attributedTo !== undefined, 'attributedTo is undefined');
+
+		const account = accountsMap.get(attributedTo);
+		assert(account !== undefined, 'account is undefined');
+
+		return noteObjectToStatus(note, account);
+	}));
+};
+
+const getInboxId = (actor: APActor) => {
+	if (Array.isArray(actor.inbox)) {
+		return actor.inbox[0] as string;
+	}
+	if (typeof actor.inbox === 'string') {
+		return actor.inbox;
+	}
+	throw new Error('inbox is not string');
+};
+
+const getFollowers = async (actor: APActor) => {
+	const followStreams = await db.collection('streams')
+		.where('type', '==', 'Follow')
+		.where('object', 'array-contains', actor.id)
+		.get();
+	const unfollowStreams = await db.collection('streams')
+		.where('_meta.collection', '==', getInboxId(actor))
+		.where('type', '==', 'Undo')
+		.where('_meta.objectType', '==', 'Follow')
+		.get();
+
+	const followCounter = new Counter<string>();
+
+	for (const followStream of followStreams.docs) {
+		const follow = followStream.data();
+		const followActor = Array.isArray(follow.actor) ? follow.actor[0] : follow.actor;
+		followCounter.increment(followActor);
+	}
+
+	for (const unfollowStream of unfollowStreams.docs) {
+		const unfollow = unfollowStream.data();
+		const unfollowActor = Array.isArray(unfollow.actor) ? unfollow.actor[0] : unfollow.actor;
+		followCounter.increment(unfollowActor, -1);
+	}
+
+	const followerIds = Array.from(followCounter)
+		.filter(([, count]) => count > 0)
+		.map(([followerActor]) => followerActor);
+
+	return userIdsToAcconts(followerIds);
 };
 
 const authRequired = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -118,6 +227,16 @@ const authRequired = async (req: express.Request, res: express.Response, next: e
 	res.locals.auth = userInfoDoc.data();
 
 	next();
+};
+
+const getAccount = (acct: string) => {
+	const [username, lookupDomain = domain] = acct.split('@');
+
+	if (lookupDomain !== domain) {
+		throw new Error('Not implemented');
+	}
+
+	return actorUsernameToAccount(username);
 };
 
 const router = express.Router();
@@ -145,26 +264,41 @@ router.get('/v1/accounts/lookup', async (req, res) => {
 		return;
 	}
 
-	const [username, lookupDomain = domain] = acct.split('@');
-
-	if (lookupDomain !== domain) {
-		res.status(501).send('Not implemented');
-		return;
-	}
-
-	const account = await actorUsernameToAccount(username);
+	const account = await getAccount(acct);
 
 	if (account === undefined) {
 		res.status(404).json({
 			error: 'Record not found',
 		});
+		return;
 	}
 
 	res.json(account);
 });
 
-router.get('/v1/accounts/:id/statuses', (req, res) => {
-	res.json([exampleStatus]);
+router.get('/v1/accounts/:id/statuses', async (req, res) => {
+	res.json(await getAllNotes());
+});
+
+router.get('/v1/accounts/:id/followers', async (req, res) => {
+	const userInfo = await UserInfos.where('id', '==', req.params.id).get();
+
+	if (userInfo.docs.length !== 1) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
+	const userId = unescapeFirestoreKey(userInfo.docs[0].id);
+	const actorObject = await apex.store.getObject(userId) as (APActor | undefined);
+
+	if (actorObject === undefined) {
+		res.sendStatus(500);
+		return;
+	}
+
+	res.json(await getFollowers(actorObject));
 });
 
 router.get('/v1/accounts/verify_credentials', authRequired, (req, res) => {
@@ -187,12 +321,12 @@ router.get('/v1/push/subscription', authRequired, (req, res) => {
 	});
 });
 
-router.get('/v1/timelines/public', (req, res) => {
-	res.json([exampleStatus]);
+router.get('/v1/timelines/public', async (req, res) => {
+	res.json(await getAllNotes());
 });
 
-router.get('/v1/timelines/home', authRequired, (req, res) => {
-	res.json([exampleStatus]);
+router.get('/v1/timelines/home', authRequired, async (req, res) => {
+	res.json(await getAllNotes());
 });
 
 router.post('/v1/apps', async (req, res) => {

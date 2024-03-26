@@ -31,7 +31,6 @@ export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (ev
 
 	// Denormalize objectTypes
 
-	// eslint-disable-next-line private-props/no-use-outside, no-underscore-dangle
 	const oldObjectTypes = new Set<string>(stream._meta?.objectTypes ?? []);
 	const newObjectTypes = new Set<string>(
 		objects
@@ -47,7 +46,6 @@ export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (ev
 
 	// Denormalize objectType
 
-	// eslint-disable-next-line private-props/no-use-outside, no-underscore-dangle
 	const oldObjectType = stream._meta?.objectType ?? undefined;
 	const newObjectType =
 		objects

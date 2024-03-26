@@ -10,7 +10,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "test": "firebase emulators:exec --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev node --experimental-vm-modules node_modules/jest/bin/jest --runInBand\"",
-    "test:watch": "firebase emulators:exec --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev node --experimental-vm-modules node_modules/jest/bin/jest --runInBand --watch\""
+    "test:watch": "firebase emulators:exec --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev node --experimental-vm-modules node_modules/jest/bin/jest --runInBand --watchAll\""
   },
   "engines": {
     "node": "20"
@@ -40,6 +40,7 @@
     "@types/supertest": "^2.0.12",
     "@typescript-eslint/eslint-plugin": "^5.12.0",
     "@typescript-eslint/parser": "^5.12.0",
+    "activitypub-types": "^1.0.1",
     "cross-env": "^7.0.3",
     "eslint": "^8.9.0",
     "eslint-config-google": "^0.14.0",

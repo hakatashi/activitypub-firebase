@@ -1,3 +1,4 @@
+import assert from 'assert';
 import {countBy} from 'lodash-es';
 import {db, unescapeFirestoreKey} from '../src/firebase.js';
 import {UserInfos} from '../src/schema.js';
@@ -46,7 +47,6 @@ db.runTransaction(async (transaction) => {
 		const objects = stream.object ?? [];
 
 		// Denormalize objectTypes
-		// eslint-disable-next-line private-props/no-use-outside, no-underscore-dangle
 		const oldObjectTypes = new Set<string>(stream._meta?.objectTypes ?? []);
 		const newObjectTypes = new Set<string>(
 			objects
@@ -61,7 +61,6 @@ db.runTransaction(async (transaction) => {
 		}
 
 		// Denormalize objectType
-		// eslint-disable-next-line private-props/no-use-outside, no-underscore-dangle
 		const oldObjectType = stream._meta?.objectType ?? undefined;
 		const newObjectType =
 		objects
@@ -71,6 +70,14 @@ db.runTransaction(async (transaction) => {
 		if (oldObjectType !== newObjectType) {
 			transaction.update(streamDoc.ref, {
 				'_meta.objectType': newObjectType,
+			});
+		}
+
+		// Denormalize _meta.collection
+		if (Array.isArray(stream._meta?.collection)) {
+			assert(stream._meta.collection.length === 1);
+			transaction.update(streamDoc.ref, {
+				'_meta.collection': stream._meta.collection[0],
 			});
 		}
 	});

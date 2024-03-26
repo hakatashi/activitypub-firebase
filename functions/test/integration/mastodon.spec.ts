@@ -1,4 +1,4 @@
-import {describe, expect, test, afterEach, jest} from '@jest/globals';
+import {describe, expect, test, afterEach, jest, beforeEach} from '@jest/globals';
 import request from 'supertest';
 import {mastodonApi as mastodon} from '../../src/mastodon/index.js';
 
@@ -7,6 +7,12 @@ const projectId = process.env.GCLOUD_PROJECT;
 
 describe('mastodon', () => {
 	jest.setTimeout(10000);
+
+	beforeEach(() => {
+		if (firestoreHost === undefined || projectId === undefined) {
+			throw new Error('Firestore emulator is not running');
+		}
+	});
 
 	// Teardown firestore database after each test
 	afterEach(async () => {
@@ -28,7 +34,7 @@ describe('mastodon', () => {
 			test('Returns instance information', async () => {
 				const response = await request(mastodon).get('/api/v1/instance');
 				expect(response.status).toBe(200);
-				expect(response.body.uri).toBe('hakatashi.com');
+				expect(response.body.uri).toBe('mastodon-dev.hakatashi.com');
 				expect(response.body.title).toBe('HakataFediverse');
 			});
 		});
@@ -37,7 +43,7 @@ describe('mastodon', () => {
 			test('Returns instance information', async () => {
 				const response = await request(mastodon).get('/api/v2/instance');
 				expect(response.status).toBe(200);
-				expect(response.body.domain).toBe('hakatashi.com');
+				expect(response.body.domain).toBe('mastodon-dev.hakatashi.com');
 				expect(response.body.title).toBe('HakataFediverse');
 			});
 		});

@@ -1,9 +1,8 @@
-/* eslint-disable private-props/no-use-outside, no-underscore-dangle */
 import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
-import {DocumentData, Filter} from 'firebase-admin/firestore';
+import {DocumentData} from 'firebase-admin/firestore';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash-es';
 import {db, escapeFirestoreKey} from './firebase.js';
@@ -51,25 +50,54 @@ export default class Store extends IApexStore {
 		const object = objectDoc.data()!;
 
 		if (includeMeta !== true) {
-			// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
 			delete object._meta;
 		}
 
 		return object;
 	}
 
-	async getObjects(field: string, value: any) {
+	// Extended by us
+	async getObjects(ids: string[], includeMeta = false) {
+		logger.info({
+			type: 'getObjects',
+			ids,
+			includeMeta,
+		});
+
+		if (ids.length === 0) {
+			return [];
+		}
+
+		const objectDocs = await this.db.collection('objects')
+			.where(firebase.firestore.FieldPath.documentId(), 'in', ids.map(escapeFirestoreKey))
+			.get();
+
+		return objectDocs.docs.map((doc) => {
+			const object = doc.data();
+			if (includeMeta !== true) {
+				delete object._meta;
+			}
+			return object;
+		});
+	}
+
+	// Extended by us
+	async getObjectsByFieldValue(field: string, value: any, includeMeta = false) {
 		logger.info({
 			type: 'getObjects',
 			field,
 			value,
 		});
-		const objectDocs = await this.db.collection('objects').where(field, '==', value).get();
+		const objectDocs = await this.db.collection('objects')
+			.where(field, '==', value)
+			.orderBy('published', 'desc')
+			.get();
 
 		return objectDocs.docs.map((doc) => {
 			const object = doc.data();
-			// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
-			delete object._meta;
+			if (includeMeta !== true) {
+				delete object._meta;
+			}
 			return object;
 		});
 	}
@@ -90,9 +118,16 @@ export default class Store extends IApexStore {
 		return true;
 	}
 
-	private normalizeActivity(activity: DocumentData) {
+	private denormalizeActivity<T extends DocumentData>(activity: T) {
 		if (typeof activity?._meta?.collection === 'string') {
 			activity._meta.collection = [activity._meta.collection];
+		}
+		return activity;
+	}
+
+	private normalizeActivity<T extends DocumentData>(activity: T) {
+		if (Array.isArray(activity?._meta?.collection)) {
+			activity._meta.collection = activity._meta.collection[0];
 		}
 		return activity;
 	}
@@ -117,12 +152,7 @@ export default class Store extends IApexStore {
 		});
 
 		let query = this.db.collection('streams')
-			.where(
-				Filter.or(
-					Filter.where('_meta.collection', '==', collectionId),
-					Filter.where('_meta.collection', 'array-contains', collectionId),
-				),
-			);
+			.where('_meta.collection', '==', collectionId);
 
 		if (after) {
 			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
@@ -153,17 +183,12 @@ export default class Store extends IApexStore {
 
 		const streams = await query.get();
 
-		return streams.docs.map((doc) => this.normalizeActivity(doc.data()));
+		return streams.docs.map((doc) => this.denormalizeActivity(doc.data()));
 	}
 
 	async getStreamCount(collectionId: string) {
 		const result = await this.db.collection('streams')
-			.where(
-				Filter.or(
-					Filter.where('_meta.collection', '==', collectionId),
-					Filter.where('_meta.collection', 'array-contains', collectionId),
-				),
-			)
+			.where('_meta.collection', '==', collectionId)
 			.count()
 			.get();
 		return result.data().count;
@@ -200,11 +225,10 @@ export default class Store extends IApexStore {
 		const activity = activityDoc.data()!;
 
 		if (includeMeta !== true) {
-			// eslint-disable-next-line no-underscore-dangle, private-props/no-use-outside
 			delete activity._meta;
 		}
 
-		return this.normalizeActivity(activity);
+		return this.denormalizeActivity(activity);
 	}
 
 	async saveActivity(activity: ObjectWithId) {
@@ -216,7 +240,7 @@ export default class Store extends IApexStore {
 			if (activityDoc.exists) {
 				return;
 			}
-			transaction.set(activityRef, activity);
+			transaction.set(activityRef, this.normalizeActivity(activity));
 			inserted = true;
 		});
 		return inserted;
@@ -238,13 +262,13 @@ export default class Store extends IApexStore {
 	async updateActivity(activity: ObjectWithId, fullReplace: boolean) {
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		if (fullReplace) {
-			await activityRef.set(activity);
+			await activityRef.set(this.normalizeActivity(activity));
 			await this.updateObjectCopies(activity);
 			return activity;
 		}
-		await activityRef.update(this.objectToUpdateDoc(activity));
+		await activityRef.update(this.objectToUpdateDoc(this.normalizeActivity(activity)));
 		await this.updateObjectCopies(activity);
-		return activityRef.get().then((doc) => this.normalizeActivity(doc.data()!));
+		return activityRef.get().then((doc) => this.denormalizeActivity(doc.data()!));
 	}
 
 	// eslint-disable-next-line max-params
@@ -264,8 +288,8 @@ export default class Store extends IApexStore {
 			} else {
 				activityData._meta[key] = value;
 			}
-			transaction.update(activityRef, activityData);
-			return this.normalizeActivity(activityData);
+			transaction.update(activityRef, this.normalizeActivity(activityData));
+			return this.denormalizeActivity(activityData);
 		});
 	}
 
