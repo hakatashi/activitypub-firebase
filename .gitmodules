@@ -1,3 +1,18 @@
 [submodule "public"]
 	path = public
 	url = https://github.com/hakatashi/hakatashi.com.git
+[submodule "third_party/activitypub"]
+	path = third_party/activitypub
+	url = https://github.com/w3c/activitypub.git
+[submodule "third_party/mastodon_documentation"]
+	path = third_party/mastodon_documentation
+	url = https://github.com/mastodon/documentation.git
+[submodule "third_party/mastodon"]
+	path = third_party/mastodon
+	url = https://github.com/mastodon/mastodon.git
+[submodule "third_party/minidon"]
+	path = third_party/minidon
+	url = https://github.com/yusukebe/minidon.git
+[submodule "third_party/minipub"]
+	path = third_party/minipub
+	url = https://github.com/skymethod/minipub.git
