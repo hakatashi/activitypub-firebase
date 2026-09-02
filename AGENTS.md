@@ -1,50 +1,65 @@
 # AGENTS.md
 
-このファイルは、このリポジトリで作業するAIエージェント(および人間)向けに、プロジェクトの現状をまとめたものです。2026-08-22時点の調査結果に基づきます。
+ActivityPub を Firebase 上でフルサーバーレスに実装するプロジェクト。
+Mastodon 互換 API も提供し、Elk などのサードパーティクライアントをフロントエンドとして使う。
+ユーザーは `@hakatashi@hakatashi.com` の1人のみを想定している。
 
-## プロジェクト概要
+**このファイルは地図とルールだけを置く。決定の理由は ADR に、進捗は GitHub Issue にある。**
 
-ActivityPubをFirebase上でフルサーバーレスに実装する試み。2023-07-09〜2023-07-30の約3週間に集中的に開発され、それ以降は実質的なコード変更が止まっている(Dependabotによる依存関係更新など自動コミットのみ)。`public/` ディレクトリは無関係な個人サイト(hakatashi.com)のgit submoduleであり、本プロジェクトのコードではない。実装本体は `functions/` 以下にある。
+## ドキュメントの地図
 
-## アーキテクチャ
+| 知りたいこと | 読む場所 |
+|---|---|
+| 今どういう構成になっているか | [`docs/architecture.md`](docs/architecture.md) |
+| **なぜそう作られているか** | [`docs/adr/`](docs/adr/README.md) |
+| 次に何をすべきか | [`docs/roadmap.md`](docs/roadmap.md) と各 Epic Issue |
+| 壊れている箇所・技術的負債 | [`docs/known-issues.md`](docs/known-issues.md) |
+| Mastodon API のどこまで実装したか | [`docs/mastodon-api-coverage.md`](docs/mastodon-api-coverage.md) |
+| ビルド・テスト・デプロイの方法 | [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md) |
+| 連合が動くことをどう確認するか | [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md) |
 
-- **構成**: Firebase Hosting + Cloud Functions (Gen2, Node 20) + Firestore。TypeScript / ESM。
-- **Firestoreルール**: クライアントからの読み書きは全面禁止(`firestore.rules`)。すべてCloud Functions経由(Admin SDK)でアクセスするサーバーレス設計。
-- **2つの独立したFunctions/ホスティングターゲット**:
-  - `activitypub` function → `hakatashi.com`: ActivityPubプロトコル本体(actor, inbox/outbox, webfinger, nodeinfo等)。`functions/src/activitypub.ts`。
-  - `mastodonApi` function → `mastodon.hakatashi.com`: Mastodon互換REST API + 独自OAuth2サーバー。`functions/src/mastodon/`。
-- **ActivityPubプロトコル実装**: 自前実装ではなく `activitypub-express`(apex)ライブラリに委譲。署名検証・JSON-LD処理・webfinger/nodeinfoルーティングなどを提供。
-- **ストレージ層**: apexの `IApexStore` インターフェースをFirestoreで実装した `functions/src/store.ts`(448行)。プロジェクトで最も手間のかかる部分であり、実装は完了している。
-  - FirestoreのドキュメントIDはURLをそのまま使えないため、`escapeFirestoreKey`/`unescapeFirestoreKey`(`functions/src/firebase.ts`)で `%`, `/`, `.` をエスケープしている。
-  - `objects`(actor/note等のオブジェクト)、`streams`(inbox/outboxのアクティビティ)、`deliveryQueue`(配送キュー)、`contexts`(JSON-LDコンテキストキャッシュ)の各Firestoreコレクションを使用。
-- **非正規化(denormalization)**: apexのストア抽象化ではフォロワー数・投稿数などの集計ができないため、Firestore Triggers(`functions/src/denormalizations.ts` の `onDocumentWritten`/`onDocumentCreated` on `streams/{streamId}`)で `userInfos` コレクションに非正規化している。`functions/bin/denormalizations.ts` は既存データを再計算するワンショットスクリプト。
-- **UI方針**: 自前のWeb UIは作らず、Mastodon互換API + 独自OAuth2サーバー(`@node-oauth/oauth2-server`)を用意し、Firebase Authentication(Googleログイン、`hakatasiloving@gmail.com` のみ許可、`functions/src/mastodon/index.ts` の `beforeUserCreate`)で認証させ、既存のMastodon Webクライアント「Elk」(`elk.zone`)をそのままフロントエンドとして使う設計。actorページへのアクセスもElkにリダイレクトされる。
+`third_party/` には仕様書と参考実装が submodule として置かれている
+(`activitypub` = W3C 仕様、`mastodon` / `mastodon_documentation` = Mastodon 本体とドキュメント、
+`minidon` / `minipub` = サーバーレス寄りの軽量実装、`rfc/` = WebFinger と acct URI の RFC)。
+**仕様の確認は推測ではなくこれらを読んで行うこと。**
 
-## 実装済みの機能
+## 作業のルール
 
-- apex経由のActor/Inbox/Outbox/Webfinger/Nodeinfo/HTTP署名検証
-- FirestoreバックエンドのStore全メソッド(オブジェクト、アクティビティ、コンテキストキャッシュ、配送キューのenqueue/dequeue/requeue)
-- Followの自動承認(受信したFollowに対して自動でAcceptを返信、`functions/src/activitypub.ts` の `apex-inbox` イベントリスナー)
-- 管理者(hakatashi)専用のactor作成・投稿作成エンドポイント(`X-Hakatashi-Token` ヘッダによるトークン認証、`/activitypub/createAdmin`, `/activitypub/createPost`)
-- Mastodon APIの一部: `/v1/instance`, `/v2/instance`, アカウントlookup, フォロワー一覧, タイムライン(public/home), preferences, OAuth認可コードフロー+トークン発行(`/oauth/authorize`, `/oauth/token`), クライアントアプリ登録(`/api/v1/apps`)
-- CI(`.github/workflows/main.yml`): mainへのpushでテスト・lint実行後、本番(`activitypub-firebase`)・開発(`activitypub-firebase-dev`)の両Firebaseプロジェクトへ自動デプロイ
+### ドキュメント
 
-## 未実装・既知の問題
+- **設計判断をしたら、実装を始める前に [`docs/adr/`](docs/adr/README.md) に ADR を追加する。**
+  1決定1ファイル、50行以内。既存の ADR は書き換えず、新しい ADR で supersede する。
+- このファイルに決定の理由を書かない。ADR にリンクする。
+- **進捗・TODO をドキュメントに書かない。** GitHub Issue に書く。
+- `docs/architecture.md` は現時点の姿だけを書く。履歴を残さない。
+- `docs/known-issues.md` は直したら消す。履歴は git が持っている。
 
-優先度が高い順。
+### GitHub Issue
 
-1. **配送(デリバリー)キューを処理するワーカーが存在しない(最重要)**。`deliveryEnqueue`/`deliveryDequeue`/`deliveryRequeue`はStoreに実装済みだが、apexはこれを内部の `setInterval` ループ(常駐プロセス前提)で処理する設計になっている。Cloud Functionsには常駐プロセスがなく、これを起動する `onSchedule` やCloud Tasks連携などの仕組みが一切ない。つまり投稿やAcceptを `deliveryQueue` に積んでも、実際にリモートのinboxへHTTP配送される経路が存在しない可能性が高い。これはapexの「常駐ワーカー」モデルとCloud Functionsの「サーバーレス」モデルの根本的なミスマッチであり、「完全サーバーレスでActivityPubを実装する」という当初目的の達成を妨げている中心的な課題。
-2. **Mastodon APIから投稿できない**。`POST /api/v1/statuses` が未実装(未定義ルートは501にフォールバック)。投稿は管理者トークン付きの `/activitypub/createPost` を手動で叩くしかなく、Elk等のMastodonクライアントからは投稿できない。
-3. **マルチユーザー/タイムライン分離が機能していない**。`functions/src/mastodon/api.ts` の `getAllNotes()` は全Noteを無条件に返しており、アクター単位のフィルタも公開範囲(visibility)判定もない。事実上シングルユーザー・シングルタイムライン設計。
-4. メディア添付・検索・通知・ストリーミングAPI・ブロック/ミュート/お気に入り/ブースト等のAPI連携が未実装(instance設定でも上限0で明示的に無効化されている)。
-5. テストが薄い(`functions/test/integration/` に2ファイル・177行のみ)。Mastodon API側のロジック(account/timeline構築、OAuthフロー)はほぼ未テスト。
+- 各フェーズに Epic Issue が1本あり、子 Issue をタスクリストで束ねている。
+- **子 Issue はそのフェーズに着手する時点で作る。** 全フェーズ分を先に作らない。
+- ラベルは `phase:N` と `area:*` を付ける。着手前に ADR が必要なら `needs-adr` を付ける。
 
-## 依存関係
+### コード
 
-- `activitypub-express`(apex): npm上の最終更新は2024-02(v4.4.2)。完全に放置はされていないが更新は緩やか。
-- Firebase Functions v4 / Firebase Admin v11 / Node 20 / TypeScript 4.9。いずれも現時点でやや古いバージョン帯なので、着手時にアップグレード検討の余地がある。
+- `main` への push で **本番と dev の両環境に自動デプロイされる。** 直接 push しない。
+- 秘密鍵・アクセストークン・`Authorization` ヘッダをログに出力しない。
+- Firestore へのクライアントからの直接アクセスは全面禁止されている。
+  すべて Cloud Functions 経由。
+- 連合の不具合はローカルでは再現しない。dev 環境で実際のサーバーと疎通確認する。
 
-## デプロイ構成
+## よく使うコマンド
 
-- `firebase.json` / `.firebaserc`: 本番プロジェクト `activitypub-firebase`、開発プロジェクト `activitypub-firebase-dev` の2環境。
-- ドメイン: 本番は `hakatashi.com`(ActivityPub)/`mastodon.hakatashi.com`(Mastodon API)、開発は `activitypub-dev.hakatashi.com`/`mastodon-dev.hakatashi.com`。
+```bash
+npm --prefix functions ci        # 依存のインストール
+npm --prefix functions run build # tsc
+npm --prefix functions run lint  # eslint
+npm --prefix functions test      # Firestore エミュレータ + jest
+```
+
+## 現在の最優先事項
+
+**配送(delivery)が実装されておらず、投稿も Accept も外部に届かない。**
+これが解決するまで、他の機能を積んでも動作しない。→ Epic
+[#6](https://github.com/hakatashi/activitypub-firebase/issues/6)、
+[ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)

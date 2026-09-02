@@ -1,0 +1,183 @@
+# 既知の問題
+
+2026-09-03 時点の調査で確認されたもの。**推測ではなく、コードを読んで確認した事実のみを記載する。**
+修正したらこのファイルから削除する(履歴は git に残る)。
+
+## 最重要
+
+### 配送ワーカーが存在しない
+
+`deliveryEnqueue` / `deliveryDequeue` / `deliveryRequeue` は `store.ts` に実装済みだが、
+apex はこれを常駐プロセスの `setInterval` ループで処理する設計であり、
+Cloud Functions 上でこのループを起動する仕組みが存在しない。
+**投稿や Accept をキューに積んでも、実際にリモートの inbox へ届く経路がない。**
+
+対処方針は [ADR-0003](adr/0003-delivery-via-cloud-tasks.md)。
+
+なお apex のループは仮に起動できたとしても Cloud Functions 上では正しく動かない。
+`isDelivering` フラグがモジュールグローバルで、`deliveryDequeue()` が reject すると
+`true` のまま残り、インスタンスが再利用されると以後永久に no-op になる
+(`activitypub-express/pub/federation.js:109-143`)。
+
+## セキュリティ
+
+### 秘密鍵と ID トークンが Cloud Logging に平文出力されている
+
+- `functions/src/store.ts:302-308` — `deliveryEnqueue` が `signingKey`(actor の秘密鍵 PEM)を
+  `logger.info` で丸ごと出力している。
+- `functions/src/mastodon/oauth.ts:154-158` — Firebase の `idToken` を出力している。
+- `functions/src/activitypub.ts:72-78` および `functions/src/mastodon/index.ts:19-28` —
+  全リクエストのヘッダを出力している(`Authorization` ヘッダを含む)。
+
+既存のログに秘密鍵が残っている可能性があるため、修正に加えて**鍵のローテーションを検討する**必要がある。
+
+### Update / Delete の同一オリジン検証がない
+
+ActivityPub 仕様は「受信サーバーは `Update` がそのオブジェクトを変更する権限を持つことを
+確認しなければならない(MUST)。最低限、`Update` とその `object` が同一オリジンであることを
+確認する」と定めている。HTTP 署名の検証は apex が行うが、
+**署名者のドメインと対象オブジェクトの `id` のドメインの照合は行われていない。**
+
+### SSRF 対策がない
+
+`Move` の `target` や `inReplyTo` などのリモート URL を無条件に fetch する経路があり、
+localhost や内部 IP への到達を防ぐ検証がない。
+
+## ActivityPub 仕様準拠
+
+### inbox の重複排除がない (MUST)
+
+仕様は「サーバーは inbox が返すアクティビティの重複排除を行わなければならない。
+重複排除はアクティビティの `id` を比較し、既に見たものを捨てることで行わなければならない」と
+定めている。shared inbox と個別 inbox への二重配送、および送信側のリトライで実際に発生する。
+
+### Inbox Forwarding (7.1.2) が未実装
+
+自分の投稿への他サーバーからの返信が、自分のフォロワーコレクションを `cc` に含む場合、
+それを自分のフォロワー全員へ転送しなければならない(MUST)。
+実装しないと、自分の返信だけがフォロワーに見えて相手の発言が見えない「幽霊リプライ」になる。
+
+### `as:Public` の表現ゆれに未対応
+
+JSON-LD の compact 結果によって、公開宛先は `Public` / `as:Public` /
+`https://www.w3.org/ns/activitystreams#Public` の3通りで届きうる。
+仕様は3つとも受け付けるべきとしている。
+
+### inbox の side effect が限定的
+
+apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` / `Undo` / `Update`。
+`Follow` は apex 側にケースがなく、`functions/src/activitypub.ts` の `apex-inbox` リスナーで
+自前実装している。`Move` は apex が完全に非対応。
+
+## コレクションとページネーション
+
+### コレクションのページングが常に1ページ目を返す
+
+apex は次ページのカーソルを `stream[stream.length - 1]?._id` から取得する
+(`activitypub-express/pub/collection.js:72`)が、Firestore Store の `getStream` は
+`doc.data()` をそのまま返すため **`_id` フィールドが存在しない。**
+カーソルは常に `undefined` になり、outbox / followers などは何ページ目を要求しても
+1ページ目が返る。
+
+### `getStream` のカーソル方向が逆
+
+`functions/src/store.ts:157-158` は `after` を `documentId() > after` で絞る一方、
+`:178` で `documentId(), 'desc'` の降順に並べている。降順カーソルなら比較は `<` であるべき。
+
+### Firestore インデックス定義が実際のクエリと合っていない
+
+`firestore.indexes.json` の `streams` インデックスはフィールド名が `_id` になっている。
+これは MongoDB 実装から移植した際の残骸で、実際のクエリ(`__name__` の降順)をカバーしていない。
+
+以下のインデックスも不足している。
+
+- `deliveryQueue`: `after` ASC + `__name__` ASC(`deliveryDequeue`)
+- `streams`: `type` + `object` array-contains(`getFollowers`)
+- `streams`: `_meta.collection` + `type` + `_meta.objectType`(`getFollowers`)
+- `streams`: `id` + `actor` array-contains(`removeActivity`)
+
+## Store の未実装メソッド
+
+`findActivityByCollectionAndObjectId` と `findActivityByCollectionAndActorId` が
+`functions/src/store.ts` に実装されておらず、基底クラスの `throw new Error('Not implemented')` が生きる。
+
+`activitypub-express/net/validators.js:332,339,346` が outbox 経由の `Undo`(Follow / Block)と
+`Reject` の検証で使うため、**Mastodon API からフォロー解除を実装した時点で落ちる。**
+
+## Firestore クエリの上限
+
+`functions/src/store.ts:72` の `getObjects` と `functions/src/mastodon/api.ts:133` の
+`userIdsToAcconts` は Firestore の `in` クエリを使っているが、`in` は最大30件までしか指定できない。
+フォロワーが30人を超えると破綻する。
+
+## Mastodon API
+
+### タイムラインが全 Note を無条件に返す
+
+`functions/src/mastodon/api.ts` の `getAllNotes()` は `type == 'Note'` の全オブジェクトを
+上限なしで取得して返す。actor フィルタも公開範囲(visibility)判定もページネーションもない。
+`/v1/timelines/public`、`/v1/timelines/home`、`/v1/accounts/:id/statuses` がすべてこれを呼んでいる。
+
+→ [ADR-0005](adr/0005-single-user-multi-ready-data-model.md)
+
+### Status ID がランダムで時系列順にならない
+
+`noteObjectToStatus` は Note の IRI 末尾(Firestore の自動生成 ID)を Status ID に使っている。
+これはランダムなので、ID の大小比較で成立している Mastodon API のページネーションが実装できない。
+
+→ [ADR-0006](adr/0006-mastodon-api-id-scheme.md)
+
+### 投稿できない
+
+`POST /api/v1/statuses` が未実装。投稿は管理者トークン付きで `/activitypub/createPost` を
+手動で叩くしかない。
+
+### 未実装ルートが 501 を返す
+
+`functions/src/mastodon/api.ts` の末尾で未定義ルートをすべて 501 にフォールバックしている。
+クライアントが起動時に叩く `custom_emojis` / `filters` / `announcements` / `lists` などが
+501 を返すと、クライアントが例外を投げて起動に失敗しうる。空配列を返すスタブが必要。
+
+### Status エンティティの値が固定値
+
+`noteObjectToStatus` は `replies_count` / `reblogs_count` / `favourites_count` を 0 固定、
+`visibility` を `'public'` 固定、`language` を `'ja'` 固定、`in_reply_to_id` を `null` 固定で返す。
+
+### instance 情報が古い/サンプルのまま
+
+`functions/src/mastodon/instanceInformation.ts` の `version` が `'4.0.0'` で、
+Mastodon 4.3.0 で追加された `api_versions` を持たない。
+`contact.account.url` が `https://mastodon.social/@Gargron` のままなど、
+サンプル由来の値が残っている。
+
+### OAuth トークンを失効できない
+
+`functions/src/mastodon/oauth2Model.ts` の `revokeToken` が未実装で、
+`POST /oauth/revoke` も 501 を返す。期限切れトークンを掃除する仕組みもない。
+
+## その他
+
+### `deliveryRequeue` のバックオフが機能していない
+
+`functions/src/store.ts:379` は `10 ** delivery.attempt++` と後置インクリメントを使っているため、
+指数に使われるのは増加**前**の値になる。初回リトライの間隔が 1ms になる。
+([ADR-0003](adr/0003-delivery-via-cloud-tasks.md) により、このメソッド自体が廃止される)
+
+### actor ルートにハンドラが二重登録されている
+
+`functions/src/activitypub.ts:99-108` で、同じ `routes.actor` に apex のハンドラと
+Elk へのリダイレクトハンドラを続けて登録している。apex が `next()` を呼ばないため
+後者は到達しない。ブラウザからのアクセスを Elk に飛ばす意図と思われるが機能していない。
+
+### `escapeFirestoreKey` と `unescapeFirestoreKey` が非対称
+
+`functions/src/firebase.ts` の escape は `%`, `/`, `.` の3文字のみを置換するが、
+unescape は `decodeURIComponent` を使っている。元の URL に `%20` などが含まれると
+往復で壊れる。
+
+### テストが薄い
+
+`functions/test/integration/` に2ファイル・177行のみ。ユニットテストはゼロ。
+Store の各メソッド、OAuth2 フロー、Mastodon のエンティティ変換、
+`apex-inbox` の自動 Accept、`express.response.send` パッチ、
+Firestore Trigger のいずれもテストされていない。
