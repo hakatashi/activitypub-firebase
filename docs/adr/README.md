@@ -35,3 +35,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0007](0007-no-streaming-api.md) | ストリーミング API は実装しない | Accepted |
 | [0008](0008-two-domain-split.md) | ActivityPub と Mastodon API を2つのドメインに分ける | Accepted |
 | [0009](0009-rotate-actor-key-now.md) | actor の秘密鍵を Phase 0 のうちにローテーションする | Accepted |
+| [0010](0010-pin-activitypub-express-4.4.1.md) | activitypub-express を 4.4.1 に固定する | Accepted |
