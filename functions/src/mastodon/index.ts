@@ -5,6 +5,7 @@ import {beforeUserCreated, HttpsError} from 'firebase-functions/v2/identity';
 import {apex} from '../activitypub.js';
 import {db, domain, escapeFirestoreKey} from '../firebase.js';
 import {UserInfos} from '../schema.js';
+import {pickSafeHeaders, redactSensitiveBody} from '../utils.js';
 import apiRouter from './api.js';
 import oauthRouter from './oauth.js';
 
@@ -21,8 +22,8 @@ app.use((req, res, next) => {
 		type: 'request',
 		method: req.method,
 		path: req.path,
-		headers: req.headers,
-		body: req.body,
+		headers: pickSafeHeaders(req.headers),
+		body: redactSensitiveBody(req.body),
 	});
 	next();
 });

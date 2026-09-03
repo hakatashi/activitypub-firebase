@@ -5,6 +5,7 @@ import firebase from 'firebase-admin';
 import {logger} from 'firebase-functions/v2';
 import fetch from 'node-fetch';
 import {projectId} from '../firebase.js';
+import {redactSensitiveBody} from '../utils.js';
 import {Oauth2Model} from './oauth2Model.js';
 
 const getFirebaseWebapps = async (accessToken: string) => {
@@ -153,8 +154,7 @@ router.post('/authorize', async (req, res) => {
 	const authUser = await firebase.auth().verifyIdToken(idToken);
 	logger.info({
 		type: 'oauthAuthorizePost',
-		idToken,
-		authUser,
+		uid: authUser.uid,
 	});
 
 	try {
@@ -171,8 +171,8 @@ router.post('/authorize', async (req, res) => {
 
 		logger.info({
 			type: 'oauthAuthorizePost',
-			token,
-			response: response.body,
+			token: redactSensitiveBody(token),
+			response: redactSensitiveBody(response.body),
 		});
 
 		// eslint-disable-next-line require-atomic-updates
@@ -207,8 +207,8 @@ router.post('/token', async (req, res) => {
 
 		logger.info({
 			type: 'oauthToken',
-			token,
-			response: response.body,
+			token: redactSensitiveBody(token),
+			response: redactSensitiveBody(response.body),
 		});
 
 		res.set(response.headers);

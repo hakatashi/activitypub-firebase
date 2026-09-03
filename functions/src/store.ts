@@ -303,7 +303,6 @@ export default class Store extends IApexStore {
 			type: 'deliveryEnqueue',
 			actorId,
 			addresses,
-			signingKey,
 			body,
 		});
 
@@ -328,7 +327,7 @@ export default class Store extends IApexStore {
 
 		logger.info({
 			type: 'deliveryEnqueueResult',
-			deliveries,
+			deliveries: deliveries.map((delivery) => ({...delivery, signingKey: undefined})),
 		});
 
 		return true;
