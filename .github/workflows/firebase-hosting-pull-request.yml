@@ -44,7 +44,7 @@ jobs:
           - id: activitypub-firebase-dev
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: FirebaseExtended/action-hosting-deploy@v0
