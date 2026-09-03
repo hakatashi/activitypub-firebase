@@ -36,18 +36,23 @@ app.get('/nodeinfo/:version', nodeinfoCors, apex, apex.net.nodeInfo.get);
 export const mastodonApi = https.onRequest(app);
 
 export const beforeUserCreate = beforeUserCreated(async (user) => {
-	if (user.additionalUserInfo?.providerId !== 'google.com' || user.data.email !== 'hakatasiloving@gmail.com') {
+	if (
+		!user.data ||
+		user.additionalUserInfo?.providerId !== 'google.com' ||
+		user.data.email !== 'hakatasiloving@gmail.com'
+	) {
 		throw new HttpsError('permission-denied', 'Only hakatashi can create new account');
 	}
 
 	const actorId = `https://${domain}/activitypub/u/hakatashi`;
+	const {uid} = user.data;
 
 	await db.runTransaction(async (transaction) => {
 		const nextUserId = (await transaction.get(UserInfos.count())).data().count + 1;
 
 		transaction.set(UserInfos.doc(escapeFirestoreKey(actorId)), {
 			id: nextUserId.toString(),
-			uid: user.data.uid,
+			uid,
 			locked: false,
 			bot: false,
 			created_at: new Date().toISOString(),

@@ -114,7 +114,7 @@ const instanceV1: CamelToSnake<mastodon.v1.Instance> = {
 		statuses: {
 			max_characters: instanceV2.configuration.statuses.max_characters,
 			max_media_attachments: instanceV2.configuration.statuses.max_media_attachments,
-			characters_reserved_per_url: instanceV2.configuration.statuses.characters_reserved_per_url.toString(),
+			characters_reserved_per_url: instanceV2.configuration.statuses.characters_reserved_per_url,
 		},
 		media_attachments: instanceV2.configuration.media_attachments,
 		polls: instanceV2.configuration.polls,

@@ -4,8 +4,8 @@ type CamelToSnakeCase<S extends string> =
 		S;
 
 type CamelToSnakeList<T extends object> =
-	T extends Array<infer E> ?
-		(E extends object ? Array<CamelToSnake<E>> : T) :
+	T extends (infer E)[] ?
+		(E extends object ? CamelToSnake<E>[] : T) :
 		CamelToSnake<T>;
 
 export type CamelToSnake<T extends object> = {
