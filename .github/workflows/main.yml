@@ -33,6 +33,7 @@ jobs:
     needs: [test, lint]
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         project:
           - id: activitypub-firebase
@@ -57,6 +58,7 @@ jobs:
     needs: [test, lint]
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         project:
           - id: activitypub-firebase
@@ -71,7 +73,7 @@ jobs:
       - name: Install dependencies
         run: npm --prefix functions ci
       - name: Deploy to Firebase
-        uses: w9jds/firebase-action@master
+        uses: w9jds/firebase-action@v15.29.0
         with:
           args: deploy --only functions,firestore
         env:
