@@ -123,6 +123,27 @@ describe('Store', () => {
 			const stream = await store.getStream('https://example.com/inbox', 2, null);
 			expect(stream).toHaveLength(2);
 		});
+
+		test('passing a non-empty blockList currently makes the query fail', async () => {
+			// Firestore は not-in フィルタを使う場合、最初の orderBy をそのフィールドに
+			// することを要求する。getStream は orderBy を常に documentId() のみにしているため、
+			// blockList を渡すと "order by clause cannot contain more fields after the key" で
+			// クエリ自体が失敗する。つまり blockList 引数は現状まったく機能しない。
+			// docs/known-issues.md の「blockList を渡すと getStream が例外を投げる」参照。
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-someone',
+				type: 'Create',
+				actor: 'https://example.com/users/someone',
+				_meta: {collection: ['https://example.com/inbox']},
+			});
+
+			await expect(store.getStream(
+				'https://example.com/inbox',
+				null,
+				null,
+				['https://example.com/users/blocked'],
+			)).rejects.toThrow('order by clause cannot contain more fields after the key');
+		});
 	});
 
 	describe('removeActivity', () => {

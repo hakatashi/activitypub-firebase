@@ -261,4 +261,4 @@ express.response.send = function (body) {
 
 export const activitypub = https.onRequest({secrets: [hakatashiToken]}, app);
 
-export {apex};
+export {apex, app};
