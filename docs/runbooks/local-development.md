@@ -25,7 +25,8 @@ npm --prefix functions run lint       # eslint
 
 ## テスト
 
-Firestore エミュレータを起動した上で jest を実行する。npm script が両方をまとめている。
+Firestore エミュレータを起動した上で Vitest を実行する。npm script が両方をまとめている。
+テストランナーの選定理由は [ADR-0011](../adr/0011-vitest-over-jest.md) を参照。
 
 ```bash
 npm --prefix functions test
@@ -38,15 +39,23 @@ npm --prefix functions run test:watch
 - `GCLOUD_PROJECT=activitypub-firebase-dev` を設定する。
   これにより `functions/src/firebase.ts` の分岐が dev ドメイン
   (`activitypub-dev.hakatashi.com`)を返す
-- `--experimental-vm-modules` を付けて jest を起動(ESM のため)
-- `--runInBand` で直列実行。テストが Firestore を共有するため必須
+- `vitest.config.ts` の `test.fileParallelism: false` でテストファイルを直列実行する。
+  テストが Firestore エミュレータを共有し、各テストが全データを消去するため必須
 
-各テストの `afterEach` でエミュレータの
-`DELETE /emulator/v1/projects/{id}/databases/(default)/documents` を叩き、全データを消去している。
-新しいテストを書く際もこの方式に合わせること。
+### ディレクトリ構成
 
-`jest.config.ts` は `ts-jest/presets/default-esm` を使い、`moduleNameMapper` で
-`./x.js` → `./x` を解決している(ESM の拡張子付き import のため)。
+- `test/unit/` — 外部 I/O のない純粋関数、または Firestore エミュレータのみに依存するテスト
+  (`store.ts` の各メソッドなど)。ネットワークや実際の ActivityPub 連合には依存しない。
+- `test/integration/` — Express アプリ(`activitypub` / `mastodonApi`)に対して
+  `supertest` でリクエストを送るテスト。
+
+どちらも Firestore エミュレータを使う場合は、各テストの `afterEach` でエミュレータの
+`DELETE /emulator/v1/projects/{id}/databases/(default)/documents` を叩き、全データを消去する。
+新しいテストを書く際もこの方式に合わせること(`test/unit/store.spec.ts` や
+`test/integration/*.spec.ts` を参照)。
+
+`vitest.config.ts` は Vite のネイティブな TypeScript/ESM 変換を使うため、
+Jest 時代のような `moduleNameMapper` での `./x.js` → `./x` 解決は不要。
 
 ## エミュレータでの手動確認
 

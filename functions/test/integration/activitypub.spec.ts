@@ -1,5 +1,5 @@
-import {describe, expect, test, afterEach, jest, beforeEach} from '@jest/globals';
 import request from 'supertest';
+import {describe, expect, test, afterEach, beforeEach} from 'vitest';
 import {activitypub, apex} from '../../src/activitypub.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -8,8 +8,6 @@ const projectId = process.env.GCLOUD_PROJECT;
 const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 
 describe('activitypub', () => {
-	jest.setTimeout(10000);
-
 	beforeEach(() => {
 		if (firestoreHost === undefined || projectId === undefined) {
 			throw new Error('Firestore emulator is not running');
