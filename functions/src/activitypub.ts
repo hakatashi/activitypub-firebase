@@ -5,6 +5,7 @@ import express from 'express';
 import {https, logger, params} from 'firebase-functions/v2';
 import {domain, mastodonDomain} from './firebase.js';
 import Store from './store.js';
+import {pickSafeHeaders, redactSensitiveBody} from './utils.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 
@@ -73,8 +74,8 @@ app.use((req, res, next) => {
 		type: 'request',
 		method: req.method,
 		path: req.path,
-		headers: req.headers,
-		body: req.body,
+		headers: pickSafeHeaders(req.headers),
+		body: redactSensitiveBody(req.body),
 	});
 
 	// Required to make the HTTP signature verification work
