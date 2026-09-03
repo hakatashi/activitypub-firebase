@@ -1,6 +1,6 @@
 # 既知の問題
 
-2026-09-03 時点の調査で確認されたもの。**推測ではなく、コードを読んで確認した事実のみを記載する。**
+2026-09-04 時点の調査で確認されたもの。**推測ではなく、コードを読んで確認した事実のみを記載する。**
 修正したらこのファイルから削除する(履歴は git に残る)。
 
 ## 最重要
@@ -20,16 +20,6 @@ Cloud Functions 上でこのループを起動する仕組みが存在しない�
 (`activitypub-express/pub/federation.js:109-143`)。
 
 ## セキュリティ
-
-### 秘密鍵と ID トークンが Cloud Logging に平文出力されている
-
-- `functions/src/store.ts:302-308` — `deliveryEnqueue` が `signingKey`(actor の秘密鍵 PEM)を
-  `logger.info` で丸ごと出力している。
-- `functions/src/mastodon/oauth.ts:154-158` — Firebase の `idToken` を出力している。
-- `functions/src/activitypub.ts:72-78` および `functions/src/mastodon/index.ts:19-28` —
-  全リクエストのヘッダを出力している(`Authorization` ヘッダを含む)。
-
-既存のログに秘密鍵が残っている可能性があるため、修正に加えて**鍵のローテーションを検討する**必要がある。
 
 ### Update / Delete の同一オリジン検証がない
 

@@ -103,5 +103,6 @@ firebase deploy --only functions,firestore -P dev    # dev プロジェクト
 `HAKATASHI_TOKEN` は Secret Manager で管理されている
 (`functions/src/activitypub.ts` の `params.defineSecret`)。
 
-**ログに秘密鍵やトークンを出力しないこと。** 現状いくつかの箇所で出力されており、
-修正対象になっている(Issue #11)。
+**ログに秘密鍵やトークンを出力しないこと。** リクエストヘッダは `functions/src/utils.ts` の
+`pickSafeHeaders` で許可リスト方式にし、レスポンスボディは `redactSensitiveBody` で
+機微なフィールドをマスクしている。新しいログ出力を追加する際もこの方式に合わせること。
