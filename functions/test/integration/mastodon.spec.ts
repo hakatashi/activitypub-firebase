@@ -1,13 +1,11 @@
-import {describe, expect, test, afterEach, jest, beforeEach} from '@jest/globals';
 import request from 'supertest';
+import {describe, expect, test, afterEach, beforeEach} from 'vitest';
 import {mastodonApi as mastodon} from '../../src/mastodon/index.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
 
 describe('mastodon', () => {
-	jest.setTimeout(10000);
-
 	beforeEach(() => {
 		if (firestoreHost === undefined || projectId === undefined) {
 			throw new Error('Firestore emulator is not running');

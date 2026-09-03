@@ -169,15 +169,15 @@ Mastodon 4.3.0 で追加された `api_versions` を持たない。
 Elk へのリダイレクトハンドラを続けて登録している。apex が `next()` を呼ばないため
 後者は到達しない。ブラウザからのアクセスを Elk に飛ばす意図と思われるが機能していない。
 
-### `escapeFirestoreKey` と `unescapeFirestoreKey` が非対称
-
-`functions/src/firebase.ts` の escape は `%`, `/`, `.` の3文字のみを置換するが、
-unescape は `decodeURIComponent` を使っている。元の URL に `%20` などが含まれると
-往復で壊れる。
-
 ### テストが薄い
 
-`functions/test/integration/` に2ファイル・177行のみ。ユニットテストはゼロ。
-Store の各メソッド、OAuth2 フロー、Mastodon のエンティティ変換、
-`apex-inbox` の自動 Accept、`express.response.send` パッチ、
-Firestore Trigger のいずれもテストされていない。
+Store の一部メソッド・純粋関数(`Counter`、Firestore キーのエスケープ)・
+Mastodon エンティティ変換(`actorObjectToAccount` / `noteObjectToStatus`)は
+`functions/test/unit/` でカバーされた([Issue #14](https://github.com/hakatashi/activitypub-firebase/issues/14))。
+一方で以下は未テストのまま。
+
+- OAuth2 フロー全体
+- `apex-inbox` の Follow 自動 Accept
+- `express.response.send` のモンキーパッチ
+- Firestore Trigger(`denormalizations.ts`)
+- `getFollowers`、`getStream` のページネーション・ブロックリスト絡み

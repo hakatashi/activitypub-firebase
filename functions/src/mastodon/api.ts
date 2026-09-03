@@ -33,7 +33,10 @@ const externalUserInfo: UserInfo = {
 	uid: null,
 };
 
-const actorObjectToAccount = async (actorObject: APActor, userInfo: UserInfo = externalUserInfo): Promise<CamelToSnake<mastodon.v1.Account>> => {
+export const actorObjectToAccount = async (
+	actorObject: APActor,
+	userInfo: UserInfo = externalUserInfo,
+): Promise<CamelToSnake<mastodon.v1.Account>> => {
 	const actor = await apex.toJSONLD(actorObject);
 	const username = actor?.preferredUsername ?? last(actor?.id?.split('/'));
 	const actorDomain = new URL(actor.id).host;
@@ -65,7 +68,7 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 	return actorObjectToAccount(object, userInfoDoc.data()!);
 };
 
-const noteObjectToStatus = (note: APNote, account: CamelToSnake<mastodon.v1.Account>): CamelToSnake<mastodon.v1.Status> => {
+export const noteObjectToStatus = (note: APNote, account: CamelToSnake<mastodon.v1.Account>): CamelToSnake<mastodon.v1.Status> => {
 	const id = note.id!.split('/').pop()!;
 	return {
 		id,
