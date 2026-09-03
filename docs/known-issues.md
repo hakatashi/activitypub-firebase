@@ -79,6 +79,17 @@ apex は次ページのカーソルを `stream[stream.length - 1]?._id` から�
 カーソルは常に `undefined` になり、outbox / followers などは何ページ目を要求しても
 1ページ目が返る。
 
+### `blockList` を渡すと `getStream` が例外を投げる
+
+`functions/src/store.ts` の `getStream` は `blockList` が指定されると
+`.where('actor', 'not-in', blockList)` を追加するが、`orderBy` は常に
+`FieldPath.documentId()` のみ。Firestore は `not-in` を使う場合、最初の `orderBy` を
+そのフィールド(`actor`)にすることを要求するため、この組み合わせは
+`3 INVALID_ARGUMENT: order by clause cannot contain more fields after the key` で
+必ず失敗する。**ブロックリスト機能は現状まったく動作しない。**
+([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み、
+[Issue #31](https://github.com/hakatashi/activitypub-firebase/issues/31))
+
 ### `getStream` のカーソル方向が逆
 
 `functions/src/store.ts:157-158` は `after` を `documentId() > after` で絞る一方、
@@ -169,15 +180,3 @@ Mastodon 4.3.0 で追加された `api_versions` を持たない。
 Elk へのリダイレクトハンドラを続けて登録している。apex が `next()` を呼ばないため
 後者は到達しない。ブラウザからのアクセスを Elk に飛ばす意図と思われるが機能していない。
 
-### テストが薄い
-
-Store の一部メソッド・純粋関数(`Counter`、Firestore キーのエスケープ)・
-Mastodon エンティティ変換(`actorObjectToAccount` / `noteObjectToStatus`)は
-`functions/test/unit/` でカバーされた([Issue #14](https://github.com/hakatashi/activitypub-firebase/issues/14))。
-一方で以下は未テストのまま。
-
-- OAuth2 フロー全体
-- `apex-inbox` の Follow 自動 Accept
-- `express.response.send` のモンキーパッチ
-- Firestore Trigger(`denormalizations.ts`)
-- `getFollowers`、`getStream` のページネーション・ブロックリスト絡み

@@ -180,7 +180,7 @@ const getInboxId = (actor: APActor) => {
 	throw new Error('inbox is not string');
 };
 
-const getFollowers = async (actor: APActor) => {
+export const getFollowers = async (actor: APActor) => {
 	const followStreams = await db.collection('streams')
 		.where('type', '==', 'Follow')
 		.where('object', 'array-contains', actor.id)
