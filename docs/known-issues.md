@@ -87,7 +87,8 @@ apex は次ページのカーソルを `stream[stream.length - 1]?._id` から�
 そのフィールド(`actor`)にすることを要求するため、この組み合わせは
 `3 INVALID_ARGUMENT: order by clause cannot contain more fields after the key` で
 必ず失敗する。**ブロックリスト機能は現状まったく動作しない。**
-([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み)
+([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み、
+[Issue #31](https://github.com/hakatashi/activitypub-firebase/issues/31))
 
 ### `getStream` のカーソル方向が逆
 
