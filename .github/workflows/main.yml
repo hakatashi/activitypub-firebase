@@ -3,6 +3,7 @@ name: Deploy
   push:
     branches:
       - main
+  pull_request:
 jobs:
   test:
     name: Test
@@ -12,6 +13,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.x
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
       - name: Install Dependencies
         run: npm --prefix functions ci
       - name: Run test
@@ -31,6 +36,7 @@ jobs:
   deploy-hosting:
     name: Deploy to Firebase Hosting
     needs: [test, lint]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -56,6 +62,7 @@ jobs:
   deploy-firebase:
     name: Deploy to Firebase except for Hosting
     needs: [test, lint]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
