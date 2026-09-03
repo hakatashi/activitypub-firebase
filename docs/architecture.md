@@ -4,7 +4,7 @@
 
 ## 全体構成
 
-Firebase Hosting + Cloud Functions (Gen2, Node 20) + Firestore。TypeScript / ESM。
+Firebase Hosting + Cloud Functions (Gen2, Node 22) + Firestore。TypeScript / ESM。
 実装は `functions/` 以下にある。`public/` は個人サイト hakatashi.com の git submodule であり、
 本プロジェクトのコードではない(→ [ADR-0008](adr/0008-two-domain-split.md))。
 

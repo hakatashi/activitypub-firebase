@@ -1,3 +1,4 @@
+import type {EventEmitter} from 'node:events';
 // @ts-expect-error: Not typed
 import ActivitypubExpress from 'activitypub-express';
 import cors from 'cors';
@@ -172,7 +173,7 @@ app.get('/activitypub/publishProfileUpdate', adminOnly, async (req: express.Requ
 	res.json('ok');
 });
 
-app.on('apex-outbox', (message: any) => {
+(app as unknown as EventEmitter).on('apex-outbox', (message: any) => {
 	logger.info({type: 'outbox', message});
 
 	if (message.activity.type === 'Create') {
@@ -180,7 +181,7 @@ app.on('apex-outbox', (message: any) => {
 	}
 });
 
-app.on('apex-inbox', async (message: any) => {
+(app as unknown as EventEmitter).on('apex-inbox', async (message: any) => {
 	logger.info({type: 'inbox', message});
 
 	// Auto-accept follow

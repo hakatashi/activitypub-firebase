@@ -1,4 +1,4 @@
-import assert from 'assert';
+import assert from 'node:assert';
 import firebase from 'firebase-admin';
 import {onDocumentWritten, onDocumentCreated} from 'firebase-functions/v2/firestore';
 import {db, escapeFirestoreKey} from './firebase.js';

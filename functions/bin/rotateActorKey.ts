@@ -1,6 +1,6 @@
-import assert from 'assert';
-import crypto from 'crypto';
-import {promisify} from 'util';
+import assert from 'node:assert';
+import crypto from 'node:crypto';
+import {promisify} from 'node:util';
 import Store from '../src/store.js';
 
 // ADR-0009: 配送が未実装の Phase 0 のうちに actor の秘密鍵をローテーションする、使い捨てスクリプト。

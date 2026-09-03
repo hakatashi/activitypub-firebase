@@ -284,7 +284,7 @@ export default class Store extends IApexStore {
 			}
 			const activityData = activityDoc.data()!;
 			if (remove) {
-				delete activityData._meta[key];
+				Reflect.deleteProperty(activityData._meta, key);
 			} else {
 				activityData._meta[key] = value;
 			}

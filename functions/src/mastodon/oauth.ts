@@ -28,7 +28,7 @@ const getFirebaseWebappConfig = async (accessToken: string, appId: string) => {
 		},
 	});
 
-	const data = (await response.json()) as {[key: string]: any};
+	const data = (await response.json()) as Record<string, any>;
 
 	return data;
 };

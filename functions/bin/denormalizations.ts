@@ -1,4 +1,4 @@
-import assert from 'assert';
+import assert from 'node:assert';
 import {countBy} from 'lodash-es';
 import {db, unescapeFirestoreKey} from '../src/firebase.js';
 import {UserInfos} from '../src/schema.js';
