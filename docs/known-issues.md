@@ -95,18 +95,6 @@ apex は次ページのカーソルを `stream[stream.length - 1]?._id` から�
 `functions/src/store.ts:157-158` は `after` を `documentId() > after` で絞る一方、
 `:178` で `documentId(), 'desc'` の降順に並べている。降順カーソルなら比較は `<` であるべき。
 
-### Firestore インデックス定義が実際のクエリと合っていない
-
-`firestore.indexes.json` の `streams` インデックスはフィールド名が `_id` になっている。
-これは MongoDB 実装から移植した際の残骸で、実際のクエリ(`__name__` の降順)をカバーしていない。
-
-以下のインデックスも不足している。
-
-- `deliveryQueue`: `after` ASC + `__name__` ASC(`deliveryDequeue`)
-- `streams`: `type` + `object` array-contains(`getFollowers`)
-- `streams`: `_meta.collection` + `type` + `_meta.objectType`(`getFollowers`)
-- `streams`: `id` + `actor` array-contains(`removeActivity`)
-
 ## Store の未実装メソッド
 
 `findActivityByCollectionAndObjectId` と `findActivityByCollectionAndActorId` が
