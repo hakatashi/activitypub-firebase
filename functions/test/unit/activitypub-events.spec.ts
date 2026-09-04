@@ -2,6 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import {afterEach, describe, expect, test, vi} from 'vitest';
 import {apex, app} from '../../src/activitypub.js';
+import {runPostWorkBeforeSend} from '../../src/postWork.js';
 
 describe('apex-inbox event: Follow auto-accept', () => {
 	afterEach(() => {
@@ -61,13 +62,13 @@ describe('apex-inbox event: Follow auto-accept', () => {
 	});
 });
 
-// express.response.send は src/activitypub.ts の読み込み時に一度だけモンキーパッチされ、
-// そのプロセス内のすべての express アプリのレスポンスに影響する。
-// そのためテスト専用の express アプリを組んでも、実際に patch された挙動を検証できる。
-describe('express.response.send patch (apex postWork / event dispatch)', () => {
+// ADR-0013: postWork の実行はグローバルなプロトタイプ書き換えではなく、
+// リクエストごとに res.send を差し替えるミドルウェアで行う。
+describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', () => {
 	test('runs apex postWork tasks in order before the body is actually sent', async () => {
 		const order: string[] = [];
 		const testApp = express();
+		testApp.use(runPostWorkBeforeSend);
 		testApp.get('/test', (req, res) => {
 			res.locals.apex = {
 				postWork: [
@@ -95,6 +96,7 @@ describe('express.response.send patch (apex postWork / event dispatch)', () => {
 	test('dispatches apexLocal.eventMessage to listeners of apexLocal.eventName on the owning app', async () => {
 		const testApp = express();
 		const received: any[] = [];
+		testApp.use(runPostWorkBeforeSend);
 		testApp.on('custom-apex-event', (message: any) => {
 			received.push(message);
 		});
@@ -113,8 +115,36 @@ describe('express.response.send patch (apex postWork / event dispatch)', () => {
 		expect(received).toEqual([{foo: 'bar'}]);
 	});
 
+	test('drains postWork and eventName so that apex onFinished does not run them twice', async () => {
+		const task = vi.fn();
+		const testApp = express();
+		const received: any[] = [];
+		let apexLocal: any;
+		testApp.use(runPostWorkBeforeSend);
+		testApp.on('custom-apex-event', (message: any) => {
+			received.push(message);
+		});
+		testApp.get('/test', (req, res) => {
+			apexLocal = {
+				postWork: [task],
+				eventName: 'custom-apex-event',
+				eventMessage: {foo: 'bar'},
+			};
+			res.locals.apex = apexLocal;
+			res.send('done');
+		});
+
+		await request(testApp).get('/test');
+
+		expect(task).toHaveBeenCalledTimes(1);
+		expect(received).toHaveLength(1);
+		expect(apexLocal.postWork).toEqual([]);
+		expect(apexLocal.eventName).toBeNull();
+	});
+
 	test('still sends the response even if a postWork task throws', async () => {
 		const testApp = express();
+		testApp.use(runPostWorkBeforeSend);
 		testApp.get('/test', (req, res) => {
 			res.locals.apex = {
 				postWork: [
@@ -134,6 +164,7 @@ describe('express.response.send patch (apex postWork / event dispatch)', () => {
 
 	test('sends normally when res.locals.apex is not set', async () => {
 		const testApp = express();
+		testApp.use(runPostWorkBeforeSend);
 		testApp.get('/test', (req, res) => {
 			res.status(200).send('plain');
 		});
@@ -142,5 +173,20 @@ describe('express.response.send patch (apex postWork / event dispatch)', () => {
 
 		expect(response.status).toBe(200);
 		expect(response.text).toBe('plain');
+	});
+
+	test('does not affect apps without the middleware (no global monkey patch)', async () => {
+		const task = vi.fn();
+		const testApp = express();
+		testApp.get('/test', (req, res) => {
+			res.locals.apex = {postWork: [task], eventName: null};
+			res.status(200).send('untouched');
+		});
+
+		const response = await request(testApp).get('/test');
+
+		expect(response.status).toBe(200);
+		expect(response.text).toBe('untouched');
+		expect(task).not.toHaveBeenCalled();
 	});
 });
