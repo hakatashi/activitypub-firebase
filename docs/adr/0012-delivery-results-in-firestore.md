@@ -1,0 +1,62 @@
+# ADR-0012: 配送結果を `deliveries` コレクションに記録する
+
+- **Status:** Accepted
+- **Date:** 2026-09-04
+
+## 背景
+
+[ADR-0003](0003-delivery-via-cloud-tasks.md) は「配送の結果を Firestore に記録し、後から
+確認できるようにする」とだけ決め、具体的なスキーマは未決定だった([Issue #18](https://github.com/hakatashi/activitypub-firebase/issues/18))。
+配送のリトライ自体は Cloud Tasks の `retryConfig` に委ねているため(ADR-0003)、
+`third_party/minipub` のような「受信者ごとの状態機械」を配送の駆動に使う必要はない。
+必要なのは可観測性(失敗の一覧)と、手動再送のトリガーだけ。
+
+## 決定
+
+**`deliveries` コレクションに、アクティビティ×宛先1件につき1ドキュメントを記録する。**
+ドキュメント ID は `activityId` と `address` をスペースで連結してから `escapeFirestoreKey`
+に通した文字列とし、同じ組み合わせへの再配送では既存ドキュメントを上書きする
+(履歴ではなく最新状態のみ保持)。
+
+フィールド: `activityId` / `actorId` / `inbox`(=address)/ `body`(配送した公開 JSON-LD、
+署名やヘッダーは含まない)/ `status`(`success` | `permanent_failure` | `retrying`)/
+`attempts`(Cloud Tasks の `request.retryCount + 1`)/ `statusCode` / `error`(メッセージのみ)/
+`updatedAt`。
+
+`functions/src/tasks.ts` の `deliveryTask` が `apex.deliver` の結果(2xx / 4xx 恒久失敗 /
+5xx・ネットワークエラー)ごとに `Store#recordDeliveryResult` を呼ぶ。
+
+管理エンドポイントを `functions/src/activitypub.ts` に `adminOnly` 配下で追加する。
+
+- `GET /activitypub/deliveries/failed` — `status` が `permanent_failure` または
+  `retrying` のドキュメントを列挙する。
+- `POST /activitypub/deliveries/resend` — `{activityId, inbox}` を受け取り、
+  保存済みの `body` をそのまま `Store#deliveryEnqueue` で再エンキューする。
+
+## 理由
+
+- 受信者ごとの状態機械(minipub 方式)は配送の再試行そのものを駆動するために必要な設計で、
+  Cloud Tasks がその役割を担う本プロジェクトでは過剰。最新状態1件のみを持てば
+  「今どの配送が失敗しているか」は確認でき、目的を満たす。
+- `body` をレコードに含めることで、再送時に `streams` から `stringifyPublicJSONLD` 相当の
+  変換をやり直さずに済み、実際に送信されたバイト列をそのまま再送できる。`body` は
+  署名前の公開 JSON-LD であり秘密情報を含まないため、[Issue #11](https://github.com/hakatashi/activitypub-firebase/issues/11) の制約に抵触しない。
+- `attempts` に `request.retryCount + 1` を使うことで、Firestore 側でトランザクションに
+  よるカウンタ更新を行わずに済む。
+
+`dryRun` モード(署名対象文字列やリクエストヘッダー全体を返す)は見送る。apex の `deliver` は
+`request-promise-native` に実際のリクエスト送信までを委譲しており、送信前に
+`stringToSign` やヘッダーを取り出すには apex 側の関数を改造する必要があり、
+このコレクション設計だけでは実現できない。必要になった時点で別 ADR で扱う。
+
+## 結果
+
+- `deliveries` コレクションのドキュメントは履歴を持たない。過去の失敗を時系列で追いたくなったら
+  別 ADR でサブコレクション化などを検討する。
+- 恒久失敗(4xx)を自動でフォロワーから削除する処理は引き続き実装しない(ADR-0003 を継承)。
+
+## 参照
+
+- 関連 ADR: [[ADR-0003]]
+- 関連コード: `functions/src/store.ts`, `functions/src/tasks.ts`, `functions/src/activitypub.ts`
+- 参考実装: `third_party/minipub/src/rpc/federate_activity.ts`

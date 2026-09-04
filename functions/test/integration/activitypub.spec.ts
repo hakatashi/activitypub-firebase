@@ -1,5 +1,5 @@
 import request from 'supertest';
-import {describe, expect, test, afterEach, beforeEach} from 'vitest';
+import {describe, expect, test, afterEach, beforeEach, vi} from 'vitest';
 import {activitypub, apex} from '../../src/activitypub.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -119,6 +119,79 @@ describe('activitypub', () => {
 					href: `https://${DEV_DOMAIN}/nodeinfo/2.1`,
 				});
 			});
+		});
+	});
+
+	describe('/activitypub/deliveries', () => {
+		const adminHeader = {'x-hakatashi-token': 'test-token'};
+
+		beforeEach(() => {
+			process.env.HAKATASHI_TOKEN = 'test-token';
+		});
+
+		afterEach(() => {
+			vi.restoreAllMocks();
+			delete process.env.HAKATASHI_TOKEN;
+		});
+
+		test('GET /failed rejects requests without the admin token', async () => {
+			const response = await request(activitypub).get('/activitypub/deliveries/failed');
+			expect(response.status).toBe(403);
+		});
+
+		test('GET /failed lists only permanent_failure/retrying deliveries', async () => {
+			await apex.store.recordDeliveryResult({
+				activityId: 'https://example.com/activities/1',
+				actorId: 'https://example.com/users/hakatashi',
+				address: 'https://remote.example/u/alice/inbox',
+				body: '{"id":"https://example.com/activities/1","type":"Create"}',
+				attempts: 1,
+				status: 'permanent_failure',
+				statusCode: 410,
+			});
+			await apex.store.recordDeliveryResult({
+				activityId: 'https://example.com/activities/2',
+				actorId: 'https://example.com/users/hakatashi',
+				address: 'https://remote.example/u/bob/inbox',
+				body: '{"id":"https://example.com/activities/2","type":"Create"}',
+				attempts: 1,
+				status: 'success',
+				statusCode: 202,
+			});
+
+			const response = await request(activitypub).get('/activitypub/deliveries/failed').set(adminHeader);
+			expect(response.status).toBe(200);
+			expect(response.body).toHaveLength(1);
+			expect(response.body[0].status).toBe('permanent_failure');
+		});
+
+		test('POST /resend re-enqueues the stored delivery body to the given inbox', async () => {
+			const activityId = 'https://example.com/activities/3';
+			const actorId = 'https://example.com/users/hakatashi';
+			const address = 'https://remote.example/u/carol/inbox';
+			const body = `{"id":"${activityId}","type":"Create"}`;
+			await apex.store.recordDeliveryResult({
+				activityId, actorId, address, body, attempts: 1, status: 'permanent_failure', statusCode: 410,
+			});
+
+			const enqueueSpy = vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(true);
+
+			const response = await request(activitypub)
+				.post('/activitypub/deliveries/resend')
+				.set(adminHeader)
+				.send({activityId, inbox: address});
+
+			expect(response.status).toBe(200);
+			expect(enqueueSpy).toHaveBeenCalledWith(actorId, body, address, undefined);
+		});
+
+		test('POST /resend 404s for an unknown activity/inbox pair', async () => {
+			const response = await request(activitypub)
+				.post('/activitypub/deliveries/resend')
+				.set(adminHeader)
+				.send({activityId: 'https://example.com/activities/unknown', inbox: 'https://remote.example/inbox'});
+
+			expect(response.status).toBe(404);
 		});
 	});
 });

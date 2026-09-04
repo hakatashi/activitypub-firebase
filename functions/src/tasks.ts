@@ -28,8 +28,8 @@ interface DeliveryTaskPayload {
 // 4xx/5xx でも例外を投げずレスポンスを返す。ステータスコードごとに
 // リトライすべきか(throw して Cloud Tasks に任せる)、恒久失敗として
 // 破棄すべきか(正常終了する)を判定する。ネットワークエラー/タイムアウトは
-// apex.deliver 自体が reject するため、ここでは捕捉せずそのまま
-// Cloud Tasks の再試行に委ねる。
+// apex.deliver 自体が reject するため、結果を記録してからそのまま
+// Cloud Tasks の再試行に委ねる(ADR-0012)。
 export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 	{
 		retryConfig: {
@@ -48,8 +48,11 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 	},
 	async (request) => {
 		const {actorId, body, address} = request.data;
+		// Cloud Tasks の初回実行では 0。ADR-0012: Firestore 上の試行回数として使う
+		const attempts = (request.retryCount ?? 0) + 1;
+		const activityId = JSON.parse(body).id;
 
-		logger.info({type: 'deliveryTaskReceived', actorId, address});
+		logger.info({type: 'deliveryTaskReceived', actorId, address, attempts});
 
 		const actor = await apex.store.getObject(actorId, true);
 		if (!actor) {
@@ -57,7 +60,21 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 			return;
 		}
 
-		const result = await apex.deliver(actorId, body, address, actor._meta.privateKey);
+		let result;
+		try {
+			result = await apex.deliver(actorId, body, address, actor._meta.privateKey);
+		} catch (err: any) {
+			await apex.store.recordDeliveryResult({
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts,
+				status: 'retrying',
+				error: err?.message ?? String(err),
+			});
+			throw err;
+		}
 
 		// 本番環境で address が localhost の場合、apex.deliver は null を返す
 		if (result === null) {
@@ -73,6 +90,15 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 		});
 
 		if (result.statusCode >= 200 && result.statusCode < 300) {
+			await apex.store.recordDeliveryResult({
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts,
+				status: 'success',
+				statusCode: result.statusCode,
+			});
 			return;
 		}
 
@@ -83,9 +109,28 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 				address,
 				statusCode: result.statusCode,
 			});
+			await apex.store.recordDeliveryResult({
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts,
+				status: 'permanent_failure',
+				statusCode: result.statusCode,
+			});
 			return;
 		}
 
+		await apex.store.recordDeliveryResult({
+			activityId,
+			actorId,
+			address,
+			body,
+			attempts,
+			status: 'retrying',
+			statusCode: result.statusCode,
+			error: `Delivery to ${address} failed with status ${result.statusCode}`,
+		});
 		throw new Error(`Delivery to ${address} failed with status ${result.statusCode}`);
 	},
 );
