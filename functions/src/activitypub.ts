@@ -141,6 +141,28 @@ app.get('/activitypub/publishProfileUpdate', adminOnly, async (req: express.Requ
 	await apex.publishUpdate(actorWithMeta, actor);
 	res.json('ok');
 });
+// ADR-0012: 配送に失敗した(または現在リトライ中の)ものを一覧する
+app.get('/activitypub/deliveries/failed', adminOnly, async (req: express.Request, res: express.Response) => {
+	const deliveries = await apex.store.getFailedDeliveries();
+	res.json(deliveries);
+});
+// ADR-0012: 記録済みの配送結果を元に、同じ body を宛先へ再送する
+app.post('/activitypub/deliveries/resend', adminOnly, async (req: express.Request, res: express.Response) => {
+	const {activityId, inbox} = req.body ?? {};
+	if (typeof activityId !== 'string' || typeof inbox !== 'string') {
+		res.status(400).send('activityId and inbox are required');
+		return;
+	}
+
+	const delivery = await apex.store.getDelivery(activityId, inbox);
+	if (!delivery) {
+		res.status(404).send('Delivery record not found');
+		return;
+	}
+
+	await apex.store.deliveryEnqueue(delivery.actorId, delivery.body, inbox, undefined);
+	res.send('ok');
+});
 
 (app as unknown as EventEmitter).on('apex-outbox', (message: any) => {
 	logger.info({type: 'outbox', message});

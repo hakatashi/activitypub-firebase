@@ -73,6 +73,8 @@ GET  /activitypub/createAdmin          actor を作成する
 POST /activitypub/createPost           {"text": "..."} で投稿する
 GET  /activitypub/publishProfileUpdate プロフィール更新を配信する
 GET  /activitypub/pingTaskQueue        Cloud Tasks の疎通確認用タスクを1件発行する
+GET  /activitypub/deliveries/failed    失敗中/リトライ中の配送を一覧する
+POST /activitypub/deliveries/resend    {"activityId": "...", "inbox": "..."} で再送する
 ```
 
 ## Cloud Tasks のローカルテスト

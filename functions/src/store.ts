@@ -17,6 +17,19 @@ interface ObjectWithId {
 	id: string,
 	[key: string]: any,
 }
+
+type DeliveryStatus = 'permanent_failure' | 'retrying' | 'success';
+
+interface DeliveryResult {
+	activityId: string,
+	actorId: string,
+	address: string,
+	body: string,
+	attempts: number,
+	status: DeliveryStatus,
+	statusCode?: number,
+	error?: string,
+}
 export default class Store extends IApexStore {
 	db: Firestore;
 
@@ -320,6 +333,51 @@ export default class Store extends IApexStore {
 		});
 
 		return true;
+	}
+
+	// Extended by us (ADR-0012)
+	private deliveryDocId(activityId: string, address: string) {
+		return escapeFirestoreKey(`${activityId} ${address}`);
+	}
+
+	// Extended by us (ADR-0012)
+	async recordDeliveryResult({activityId, actorId, address, body, attempts, status, statusCode, error}: DeliveryResult) {
+		logger.info({
+			type: 'recordDeliveryResult',
+			activityId,
+			actorId,
+			address,
+			attempts,
+			status,
+			statusCode,
+		});
+
+		await this.db.collection('deliveries').doc(this.deliveryDocId(activityId, address)).set({
+			activityId,
+			actorId,
+			inbox: address,
+			body,
+			attempts,
+			status,
+			statusCode: statusCode ?? null,
+			error: error ?? null,
+			updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+		});
+	}
+
+	// Extended by us (ADR-0012)
+	async getFailedDeliveries() {
+		const snapshot = await this.db.collection('deliveries')
+			.where('status', 'in', ['permanent_failure', 'retrying'])
+			.get();
+
+		return snapshot.docs.map((doc) => doc.data());
+	}
+
+	// Extended by us (ADR-0012)
+	async getDelivery(activityId: string, address: string) {
+		const doc = await this.db.collection('deliveries').doc(this.deliveryDocId(activityId, address)).get();
+		return doc.exists ? doc.data() : undefined;
 	}
 
 	async getContext(documentUrl: string) {

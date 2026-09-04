@@ -37,3 +37,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0009](0009-rotate-actor-key-now.md) | actor の秘密鍵を Phase 0 のうちにローテーションする | Accepted |
 | [0010](0010-pin-activitypub-express-4.4.1.md) | activitypub-express を 4.4.1 に固定する | Accepted |
 | [0011](0011-vitest-over-jest.md) | テストランナーを Jest から Vitest に置き換える | Accepted |
+| [0012](0012-delivery-results-in-firestore.md) | 配送結果を `deliveries` コレクションに記録する | Accepted |

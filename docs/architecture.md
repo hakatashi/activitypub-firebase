@@ -41,7 +41,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   モンキーパッチし、送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを
   await している。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
-  `/publishProfileUpdate`)は `X-Hakatashi-Token` ヘッダで認証する。
+  `/publishProfileUpdate`, `/deliveries/failed`, `/deliveries/resend`)は
+  `X-Hakatashi-Token` ヘッダで認証する。
 - `offlineMode: true` で初期化しており、apex 内蔵の配送ループ(`setInterval` による
   常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store.ts`)が
   受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている
@@ -51,6 +52,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `store.getObject(actorId, true)` で秘密鍵を引き、`apex.deliver` で配送する。
   401/403/404/410 とその他の 4xx は恒久失敗としてリトライせず破棄し、5xx と
   ネットワークエラーは throw して Cloud Tasks のリトライ(`retryConfig`)に委ねる。
+  配送のたびに結果を `deliveries` コレクションへ記録し、`GET /activitypub/deliveries/failed`
+  で一覧、`POST /activitypub/deliveries/resend` で再送できる(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md))。
 
 ## ストレージ層
 
@@ -65,6 +68,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `objects` | エスケープした IRI | actor / Note などの AP オブジェクト。`_meta.privateKey` に秘密鍵 |
 | `streams` | エスケープした IRI | アクティビティ。`_meta.collection` が所属コレクションの IRI |
 | `contexts` | エスケープした URL | JSON-LD コンテキストのキャッシュ |
+| `deliveries` | エスケープした `アクティビティ ID + 宛先` | 配送結果(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 

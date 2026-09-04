@@ -160,4 +160,67 @@ describe('Store', () => {
 			expect(await store.getActivity(activity.id)).toBeUndefined();
 		});
 	});
+
+	describe('recordDeliveryResult / getDelivery / getFailedDeliveries', () => {
+		const activityId = 'https://example.com/activities/1';
+		const actorId = 'https://example.com/users/hakatashi';
+		const address = 'https://remote.example/u/alice/inbox';
+		const body = '{"id":"https://example.com/activities/1","type":"Create"}';
+
+		test('round-trips a successful delivery', async () => {
+			await store.recordDeliveryResult({
+				activityId, actorId, address, body, attempts: 1, status: 'success', statusCode: 202,
+			});
+
+			const delivery = await store.getDelivery(activityId, address);
+			expect(delivery).toMatchObject({
+				activityId, actorId, inbox: address, body, attempts: 1, status: 'success', statusCode: 202, error: null,
+			});
+		});
+
+		test('overwrites the previous record for the same activity/address pair', async () => {
+			await store.recordDeliveryResult({
+				activityId, actorId, address, body, attempts: 1, status: 'retrying', statusCode: 503, error: 'boom',
+			});
+			await store.recordDeliveryResult({
+				activityId, actorId, address, body, attempts: 2, status: 'success', statusCode: 202,
+			});
+
+			const delivery = await store.getDelivery(activityId, address);
+			expect(delivery).toMatchObject({attempts: 2, status: 'success', error: null});
+		});
+
+		test('getDelivery returns undefined for an unknown pair', async () => {
+			expect(await store.getDelivery(activityId, address)).toBeUndefined();
+		});
+
+		test('getFailedDeliveries lists only permanent_failure and retrying deliveries', async () => {
+			await store.recordDeliveryResult({
+				activityId, actorId, address, body, attempts: 1, status: 'success', statusCode: 202,
+			});
+			await store.recordDeliveryResult({
+				activityId: 'https://example.com/activities/2',
+				actorId,
+				body,
+				address: 'https://remote.example/u/bob/inbox',
+				attempts: 1,
+				status: 'permanent_failure',
+				statusCode: 410,
+			});
+			await store.recordDeliveryResult({
+				activityId: 'https://example.com/activities/3',
+				actorId,
+				body,
+				address: 'https://remote.example/u/carol/inbox',
+				attempts: 1,
+				status: 'retrying',
+				statusCode: 503,
+				error: 'boom',
+			});
+
+			const failed = await store.getFailedDeliveries();
+			expect(failed).toHaveLength(2);
+			expect(failed.map((delivery) => delivery.status).sort()).toEqual(['permanent_failure', 'retrying']);
+		});
+	});
 });
