@@ -1,33 +1,15 @@
 import type {EventEmitter} from 'node:events';
-// @ts-expect-error: Not typed
-import ActivitypubExpress from 'activitypub-express';
 import cors from 'cors';
 import express from 'express';
 import {https, logger, params} from 'firebase-functions/v2';
+import {apex, routes} from './apex.js';
 import {domain, mastodonDomain} from './firebase.js';
-import Store from './store.js';
 import {enqueuePingTask} from './tasks.js';
 import {pickSafeHeaders, redactSensitiveBody} from './utils.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 
 const app = express();
-const routes = {
-	actor: '/activitypub/u/:actor',
-	object: '/activitypub/o/:id',
-	activity: '/activitypub/s/:id',
-	inbox: '/activitypub/u/:actor/inbox',
-	outbox: '/activitypub/u/:actor/outbox',
-	followers: '/activitypub/u/:actor/followers',
-	following: '/activitypub/u/:actor/following',
-	liked: '/activitypub/u/:actor/liked',
-	collections: '/activitypub/u/:actor/c/:id',
-	blocked: '/activitypub/u/:actor/blocked',
-	rejections: '/activitypub/u/:actor/rejections',
-	rejected: '/activitypub/u/:actor/rejected',
-	shares: '/activitypub/s/:id/shares',
-	likes: '/activitypub/s/:id/likes',
-};
 
 const adminOnly = (req: express.Request, res: express.Response, next: express.NextFunction) => {
 	if (process.env.FUNCTIONS_EMULATOR === 'true') {
@@ -45,26 +27,6 @@ const nodeinfoCors = cors({
 	origin: true,
 	methods: ['GET'],
 	allowedHeaders: ['Content-Type'],
-});
-
-const apex = ActivitypubExpress({
-	name: 'activitypub-firebase',
-	version: '1.0.0',
-	domain,
-	actorParam: 'actor',
-	objectParam: 'id',
-	activityParam: 'id',
-	logger,
-	routes,
-	store: new Store(),
-	offlineMode: true,
-	endpoints: {
-		proxyUrl: `https://${domain}/activitypub/proxy`,
-	},
-	nodeInfoMetadata: {
-		nodeName: '博多市',
-		name: '博多市',
-	},
 });
 
 app.use((req, res, next) => {

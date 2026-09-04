@@ -22,6 +22,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.objectType(s)` を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数・フォロワー数を非正規化 |
+| `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
 
 ## ActivityPub 層
 
@@ -29,7 +30,9 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 (→ [ADR-0002](adr/0002-keep-activitypub-express.md))。apex が署名検証・JSON-LD 処理・
 webfinger/nodeinfo・コレクションページングを提供する。
 
-`functions/src/activitypub.ts` が apex のセットアップとルーティングを行う。特筆すべき点:
+apex インスタンスの生成は `functions/src/apex.ts` にある(`functions/src/tasks.ts` からも
+import されるため、`functions/src/activitypub.ts` との import サイクルを避けて分離している)。
+`functions/src/activitypub.ts` はそれを使って express のルーティングを行う。特筆すべき点:
 
 - Cloud Functions は body を先に読んでしまうため、JSON-LD の body を手動でパースしている。
 - HTTP 署名検証を通すため `req.headers.host` を公開ドメインで上書きしている。
@@ -43,7 +46,11 @@ webfinger/nodeinfo・コレクションページングを提供する。
   常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store.ts`)が
   受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている
   (→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md))。タスクペイロードには
-  `actorId` のみを載せ、秘密鍵は含めない。
+  `actorId` のみを載せ、秘密鍵は含めない。発行されたタスクは `functions/src/tasks.ts` の
+  `deliveryTask`(`onTaskDispatched`)が処理する。`actorId` から
+  `store.getObject(actorId, true)` で秘密鍵を引き、`apex.deliver` で配送する。
+  401/403/404/410 とその他の 4xx は恒久失敗としてリトライせず破棄し、5xx と
+  ネットワークエラーは throw して Cloud Tasks のリトライ(`retryConfig`)に委ねる。
 
 ## ストレージ層
 

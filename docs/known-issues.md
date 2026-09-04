@@ -3,20 +3,6 @@
 2026-09-04 時点の調査で確認されたもの。**推測ではなく、コードを読んで確認した事実のみを記載する。**
 修正したらこのファイルから削除する(履歴は git に残る)。
 
-## 最重要
-
-### 配送ワーカーが存在しない
-
-apex は `offlineMode: true` で初期化しており、内蔵の配送ループは起動しない
-(→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md))。`Store#deliveryEnqueue`
-(`functions/src/store.ts`)は受信者1件につき1つの Cloud Tasks タスク(キュー名
-`deliveryTask`)を発行するが、**そのタスクを処理する `onTaskDispatched` ワーカーが
-まだ実装されていない。** タスクを受け取る Function が存在しないため、キューが
-未作成の環境では `deliveryEnqueue` 自体がエラーになる。
-**投稿や Accept を発行しても、実際にリモートの inbox へ届く経路はまだない。**
-
-対応中: [Issue #17](https://github.com/hakatashi/activitypub-firebase/issues/17)。
-
 ## セキュリティ
 
 ### Update / Delete の同一オリジン検証がない
