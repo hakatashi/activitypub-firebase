@@ -344,18 +344,23 @@ mt bin/tootctl media remove --days 1
   `*.hakatashi.com` のワイルドカードは別ホスト(104.131.49.125)を指しているため、
   **`mastodon-test` の A レコードを明示的に追加する必要がある**
 
-### 1. DNS
+### 1. DNS(設定済み)
 
-Cloudflare の `hakatashi.com` ゾーンに A レコードを追加する。
-**Proxy status は DNS only(グレークラウド)にする** — 既存の自宅サーバー向けレコードと同じ扱い。
-
-| Type | Name | Content |
-|---|---|---|
-| A | `mastodon-test` | `60.81.69.135`(自宅の公開 IP。`dig @8.8.8.8 matrix.hakatashi.com +short` で確認できる) |
+**`mastodon-test.hakatashi.com` は ddclient の DDNS 更新対象に登録済み**(2026-09-05)。
+自宅の公開 IP が変わっても5分以内に追従する。詳細は自宅サーバー側の `~/docs/ddclient.md`。
 
 ```bash
-dig @1.1.1.1 mastodon-test.hakatashi.com +short   # 60.81.69.135 になるまで待つ
+dig @1.1.1.1 mastodon-test.hakatashi.com +short   # => 60.81.69.135
 ```
+
+同じ要領で別のサブドメインを足す場合の注意:
+
+- ddclient は **Cloudflare 上にレコードが無いと新規作成せず失敗する**
+  (`No 'A' record at Cloudflare`)。先に A レコードを作ってから
+  `/etc/ddclient.conf` 最終行のリストに追記する。
+- `*.hakatashi.com` のワイルドカードは自宅サーバーとは無関係の別ホストを指しているため、
+  明示的な A レコードで上書きする必要がある。
+- Proxy status は DNS only(グレークラウド)。既存の自宅サーバー向けレコードと同じ扱い。
 
 ### 2. 配置
 
