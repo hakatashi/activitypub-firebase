@@ -87,20 +87,6 @@
           "arrayConfig": "CONTAINS"
         }
       ]
-    },
-    {
-      "collectionGroup": "deliveryQueue",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "after",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "ASCENDING"
-        }
-      ]
     }
   ],
   "fieldOverrides": []
