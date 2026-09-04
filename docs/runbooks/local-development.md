@@ -72,7 +72,23 @@ npm --prefix functions run shell   # functions シェル
 GET  /activitypub/createAdmin          actor を作成する
 POST /activitypub/createPost           {"text": "..."} で投稿する
 GET  /activitypub/publishProfileUpdate プロフィール更新を配信する
+GET  /activitypub/pingTaskQueue        Cloud Tasks の疎通確認用タスクを1件発行する
 ```
+
+## Cloud Tasks のローカルテスト
+
+`onTaskDispatched` を含む Function を `npm --prefix functions run serve` で起動すると、
+Functions エミュレータが Cloud Tasks 用のキューを自動検出し、専用のエミュレータ
+(ログ上は `tasks: ...Cloud Tasks Emulator`)を追加で起動する。`firebase.json` に
+`emulators.tasks` の設定を書く必要はなく、実際の GCP プロジェクトの Cloud Tasks とも無関係に
+ローカルだけで完結する。`getFunctions().taskQueue(name).enqueue()` を呼ぶと、
+このローカルキューがほぼ即座に対応する `onTaskDispatched` ハンドラを実行する。
+
+`GET /activitypub/pingTaskQueue` はこの確認用エンドポイントで、叩くと `pingTask` へタスクを
+1件発行する。ハンドラ側の実行結果はエミュレータのコンソールログに
+`{"type":"pingTaskReceived", ...}` として出力される(実際に Cloud Tasks へネットワーク越しに
+発行されるわけではないため、権限設定の確認にはならない。権限まわりは dev 環境への実デプロイで
+確認する)。
 
 ## 非正規化データの再計算
 

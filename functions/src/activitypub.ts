@@ -6,6 +6,7 @@ import express from 'express';
 import {https, logger, params} from 'firebase-functions/v2';
 import {domain, mastodonDomain} from './firebase.js';
 import Store from './store.js';
+import {enqueuePingTask} from './tasks.js';
 import {pickSafeHeaders, redactSensitiveBody} from './utils.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
@@ -163,6 +164,11 @@ app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res:
 
 	logger.info({type: 'createPostAddToOutboxResult', result});
 
+	res.send('ok');
+});
+app.get('/activitypub/pingTaskQueue', adminOnly, async (req: express.Request, res: express.Response) => {
+	const message = typeof req.query.message === 'string' ? req.query.message : 'ping';
+	await enqueuePingTask(message);
 	res.send('ok');
 });
 app.get('/activitypub/publishProfileUpdate', adminOnly, async (req: express.Request, res: express.Response) => {
