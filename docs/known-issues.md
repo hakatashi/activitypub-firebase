@@ -7,17 +7,15 @@
 
 ### 配送ワーカーが存在しない
 
-`deliveryEnqueue` / `deliveryDequeue` / `deliveryRequeue` は `store.ts` に実装済みだが、
-apex はこれを常駐プロセスの `setInterval` ループで処理する設計であり、
-Cloud Functions 上でこのループを起動する仕組みが存在しない。
-**投稿や Accept をキューに積んでも、実際にリモートの inbox へ届く経路がない。**
+apex は `offlineMode: true` で初期化しており、内蔵の配送ループは起動しない
+(→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md))。`Store#deliveryEnqueue`
+(`functions/src/store.ts`)は受信者1件につき1つの Cloud Tasks タスク(キュー名
+`deliveryTask`)を発行するが、**そのタスクを処理する `onTaskDispatched` ワーカーが
+まだ実装されていない。** タスクを受け取る Function が存在しないため、キューが
+未作成の環境では `deliveryEnqueue` 自体がエラーになる。
+**投稿や Accept を発行しても、実際にリモートの inbox へ届く経路はまだない。**
 
-対処方針は [ADR-0003](adr/0003-delivery-via-cloud-tasks.md)。
-
-なお apex のループは仮に起動できたとしても Cloud Functions 上では正しく動かない。
-`isDelivering` フラグがモジュールグローバルで、`deliveryDequeue()` が reject すると
-`true` のまま残り、インスタンスが再利用されると以後永久に no-op になる
-(`activitypub-express/pub/federation.js:109-143`)。
+対応中: [Issue #17](https://github.com/hakatashi/activitypub-firebase/issues/17)。
 
 ## セキュリティ
 
@@ -145,12 +143,6 @@ Mastodon 4.3.0 で追加された `api_versions` を持たない。
 `POST /oauth/revoke` も 501 を返す。期限切れトークンを掃除する仕組みもない。
 
 ## その他
-
-### `deliveryRequeue` のバックオフが機能していない
-
-`functions/src/store.ts:379` は `10 ** delivery.attempt++` と後置インクリメントを使っているため、
-指数に使われるのは増加**前**の値になる。初回リトライの間隔が 1ms になる。
-([ADR-0003](adr/0003-delivery-via-cloud-tasks.md) により、このメソッド自体が廃止される)
 
 ### actor ルートにハンドラが二重登録されている
 
