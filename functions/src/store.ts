@@ -3,6 +3,7 @@ import type {Firestore} from '@google-cloud/firestore';
 import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
 import {DocumentData} from 'firebase-admin/firestore';
+import {getFunctions} from 'firebase-admin/functions';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash-es';
 import {db, escapeFirestoreKey} from './firebase.js';
@@ -294,7 +295,7 @@ export default class Store extends IApexStore {
 	}
 
 	// eslint-disable-next-line max-params
-	async deliveryEnqueue(actorId: string, body: any, addresses: string | string[], signingKey: string) {
+	async deliveryEnqueue(actorId: string, body: any, addresses: string | string[], _signingKey: string) {
 		if (!addresses || !addresses.length) {
 			return false;
 		}
@@ -303,83 +304,21 @@ export default class Store extends IApexStore {
 			type: 'deliveryEnqueue',
 			actorId,
 			addresses,
-			body,
 		});
 
 		const normalizedAddresses = Array.isArray(addresses) ? addresses : [addresses];
 
-		const batch = this.db.batch();
-		const deliveryQueueRef = this.db.collection('deliveryQueue');
-		const deliveries = [];
-		for (const address of normalizedAddresses) {
-			const delivery = {
-				address,
-				actorId,
-				signingKey,
-				body,
-				attempt: 0,
-				after: new Date(),
-			};
-			deliveries.push(delivery);
-			batch.set(deliveryQueueRef.doc(), delivery);
-		}
-		await batch.commit();
+		// 秘密鍵はタスクペイロードに載せない。ワーカー側で actorId から鍵を引く。
+		await Promise.all(normalizedAddresses.map((address) => (
+			getFunctions().taskQueue('deliveryTask').enqueue({actorId, body, address})
+		)));
 
 		logger.info({
 			type: 'deliveryEnqueueResult',
-			deliveries: deliveries.map((delivery) => ({...delivery, signingKey: undefined})),
+			actorId,
+			addresses: normalizedAddresses,
 		});
 
-		return true;
-	}
-
-	deliveryDequeue() {
-		logger.info({type: 'deliveryDequeue'});
-
-		return this.db.runTransaction(async (transaction) => {
-			const matchedDocs = await transaction.get(
-				this.db.collection('deliveryQueue')
-					.where('after', '<=', new Date())
-					.orderBy('after')
-					.orderBy(firebase.firestore.FieldPath.documentId())
-					.limit(1),
-			);
-
-			if (!matchedDocs.empty) {
-				const doc = matchedDocs.docs[0];
-				transaction.delete(doc.ref);
-				const delivery = doc.data();
-				logger.info({
-					type: 'deliveryDequeueResult',
-					delivery,
-				});
-				return {
-					...delivery,
-					after: delivery.after.toDate(),
-				};
-			}
-
-			// if no deliveries available now, check for scheduled deliveries
-			const next = await transaction.get(
-				this.db.collection('deliveryQueue')
-					.orderBy('after')
-					.limit(1),
-			);
-
-			if (!next.empty) {
-				return {waitUntil: next.docs[0].get('after').toDate()};
-			}
-
-			return null;
-		});
-	}
-
-	async deliveryRequeue(delivery: {after: Date, attempt: number}) {
-		const nextTime = delivery.after.getTime() + 10 ** delivery.attempt++;
-		await this.db.collection('deliveryQueue').add({
-			...delivery,
-			after: new Date(nextTime),
-		});
 		return true;
 	}
 
@@ -431,17 +370,5 @@ export default class Store extends IApexStore {
 				transaction.update(doc.ref, {object: newObjectDict});
 			});
 		});
-
-		if (object._meta?.privateKey) {
-			await this.db.runTransaction(async (transaction) => {
-				const matchedDocs = await transaction.get(
-					this.db.collection('deliveryQueue')
-						.where('actorId', '==', object.id),
-				);
-				matchedDocs.forEach((doc) => {
-					transaction.update(doc.ref, {signingKey: object._meta.privateKey});
-				});
-			});
-		}
 	}
 }

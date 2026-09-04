@@ -39,6 +39,11 @@ webfinger/nodeinfo・コレクションページングを提供する。
   await している。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
   `/publishProfileUpdate`)は `X-Hakatashi-Token` ヘッダで認証する。
+- `offlineMode: true` で初期化しており、apex 内蔵の配送ループ(`setInterval` による
+  常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store.ts`)が
+  受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている
+  (→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md))。タスクペイロードには
+  `actorId` のみを載せ、秘密鍵は含めない。
 
 ## ストレージ層
 
@@ -53,7 +58,6 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `objects` | エスケープした IRI | actor / Note などの AP オブジェクト。`_meta.privateKey` に秘密鍵 |
 | `streams` | エスケープした IRI | アクティビティ。`_meta.collection` が所属コレクションの IRI |
 | `contexts` | エスケープした URL | JSON-LD コンテキストのキャッシュ |
-| `deliveryQueue` | 自動 ID | 配送キュー(→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md) により廃止予定) |
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 

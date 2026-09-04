@@ -57,6 +57,7 @@ const apex = ActivitypubExpress({
 	logger,
 	routes,
 	store: new Store(),
+	offlineMode: true,
 	endpoints: {
 		proxyUrl: `https://${domain}/activitypub/proxy`,
 	},
