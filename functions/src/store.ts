@@ -302,7 +302,11 @@ export default class Store extends IApexStore {
 			} else {
 				activityData._meta[key] = value;
 			}
-			transaction.update(activityRef, this.normalizeActivity(activityData));
+			// Firestore の transaction.update はコミット時まで渡したオブジェクトの参照を
+			// 保持するため、直後に denormalizeActivity で同じオブジェクトを書き換えると
+			// コミット内容まで壊れる (→ ADR-0016)。スナップショットを取って切り離す。
+			const normalized = structuredClone(this.normalizeActivity(activityData));
+			transaction.update(activityRef, normalized);
 			return this.denormalizeActivity(activityData);
 		});
 	}

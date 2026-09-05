@@ -284,6 +284,20 @@ fsquery '{"structuredQuery":{"from":[{"collectionId":"streams"}],"limit":5}}' \
   | jq -c '.[].document.fields | {type: .type.stringValue, actor: .actor}'
 ```
 
+**個別ドキュメントの GET/DELETE では `docid()` の出力をさらに URL エンコードすること。**
+`docid()` は `escapeFirestoreKey` 相当(`.` → `%2E` など)を行うだけで、これを
+そのまま URL パスに埋め込むと `%2E` がクライアント/サーバー側で1回デコードされて
+`.` に戻り、**別の(存在しない)ドキュメントを指してしまう。** 個別 GET/DELETE は
+存在しないドキュメントに対しても 200/404 を返すため気づきにくく、
+`runQuery`(ボディで ID を渡すためこの問題が起きない)の結果と個別 GET の結果が
+食い違う形で発覚する。
+
+```bash
+docid2() { node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$(docid "$1")"; }
+curl -s -H "Authorization: Bearer $GCP_TOKEN" \
+  "https://firestore.googleapis.com/v1/projects/activitypub-firebase-dev/databases/(default)/documents/streams/$(docid2 "$ACTIVITY_ID")"
+```
+
 ## ログの確認
 
 ```bash
@@ -305,8 +319,8 @@ gcloud logging read 'resource.labels.service_name="activitypub" AND jsonPayload.
 |---|---|
 | 検索しても見つからない | WebFinger の `subject` と `links[rel=self]` |
 | フォローが「リクエスト中」で止まる | `Accept` の配送。`deliveries/failed` と `deliveryTask` のログ |
-| 投稿が届かない | 受信者解決(`deliveryEnqueue` のログに宛先が出ているか)、配送の失敗記録 |
-| 配送が 401/403 で恒久失敗する | 署名鍵の不一致。リトライされず破棄される(`permanent_failure`) |
+| 投稿が届かない | 受信者解決(`deliveryEnqueue` のログに宛先が出ているか)、配送の失敗記録。`streams` の該当 Follow の `_meta.collection` が文字列でなく配列になっていないか(→ [ADR-0016](../adr/0016-fix-update-activity-meta-array-corruption.md)、修正済みだが過去データが残っている場合がある) |
+| 配送が 401/403 で恒久失敗する | 署名鍵の不一致。リトライされず破棄される(`permanent_failure`)。本家 Mastodon 相手なら HTTP Signature の `keyId` に `#main-key` が付いているか(→ [ADR-0015](../adr/0015-fix-http-signature-keyid-fragment.md)、修正済み) |
 | 署名検証エラー | `req.headers.host` の上書き(`activitypub.ts`)、`Digest` ヘッダ、鍵の不一致 |
 | 変更が反映されない | リモートの actor キャッシュ。`publishProfileUpdate` を叩くか最大24時間待つ |
 | 最初の1回だけ応答が返らない | Cloud Functions のコールドスタート。`-m 60` で叩き直す |
