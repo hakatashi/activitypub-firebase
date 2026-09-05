@@ -53,6 +53,27 @@ apex は次ページのカーソルを `stream[stream.length - 1]?._id` から�
 カーソルは常に `undefined` になり、outbox / followers などは何ページ目を要求しても
 1ページ目が返る。
 
+### `followers` が匿名リクエストに対して常に空を返す
+
+`activitypub-express` の `getCollection`(`pub/collection.js`)は `includePrivate`
+(`res.locals.apex.authorized`)が false の場合、返す前に `stream.filter(act => isPublic(act))`
+で絞り込む。`authorized` はログイン中の本人リクエストのみ true になり
+(`net/security.js`)、匿名の連合フェッチは常に false。一方 `Follow` アクティビティは
+`to` に `as:Public` を含まないため `isPublic()` が常に false になり、
+**`GET /activitypub/u/:actor/followers?page=true` への匿名アクセスは`orderedItems` が
+常に空になる。**`totalItems`(`getStreamCount`)はこのフィルタを経由しないため正しい値を返す。
+([Issue #20](https://github.com/hakatashi/activitypub-firebase/issues/20) の実地検証で確認)
+
+### Undo 受信時に `followers_count` の減算が発火しない
+
+`functions/src/denormalizations.ts` の `onStreamCreated` は `Undo` の
+`object.type === 'Follow'` を見て `followers_count` を減算するが、apex の
+inbox 処理(`net/activity.js` の `denormalizeObject` 対象に `undo` が含まれない)は
+受信した `Undo` の `object` を文字列 IRI のまま保存し、埋め込みオブジェクトに展開しない。
+そのため `object.type` は常に `undefined` で判定が成立せず、**フォロー解除時の
+`followers_count` 減算は実質発火しない。**
+([Issue #20](https://github.com/hakatashi/activitypub-firebase/issues/20) の実地検証で確認)
+
 ### `blockList` を渡すと `getStream` が例外を投げる
 
 `functions/src/store.ts` の `getStream` は `blockList` が指定されると
