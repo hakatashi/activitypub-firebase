@@ -61,11 +61,19 @@ export ACTOR=$DEV/activitypub/u/hakatashi
 **pawoo.net や mstdn.jp を検証に使わないこと。** pawoo.net は Phase 5 の引っ越し元であり、
 テストでアカウントやドメインが制限されると引っ越し自体ができなくなる。
 
-まだ構築していなければ「[付録: テスト用インスタンスの構築](#付録-テスト用インスタンスの構築)」を先に実施する。
+まだ構築していなければ、構築手順と現在の状態は `~/docs/mastodon-test-instance.md`(HakataMatrix 側)を参照。
+
+`REMOTE` と `REMOTE_TOKEN`(~/docs/mastodon-test-instance.md の手順で発行したアクセストークン)は
+リポジトリルートの `.env`(`.gitignore` 済み、git に残らない)に記録しておく運用にする。
 
 ```bash
-export REMOTE=https://mastodon-test.hakatashi.com
-export REMOTE_TOKEN=xxxxxxxx                 # 付録の手順で発行したアクセストークン
+# .env
+REMOTE=https://mastodon-test.hakatashi.com
+REMOTE_TOKEN=xxxxxxxx
+```
+
+```bash
+set -a && source .env && set +a
 mapi() { curl -s -H "Authorization: Bearer $REMOTE_TOKEN" "$@"; }
 
 # テスト用インスタンス側の操作(自宅サーバー上で実行する)
@@ -328,162 +336,3 @@ mt bin/tootctl media remove --days 1
 
 **`domains purge` はフォロー関係も投稿も消える。** 手順4以降をやり直すことになる。
 
-## 付録: テスト用インスタンスの構築
-
-`mastodon-test.hakatashi.com` を自宅サーバー(HakataMatrix)に立てる手順。
-初回のみ。**このサーバーの現状を確認した上で書いている。**
-
-前提(確認済み):
-
-- Docker 29.4 / Compose v5.1、`hakatashi` は `docker` グループに所属している
-- nginx(host、1.24.0)+ certbot が 80/443 を持ち、`*.matrix.hakatashi.com` の
-  vhost が同居している。Mastodon もこの nginx に相乗りする
-- ポート 3000 / 4000 は空いている
-- ディスクは残り約 73GB(92% 使用)。メディアキャッシュを放置しないこと
-- `hakatashi.com` の公開 DNS は Cloudflare(`marek/fiona.ns.cloudflare.com`)。
-  `*.hakatashi.com` のワイルドカードは別ホスト(104.131.49.125)を指しているため、
-  **`mastodon-test` の A レコードを明示的に追加する必要がある**
-
-### 1. DNS(設定済み)
-
-**`mastodon-test.hakatashi.com` は ddclient の DDNS 更新対象に登録済み**(2026-09-05)。
-自宅の公開 IP が変わっても5分以内に追従する。詳細は自宅サーバー側の `~/docs/ddclient.md`。
-
-```bash
-dig @1.1.1.1 mastodon-test.hakatashi.com +short   # => 60.81.69.135
-```
-
-同じ要領で別のサブドメインを足す場合の注意:
-
-- ddclient は **Cloudflare 上にレコードが無いと新規作成せず失敗する**
-  (`No 'A' record at Cloudflare`)。先に A レコードを作ってから
-  `/etc/ddclient.conf` 最終行のリストに追記する。
-- `*.hakatashi.com` のワイルドカードは自宅サーバーとは無関係の別ホストを指しているため、
-  明示的な A レコードで上書きする必要がある。
-- Proxy status は DNS only(グレークラウド)。既存の自宅サーバー向けレコードと同じ扱い。
-
-### 2. 配置
-
-```bash
-sudo mkdir -p /opt/mastodon-test && sudo chown "$USER" /opt/mastodon-test
-cd /opt/mastodon-test
-cp ~/Documents/GitHub/activitypub-firebase/third_party/mastodon/docker-compose.yml .
-mkdir -p public/system postgres14 redis
-sudo chown -R 991:991 public/system    # コンテナ内の mastodon ユーザーは UID/GID 991
-touch .env.production
-```
-
-`docker-compose.yml` は submodule のものをそのまま使う(`ghcr.io/mastodon/mastodon:v4.7.1` を
-参照している)。`web` は `127.0.0.1:3000`、`streaming` は `127.0.0.1:4000` にだけ bind される。
-
-### 3. 初期設定ウィザード
-
-```bash
-docker compose run --rm web bundle exec rake mastodon:setup
-```
-
-答える内容:
-
-| 質問 | 答え |
-|---|---|
-| Domain name | `mastodon-test.hakatashi.com` |
-| Single user mode | No |
-| Are you using Docker to run Mastodon? | **Yes**(以降の DB / Redis のデフォルトが `db` / `redis` になる) |
-| PostgreSQL host / port / db / user / password | すべてデフォルト(`db` / `5432` / `postgres` / `postgres` / 空) |
-| Redis host / port / password | すべてデフォルト(`redis` / `6379` / 空) |
-| Do you want to store uploaded files on the cloud? | No |
-| E-mail | localhost からの送信でよい。**テストメールの送信は No** |
-| Save configuration? | Yes |
-| Prepare the database now? | Yes |
-| Do you want to create an admin user straight away? | Yes(あとで `tootctl` でも作れる) |
-
-**Docker で実行した場合、ウィザードは設定内容を標準出力に印字する
-(`Below is your configuration, save it to an .env.production file outside Docker:`)。
-これをホスト側の `/opt/mastodon-test/.env.production` に貼り付けて保存する。**
-コンテナ内に書かれた `.env.production` は `--rm` で消えるため、これを忘れると起動できない。
-
-### 4. 起動と nginx
-
-```bash
-docker compose up -d
-curl -s localhost:3000/health          # => OK
-```
-
-`/etc/nginx/sites-available/mastodon-test.hakatashi.com` を作る。
-既存の vhost(`immich.matrix.hakatashi.com` など)と同じ書き方に合わせ、
-streaming だけ 4000 に振り分ける(公式テンプレートは
-`third_party/mastodon/dist/nginx.conf`)。
-
-```nginx
-server {
-    listen 80;
-    listen [::]:80;
-    server_name mastodon-test.hakatashi.com;
-
-    client_max_body_size 99m;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_http_version 1.1;
-    }
-
-    location ^~ /api/v1/streaming {
-        proxy_pass http://127.0.0.1:4000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_buffering off;
-    }
-
-    location ~ /.well-known/acme-challenge { allow all; }
-}
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/mastodon-test.hakatashi.com /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d mastodon-test.hakatashi.com   # 443 と HTTP→HTTPS リダイレクトを追記させる
-curl -s https://mastodon-test.hakatashi.com/api/v1/instance | jq .version
-```
-
-### 5. アカウントとアクセストークン
-
-```bash
-cd /opt/mastodon-test
-
-# 管理者アカウント(メール確認をスキップして作る。生成されたパスワードが表示される)
-docker compose exec -T web bin/tootctl accounts create fedtest \
-  --email fedtest@hakatashi.com --confirmed --approve --role Owner
-
-# アクセストークンをブラウザなしで発行する
-docker compose exec -T web bin/rails runner '
-  user  = User.find_by!(email: "fedtest@hakatashi.com")
-  app   = Doorkeeper::Application.create!(
-    name: "federation-testing",
-    redirect_uri: "urn:ietf:wg:oauth:2.0:oob",
-    scopes: "read write follow")
-  token = Doorkeeper::AccessToken.create!(
-    application: app, resource_owner_id: user.id, scopes: app.scopes,
-    expires_in: nil, use_refresh_token: false)
-  puts token.token
-'
-```
-
-出力されたトークンを `REMOTE_TOKEN` に入れれば、手順3以降がすべて CLI で回せる。
-**このトークンはパスワードと同等。** ログや git に残さないこと。
-
-### 停止・撤去
-
-```bash
-cd /opt/mastodon-test
-docker compose down          # 停止(データは残る)
-docker compose down -v       # ボリュームごと破棄
-```
