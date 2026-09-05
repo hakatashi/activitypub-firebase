@@ -38,7 +38,7 @@ describe('deliveryTask', () => {
 
 		await expect(deliveryTask.run({data: {actorId, body, address}} as any)).resolves.toBeUndefined();
 
-		expect(deliverSpy).toHaveBeenCalledWith(actorId, body, address, 'test-private-key');
+		expect(deliverSpy).toHaveBeenCalledWith(`${actorId}#main-key`, body, address, 'test-private-key');
 		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
 			status: 'success', attempts: 1, statusCode: 202, error: null,
 		});
