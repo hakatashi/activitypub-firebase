@@ -1,4 +1,4 @@
-# ADR-0013: 連合の検証相手として Mastodon を自前ホストする
+# ADR-0014: 連合の検証相手として Mastodon を自前ホストする
 
 - **Status:** Accepted
 - **Date:** 2026-09-05

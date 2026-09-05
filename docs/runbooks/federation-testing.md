@@ -32,7 +32,7 @@ Firestore REST API で読める。
 | 配送のリトライと記録 | `deliveries/resend` + `gcloud tasks list` + `gcloud logging read` | 不要 |
 | テストアカウントとアクセストークンの発行 | `tootctl` + `rails runner` | 不要 |
 
-**手作業はゼロにできる。** 相手インスタンスを自前で持っている(→ [ADR-0013](../adr/0013-self-hosted-federation-test-instance.md))
+**手作業はゼロにできる。** 相手インスタンスを自前で持っている(→ [ADR-0014](../adr/0014-self-hosted-federation-test-instance.md))
 ため、通常はブラウザでの OAuth 認可が必要なアクセストークンの発行も、管理者権限で
 `rails runner` から直接できる(Mastodon 4.x の `grant_types_supported` は
 `authorization_code` と `client_credentials` だけで、パスワードグラントがない。
@@ -57,7 +57,7 @@ export ACTOR=$DEV/activitypub/u/hakatashi
 ```
 
 相手は自前ホストの `mastodon-test.hakatashi.com` を使う
-(→ [ADR-0013](../adr/0013-self-hosted-federation-test-instance.md))。
+(→ [ADR-0014](../adr/0014-self-hosted-federation-test-instance.md))。
 **pawoo.net や mstdn.jp を検証に使わないこと。** pawoo.net は Phase 5 の引っ越し元であり、
 テストでアカウントやドメインが制限されると引っ越し自体ができなくなる。
 
@@ -309,7 +309,7 @@ gcloud logging read 'resource.labels.service_name="activitypub" AND jsonPayload.
 ## テスト用インスタンス側の操作
 
 自前ホストなので、相手側の状態もログも自由に見られる。これが既存の大規模インスタンスを
-使わない最大の理由(→ [ADR-0013](../adr/0013-self-hosted-federation-test-instance.md))。
+使わない最大の理由(→ [ADR-0014](../adr/0014-self-hosted-federation-test-instance.md))。
 
 ```bash
 # 相手側のログ。署名検証の失敗理由はここに出る

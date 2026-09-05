@@ -37,9 +37,11 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
 - Cloud Functions は body を先に読んでしまうため、JSON-LD の body を手動でパースしている。
 - HTTP 署名検証を通すため `req.headers.host` を公開ドメインで上書きしている。
 - apex はレスポンス送出後に `postWork` を実行する設計だが、Cloud Functions では
-  レスポンス後の CPU が保証されない。そのため `express.response.send` をグローバルに
-  モンキーパッチし、送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを
-  await している。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
+  レスポンス後の CPU が保証されない。そのため `functions/src/postWork.ts` の
+  `runPostWorkBeforeSend` ミドルウェアがリクエストごとに `res.send` を差し替え、
+  送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを await している
+  (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
+  `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
   `/publishProfileUpdate`, `/deliveries/failed`, `/deliveries/resend`)は
   `X-Hakatashi-Token` ヘッダで認証する。

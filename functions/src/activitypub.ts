@@ -4,6 +4,7 @@ import express from 'express';
 import {https, logger, params} from 'firebase-functions/v2';
 import {apex, routes} from './apex.js';
 import {domain, mastodonDomain} from './firebase.js';
+import {runPostWorkBeforeSend} from './postWork.js';
 import {enqueuePingTask} from './tasks.js';
 import {pickSafeHeaders, redactSensitiveBody} from './utils.js';
 
@@ -52,6 +53,8 @@ app.use((req, res, next) => {
 app.use(
 	express.json(),
 	express.urlencoded({extended: true}),
+	// apex より前に置き、apex が積んだ postWork をレスポンス送出前に実行する (ADR-0013)
+	runPostWorkBeforeSend,
 	apex,
 );
 
@@ -202,53 +205,6 @@ app.post('/activitypub/deliveries/resend', adminOnly, async (req: express.Reques
 		logger.info(`New ${message.object.type} from ${message.actor} to ${message.recipient}`);
 	}
 });
-
-// Hook into res.send and execute postWork tasks manually
-const originalSend = express.response.send;
-express.response.send = function (body) {
-	(async () => {
-		const apexLocal = this.locals.apex;
-		if (apexLocal) {
-			logger.info({
-				type: 'response',
-				status: this.statusCode,
-				headers: this.getHeaders(),
-				body,
-				locals: apexLocal,
-			});
-
-			try {
-				const originalPostWork = apexLocal.postWork;
-				apexLocal.postWork = [];
-
-				// execute postWork tasks in sequence (not parallel)
-				await originalPostWork.reduce(
-					(acc: Promise<void>, task: (res: express.Response) => Promise<void>) => (
-						acc.then(() => task(this))
-					),
-					Promise.resolve(),
-				);
-
-				if (apexLocal.eventName) {
-					const originalEventName = apexLocal.eventName;
-					apexLocal.eventName = null;
-					await Promise.all(
-						this.app.listeners(originalEventName)
-							.map((listener) => listener.call(this.app, apexLocal.eventMessage)),
-					);
-				}
-			} catch (err: any) {
-				logger.error('post-response error:', err.message);
-				logger.error(err);
-			}
-		}
-
-		originalSend.call(this, body);
-	})();
-
-	return this;
-};
-
 
 export const activitypub = https.onRequest({secrets: [hakatashiToken]}, app);
 
