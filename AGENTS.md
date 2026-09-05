@@ -64,7 +64,13 @@ npm --prefix functions test      # Firestore エミュレータ + jest
 
 ## 現在の最優先事項
 
-**配送(delivery)が実装されておらず、投稿も Accept も外部に届かない。**
-これが解決するまで、他の機能を積んでも動作しない。→ Epic
-[#6](https://github.com/hakatashi/activitypub-firebase/issues/6)、
-[ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)
+**Phase 1(配送)は完了した。** 配送は Cloud Tasks 経由で動作し、dev 環境から実在の
+Mastodon インスタンスへ Follow / Accept / Create が届くことを実地で確認済み
+(→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)、
+[`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md))。
+
+次は **Phase 2(受信と AP 準拠、Epic
+[#7](https://github.com/hakatashi/activitypub-firebase/issues/7))** と
+**Phase 3(Mastodon API、Epic
+[#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**。この2つは並行できる
+(→ [`docs/roadmap.md`](docs/roadmap.md))。着手前に子 Issue を作ること。

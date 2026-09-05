@@ -16,11 +16,18 @@ Firebase (Hosting + Cloud Functions + Firestore) 上に、ActivityPub と Mastod
 - [docs/known-issues.md](docs/known-issues.md) — 既知の問題
 - [docs/mastodon-api-coverage.md](docs/mastodon-api-coverage.md) — Mastodon API の実装状況
 - [docs/runbooks/local-development.md](docs/runbooks/local-development.md) — ビルド・テスト・デプロイ
+- [docs/runbooks/federation-testing.md](docs/runbooks/federation-testing.md) — 連合の動作確認
 
 ## 状態
 
-**まだ動作しません。** 配送(delivery)が未実装のため、投稿や Accept が外部サーバーへ届きません。
-詳細は [Issue #6](https://github.com/hakatashi/activitypub-firebase/issues/6) を参照。
+**連合の基本的な往復が動作します。** 配送は Cloud Tasks に載せ替えられ
+([ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md))、dev 環境から実在の Mastodon
+インスタンスへのフォロー・自動 Accept・投稿・プロフィール更新の配送を実地で確認済みです
+(Phase 1 / [Issue #6](https://github.com/hakatashi/activitypub-firebase/issues/6))。
+
+ただし受信側の仕様準拠(Phase 2)と Mastodon API(Phase 3)は未完成で、
+日常利用には耐えません。残っている不具合は
+[docs/known-issues.md](docs/known-issues.md) を参照。
 
 ## クローン
 

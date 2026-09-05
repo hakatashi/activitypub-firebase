@@ -23,6 +23,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.objectType(s)` を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数・フォロワー数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
+| `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
 
 ## ActivityPub 層
 
@@ -43,13 +44,14 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
   `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
-  `/publishProfileUpdate`, `/deliveries/failed`, `/deliveries/resend`)は
+  `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`)は
   `X-Hakatashi-Token` ヘッダで認証する。
 - `offlineMode: true` で初期化しており、apex 内蔵の配送ループ(`setInterval` による
   常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store.ts`)が
   受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている
-  (→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md))。タスクペイロードには
-  `actorId` のみを載せ、秘密鍵は含めない。発行されたタスクは `functions/src/tasks.ts` の
+  (→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md))。タスクペイロードは
+  `actorId` / `body` / `address` の3つで、**秘密鍵は含めない。**
+  発行されたタスクは `functions/src/tasks.ts` の
   `deliveryTask`(`onTaskDispatched`)が処理する。`actorId` から
   `store.getObject(actorId, true)` で秘密鍵を引き、`apex.deliver` で配送する。
   401/403/404/410 とその他の 4xx は恒久失敗としてリトライせず破棄し、5xx と
