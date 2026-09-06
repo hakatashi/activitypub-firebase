@@ -1,6 +1,6 @@
 # ADR-0016: `updateActivityMeta` の `_meta.collection` 破損を修正する
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0017
 - **Date:** 2026-09-05
 
 ## 背景

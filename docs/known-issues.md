@@ -91,28 +91,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 ## コレクションとページネーション
 
-### `_meta.collection` がスカラーで保存され、複数コレクションに所属できない
-
-apex は `_meta.collection` を「アクティビティが所属するコレクションの**集合**」として扱う。
-MongoDB 実装 `activitypub-express/store/index.js:288-302` の `updateActivityMeta` は
-`$addToSet` / `$pull` を使い、`pub/utils.js:66-71` の `hasMeta` は
-`Array.isArray(obj._meta[key])` を要求し、`net/activity.js` の `undo` 処理は
-`object._meta?.collection?.map(colId => ...)` と複数件の走査を前提にしている。
-
-一方 `functions/src/store.ts` の `updateActivityMeta` は
-`activityData._meta[key] = value` で**上書き**し、`remove` 時はキーごと削除する。
-`normalizeActivity` が保存時に配列の先頭要素だけを残すため、
-**アクティビティは常に1つのコレクションにしか所属できない。**
-
-そのため以下が壊れる。
-
-- `pub/activity.js:132-139` の `acceptFollow` は受信済み `Follow` に対して
-  `updateActivityMeta(targetActivity, 'collection', actor.followers[0])` を呼ぶ。
-  ここで `_meta.collection` が inbox の IRI から followers の IRI へ置き換わるため、
-  **受理した `Follow` が inbox コレクションから消える。**
-- `undo` の side effect が影響を受けた全コレクションへ `publishUndoUpdate` を出せない。
-- `Reject` の `hasMeta(object, 'collection', recipient.following[0])` が成立しない。
-
 ### コレクションのページングが常に1ページ目を返す
 
 apex は次ページのカーソルを `stream[stream.length - 1]?._id` から取得する

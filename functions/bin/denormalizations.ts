@@ -1,4 +1,3 @@
-import assert from 'node:assert';
 import {countBy} from 'lodash-es';
 import {db, unescapeFirestoreKey} from '../src/firebase.js';
 import {UserInfos} from '../src/schema.js';
@@ -73,11 +72,10 @@ db.runTransaction(async (transaction) => {
 			});
 		}
 
-		// Denormalize _meta.collection
-		if (Array.isArray(stream._meta?.collection)) {
-			assert(stream._meta.collection.length === 1);
+		// Backfill _meta.collection: スカラーで保存されている既存ドキュメントを配列化する (→ ADR-0017)
+		if (typeof stream._meta?.collection === 'string') {
 			transaction.update(streamDoc.ref, {
-				'_meta.collection': stream._meta.collection[0],
+				'_meta.collection': [stream._meta.collection],
 			});
 		}
 	});

@@ -2,7 +2,6 @@ import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
-import {DocumentData} from 'firebase-admin/firestore';
 import {getFunctions} from 'firebase-admin/functions';
 import {logger} from 'firebase-functions/v2';
 import {mapValues} from 'lodash-es';
@@ -132,20 +131,6 @@ export default class Store extends IApexStore {
 		return true;
 	}
 
-	private denormalizeActivity<T extends DocumentData>(activity: T) {
-		if (typeof activity?._meta?.collection === 'string') {
-			activity._meta.collection = [activity._meta.collection];
-		}
-		return activity;
-	}
-
-	private normalizeActivity<T extends DocumentData>(activity: T) {
-		if (Array.isArray(activity?._meta?.collection)) {
-			activity._meta.collection = activity._meta.collection[0];
-		}
-		return activity;
-	}
-
 	/**
 	 * Return a specific collection (stream of activitites), e.g. a user's inbox
 	 * @param  {string} collectionId - _meta.collection identifier
@@ -166,7 +151,7 @@ export default class Store extends IApexStore {
 		});
 
 		let query = this.db.collection('streams')
-			.where('_meta.collection', '==', collectionId);
+			.where('_meta.collection', 'array-contains', collectionId);
 
 		if (after) {
 			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
@@ -197,12 +182,12 @@ export default class Store extends IApexStore {
 
 		const streams = await query.get();
 
-		return streams.docs.map((doc) => this.denormalizeActivity(doc.data()));
+		return streams.docs.map((doc) => doc.data());
 	}
 
 	async getStreamCount(collectionId: string) {
 		const result = await this.db.collection('streams')
-			.where('_meta.collection', '==', collectionId)
+			.where('_meta.collection', 'array-contains', collectionId)
 			.count()
 			.get();
 		return result.data().count;
@@ -242,7 +227,7 @@ export default class Store extends IApexStore {
 			delete activity._meta;
 		}
 
-		return this.denormalizeActivity(activity);
+		return activity;
 	}
 
 	async saveActivity(activity: ObjectWithId) {
@@ -254,7 +239,7 @@ export default class Store extends IApexStore {
 			if (activityDoc.exists) {
 				return;
 			}
-			transaction.set(activityRef, this.normalizeActivity(activity));
+			transaction.set(activityRef, activity);
 			inserted = true;
 		});
 		return inserted;
@@ -276,15 +261,18 @@ export default class Store extends IApexStore {
 	async updateActivity(activity: ObjectWithId, fullReplace: boolean) {
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		if (fullReplace) {
-			await activityRef.set(this.normalizeActivity(activity));
+			await activityRef.set(activity);
 			await this.updateObjectCopies(activity);
 			return activity;
 		}
-		await activityRef.update(this.objectToUpdateDoc(this.normalizeActivity(activity)));
+		await activityRef.update(this.objectToUpdateDoc(activity));
 		await this.updateObjectCopies(activity);
-		return activityRef.get().then((doc) => this.denormalizeActivity(doc.data()!));
+		return activityRef.get().then((doc) => doc.data()!);
 	}
 
+	// _meta.collection を「アクティビティが所属するコレクションの集合」として扱う apex の
+	// 前提(MongoDB 実装の $addToSet / $pull)に合わせ、配列への重複しない追加・単一値の
+	// 除去として実装する (→ ADR-0017)。
 	// eslint-disable-next-line max-params
 	updateActivityMeta(activity: ObjectWithId, key: string, value: any, remove: boolean) {
 		if (key.includes('.')) {
@@ -297,17 +285,17 @@ export default class Store extends IApexStore {
 				throw new Error('Error updating activity meta: not found');
 			}
 			const activityData = activityDoc.data()!;
+			activityData._meta ??= {};
+			const current: any[] = Array.isArray(activityData._meta[key]) ? activityData._meta[key] : [];
+			let updated = current;
 			if (remove) {
-				Reflect.deleteProperty(activityData._meta, key);
-			} else {
-				activityData._meta[key] = value;
+				updated = current.filter((item) => item !== value);
+			} else if (!current.includes(value)) {
+				updated = [...current, value];
 			}
-			// Firestore の transaction.update はコミット時まで渡したオブジェクトの参照を
-			// 保持するため、直後に denormalizeActivity で同じオブジェクトを書き換えると
-			// コミット内容まで壊れる (→ ADR-0016)。スナップショットを取って切り離す。
-			const normalized = structuredClone(this.normalizeActivity(activityData));
-			transaction.update(activityRef, normalized);
-			return this.denormalizeActivity(activityData);
+			activityData._meta[key] = updated;
+			transaction.update(activityRef, {[`_meta.${key}`]: updated});
+			return activityData;
 		});
 	}
 
