@@ -1,31 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { z } from 'zod';
-
-const firebaseWebappsResponseSchema = z.object({
-	apps: z
-		.array(z.object({ appId: z.string() }))
-		.optional()
-		.default([]),
-});
-
-const firebaseWebappConfigSchema = z.record(z.string(), z.unknown());
-
-const oauthAuthorizeQuerySchema = z.object({
-	client_id: z.string().min(1),
-	redirect_uri: z.string().min(1),
-	response_type: z.string().min(1),
-	scope: z.string().default('scope'),
-});
-
-const oauthAuthorizeBodySchema = z.object({
-	idToken: z.string().min(1),
-});
-
-const oauthTokenBodySchema = z
-	.object({
-		grant_type: z.string().min(1),
-	})
-	.passthrough();
+import {
+	firebaseWebappsResponseSchema,
+	firebaseWebappConfigSchema,
+	oauthAuthorizeQuerySchema,
+	oauthAuthorizeBodySchema,
+	oauthTokenBodySchema,
+} from '../../src/mastodon/oauth.js';
 
 describe('oauth schemas', () => {
 	describe('firebaseWebappsResponseSchema', () => {

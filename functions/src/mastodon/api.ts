@@ -331,15 +331,15 @@ router.get('/v2/instance', (req, res) => {
 	res.json(instanceV2);
 });
 
-const accountLookupQuerySchema = z.object({
+export const accountLookupQuerySchema = z.object({
 	acct: z.string().min(1),
 });
 
-const accountParamsSchema = z.object({
+export const accountParamsSchema = z.object({
 	id: z.string().min(1),
 });
 
-const createAppBodySchema = z.object({
+export const createAppBodySchema = z.object({
 	client_name: z.string().min(1),
 	redirect_uris: z.string().min(1),
 	scopes: z

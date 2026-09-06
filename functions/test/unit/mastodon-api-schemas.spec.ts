@@ -1,56 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { z } from 'zod';
-
-const validScopes = [
-	'follow',
-	'push',
-	'read',
-	'read:accounts',
-	'read:blocks',
-	'read:bookmarks',
-	'read:favourites',
-	'read:filters',
-	'read:follows',
-	'read:lists',
-	'read:mutes',
-	'read:notifications',
-	'read:search',
-	'read:statuses',
-	'write',
-	'write:accounts',
-	'write:blocks',
-	'write:bookmarks',
-	'write:conversations',
-	'write:favourites',
-	'write:filters',
-	'write:follows',
-	'write:lists',
-	'write:media',
-	'write:mutes',
-	'write:notifications',
-	'write:reports',
-	'write:statuses',
-];
-
-const accountLookupQuerySchema = z.object({
-	acct: z.string().min(1),
-});
-
-const accountParamsSchema = z.object({
-	id: z.string().min(1),
-});
-
-const createAppBodySchema = z.object({
-	client_name: z.string().min(1),
-	redirect_uris: z.string().min(1),
-	scopes: z
-		.string()
-		.default('read')
-		.refine((scopes) => scopes.split(' ').every((scope) => validScopes.includes(scope)), {
-			message: 'Invalid scope included',
-		}),
-	website: z.string().default(''),
-});
+import {
+	accountLookupQuerySchema,
+	accountParamsSchema,
+	createAppBodySchema,
+} from '../../src/mastodon/api.js';
 
 describe('mastodon api schemas', () => {
 	describe('accountLookupQuerySchema', () => {
