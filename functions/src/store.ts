@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import type {Firestore} from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface.js';
@@ -60,7 +61,8 @@ export default class Store extends IApexStore {
 			return undefined;
 		}
 
-		const object = objectDoc.data()!;
+		const object = objectDoc.data();
+		assert(object !== undefined, 'object is undefined');
 
 		if (includeMeta !== true) {
 			delete object._meta;
@@ -140,6 +142,7 @@ export default class Store extends IApexStore {
 	 * @param  {object[]} [additionalQuery] - additional aggretation pipeline stages to include
 	 * @returns {Promise<object[]>} - result
 	 */
+	// eslint-disable-next-line max-params
 	async getStream(collectionId: string, limit: number | null, after: string | null, blockList?: string[], additionalQuery?: any[]) {
 		logger.info({
 			type: 'getStream',
@@ -211,7 +214,11 @@ export default class Store extends IApexStore {
 		}
 		await objectDoc.update(this.objectToUpdateDoc(obj));
 		await this.updateObjectCopies(obj);
-		return objectDoc.get().then((doc) => doc.data()!);
+		return objectDoc.get().then((doc) => {
+			const data = doc.data();
+			assert(data !== undefined, 'data is undefined');
+			return data;
+		});
 	}
 
 	async getActivity(id: string, includeMeta?: boolean) {
@@ -221,7 +228,8 @@ export default class Store extends IApexStore {
 			return undefined;
 		}
 
-		const activity = activityDoc.data()!;
+		const activity = activityDoc.data();
+		assert(activity !== undefined, 'activity is undefined');
 
 		if (includeMeta !== true) {
 			delete activity._meta;
@@ -267,7 +275,11 @@ export default class Store extends IApexStore {
 		}
 		await activityRef.update(this.objectToUpdateDoc(activity));
 		await this.updateObjectCopies(activity);
-		return activityRef.get().then((doc) => doc.data()!);
+		return activityRef.get().then((doc) => {
+			const data = doc.data();
+			assert(data !== undefined, 'data is undefined');
+			return data;
+		});
 	}
 
 	// _meta.collection を「アクティビティが所属するコレクションの集合」として扱う apex の
@@ -284,7 +296,8 @@ export default class Store extends IApexStore {
 			if (!activityDoc.exists) {
 				throw new Error('Error updating activity meta: not found');
 			}
-			const activityData = activityDoc.data()!;
+			const activityData = activityDoc.data();
+			assert(activityData !== undefined, 'activityData is undefined');
 			activityData._meta ??= {};
 			const current: any[] = Array.isArray(activityData._meta[key]) ? activityData._meta[key] : [];
 			let updated = current;
@@ -377,7 +390,8 @@ export default class Store extends IApexStore {
 
 		const contextDoc = await this.db.collection('contexts').doc(escapeFirestoreKey(documentUrl)).get();
 		if (contextDoc.exists) {
-			const contextData = contextDoc.data()!;
+			const contextData = contextDoc.data();
+			assert(contextData !== undefined, 'contextData is undefined');
 			contextData.document = JSON.parse(contextData.document);
 			return contextData;
 		}

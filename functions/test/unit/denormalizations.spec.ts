@@ -1,4 +1,5 @@
-import type {QueryDocumentSnapshot} from 'firebase-admin/firestore';
+import assert from 'node:assert';
+import type {DocumentReference, QueryDocumentSnapshot} from 'firebase-admin/firestore';
 import {describe, expect, test, afterEach, beforeEach} from 'vitest';
 import {onStreamCreated, onStreamWritten} from '../../src/denormalizations.js';
 import {db, escapeFirestoreKey} from '../../src/firebase.js';
@@ -6,6 +7,12 @@ import {UserInfos} from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
+
+const getData = async <T>(ref: DocumentReference<T>): Promise<T> => {
+	const data = (await ref.get()).data();
+	assert(data !== undefined, `document ${ref.path} does not exist`);
+	return data;
+};
 
 // firebase-functions v2 の onDocumentWritten / onDocumentCreated が返す関数は
 // `.run(event)` として元のハンドラをそのまま呼び出せる
@@ -41,7 +48,7 @@ describe('denormalizations', () => {
 
 			await onStreamWritten.run({data: {before: undefined, after}} as any);
 
-			const updated = (await ref.get()).data()!;
+			const updated = await getData(ref);
 			expect(updated._meta.objectTypes).toEqual(['Note']);
 			expect(updated._meta.objectType).toBe('Note');
 		});
@@ -59,7 +66,7 @@ describe('denormalizations', () => {
 			// Should not throw even though no update is necessary
 			await expect(onStreamWritten.run({data: {before: undefined, after}} as any)).resolves.toBeUndefined();
 
-			const updated = (await ref.get()).data()!;
+			const updated = await getData(ref);
 			expect(updated._meta).toEqual({objectTypes: ['Note'], objectType: 'Note'});
 		});
 
@@ -74,7 +81,7 @@ describe('denormalizations', () => {
 
 			await onStreamWritten.run({data: {before: undefined, after}} as any);
 
-			const updated = (await ref.get()).data()!;
+			const updated = await getData(ref);
 			expect(updated._meta).toBeUndefined();
 		});
 	});
@@ -108,7 +115,7 @@ describe('denormalizations', () => {
 
 			await onStreamCreated.run({data: snapshot} as any);
 
-			const userInfo = (await UserInfos.doc(escapeFirestoreKey(actorId)).get()).data()!;
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
 			expect(userInfo.statuses_count).toBe(6);
 		});
 
@@ -141,7 +148,7 @@ describe('denormalizations', () => {
 
 			await onStreamCreated.run({data: snapshot} as any);
 
-			const userInfo = (await UserInfos.doc(escapeFirestoreKey(followedId)).get()).data()!;
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
 			expect(userInfo.followers_count).toBe(4);
 		});
 
@@ -174,7 +181,7 @@ describe('denormalizations', () => {
 
 			await onStreamCreated.run({data: snapshot} as any);
 
-			const userInfo = (await UserInfos.doc(escapeFirestoreKey(followedId)).get()).data()!;
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
 			expect(userInfo.followers_count).toBe(2);
 		});
 

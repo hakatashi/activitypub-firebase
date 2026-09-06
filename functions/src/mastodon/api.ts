@@ -65,14 +65,19 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 	if (object === undefined || !userInfoDoc.exists) {
 		return undefined;
 	}
-	return actorObjectToAccount(object, userInfoDoc.data()!);
+	const userInfo = userInfoDoc.data();
+	assert(userInfo !== undefined, 'userInfo is undefined');
+	return actorObjectToAccount(object, userInfo);
 };
 
 export const noteObjectToStatus = (note: APNote, account: CamelToSnake<mastodon.v1.Account>): CamelToSnake<mastodon.v1.Status> => {
-	const id = note.id!.split('/').pop()!;
+	assert(note.id !== undefined, 'note.id is undefined');
+	assert(note.published !== undefined, 'note.published is undefined');
+	const id = note.id.split('/').pop();
+	assert(id !== undefined, 'id is undefined');
 	return {
 		id,
-		created_at: note.published!.toString(),
+		created_at: note.published.toString(),
 		edited_at: null,
 		in_reply_to_id: null,
 		in_reply_to_account_id: null,
@@ -137,7 +142,10 @@ const userIdsToAcconts = async (userIds: string[]): Promise<CamelToSnake<mastodo
 	]);
 
 	const actorMap = new Map<string, APActor>(
-		actorObjects.map((actor) => [actor.id!, actor]),
+		actorObjects.map((actor) => {
+			assert(actor.id !== undefined, 'actor.id is undefined');
+			return [actor.id, actor];
+		}),
 	);
 	const userInfoMap = new Map<string, UserInfo>(
 		userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()]),
@@ -156,7 +164,11 @@ const userIdsToAcconts = async (userIds: string[]): Promise<CamelToSnake<mastodo
 const getAllNotes = async () => {
 	const notes = (await apex.store.getObjectsByFieldValue('type', 'Note')) as APNote[];
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
-	const userIds = validNotes.map((note) => getAttributedTo(note)!);
+	const userIds = validNotes.map((note) => {
+		const attributedTo = getAttributedTo(note);
+		assert(attributedTo !== undefined, 'attributedTo is undefined');
+		return attributedTo;
+	});
 	const accountsMap = new Map(zip(userIds, await userIdsToAcconts(userIds)));
 
 	return Promise.all(validNotes.map((note) => {
