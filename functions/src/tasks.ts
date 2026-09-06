@@ -1,3 +1,4 @@
+import type { APActorWithMeta } from 'activitypub-express';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
@@ -65,7 +66,12 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 			// HTTP Signature の keyId には公開鍵の id (`${actorId}#main-key`, apex `pub/actor.js`)
 			// を渡す必要がある。actorId をそのまま渡すと本家 Mastodon 側の鍵解決が失敗する
 			// (→ ADR-0015)
-			result = await apex.deliver(`${actorId}#main-key`, body, address, actor._meta.privateKey);
+			result = await apex.deliver(
+				`${actorId}#main-key`,
+				body,
+				address,
+				(actor as APActorWithMeta)._meta.privateKey,
+			);
 		} catch (err: any) {
 			await apex.store.recordDeliveryResult({
 				activityId,

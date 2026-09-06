@@ -16,5 +16,5 @@
 		"require": ["tsconfig-paths/register"]
 	},
 	"compileOnSave": true,
-	"include": ["src"]
+	"include": ["src", "types"]
 }

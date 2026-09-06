@@ -1,8 +1,8 @@
-import type { EventEmitter } from 'node:events';
+import assert from 'node:assert';
 import cors from 'cors';
 import express from 'express';
 import { https, logger, params } from 'firebase-functions/v2';
-import { apex, routes } from './apex.js';
+import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
@@ -32,7 +32,8 @@ const nodeinfoCors = cors({
 
 app.use((req, res, next) => {
 	// Default express.json() parser doesn't properly work with cloud functions
-	if (apex.consts.jsonldTypes.includes(req.headers['content-type']) && req.body) {
+	const contentType = req.headers['content-type'];
+	if (contentType !== undefined && apex.consts.jsonldTypes.includes(contentType) && req.body) {
 		req.body = JSON.parse(req.body);
 	}
 
@@ -114,6 +115,7 @@ app.post(
 		const published = new Date().toISOString();
 		const actorId = `https://${domain}/activitypub/u/hakatashi`;
 		const actor = await apex.store.getObject(actorId, true);
+		assert(actor !== undefined, 'actor is undefined');
 		const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
 		const object = {
 			id: url,
@@ -158,6 +160,8 @@ app.get(
 		const actorId = `https://${domain}/activitypub/u/hakatashi`;
 		const actor = await apex.store.getObject(actorId);
 		const actorWithMeta = await apex.store.getObject(actorId, true);
+		assert(actor !== undefined, 'actor is undefined');
+		assert(actorWithMeta !== undefined, 'actorWithMeta is undefined');
 		await apex.publishUpdate(actorWithMeta, actor);
 		res.json('ok');
 	},
@@ -193,15 +197,15 @@ app.post(
 	},
 );
 
-(app as unknown as EventEmitter).on('apex-outbox', (message: any) => {
+onApexOutbox(app, (message) => {
 	logger.info({ type: 'outbox', message });
 
 	if (message.activity.type === 'Create') {
-		logger.info(`New ${message.object.type} from ${message.actor}`);
+		logger.info(`New ${message.object?.type} from ${message.actor}`);
 	}
 });
 
-(app as unknown as EventEmitter).on('apex-inbox', async (message: any) => {
+onApexInbox(app, async (message) => {
 	logger.info({ type: 'inbox', message });
 
 	// Auto-accept follow
@@ -231,7 +235,7 @@ app.post(
 	}
 
 	if (message.activity.type === 'Create') {
-		logger.info(`New ${message.object.type} from ${message.actor} to ${message.recipient}`);
+		logger.info(`New ${message.object?.type} from ${message.actor} to ${message.recipient}`);
 	}
 });
 

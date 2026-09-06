@@ -1,5 +1,7 @@
-// @ts-expect-error: Not typed
+import type { EventEmitter } from 'node:events';
+import type { APObject } from 'activitypub-express';
 import ActivitypubExpress from 'activitypub-express';
+import type { Express } from 'express';
 import { logger } from 'firebase-functions/v2';
 import { domain } from './firebase.js';
 import Store from './store.js';
@@ -42,3 +44,30 @@ export const apex = ActivitypubExpress({
 		name: '博多市',
 	},
 });
+
+// net/activity.js の inboxSideEffects (:195-196) と outboxSideEffects (:296-297) が
+// res.app.emit で発火させるイベントのペイロード。outbox 側には recipient が存在しない
+// (受信者ではなく送信者の actor だけが分かる) → ADR-0022。
+export interface ApexInboxMessage {
+	actor: APObject;
+	activity: APObject;
+	recipient: APObject;
+	object: APObject | undefined;
+}
+
+export interface ApexOutboxMessage {
+	actor: APObject;
+	activity: APObject;
+	object: APObject | undefined;
+}
+
+// apex は Express の Application を EventEmitter として使って apex-inbox / apex-outbox を
+// 発火させるが、express の型定義に emit イベント名は含まれていないため `as unknown as
+// EventEmitter` が必要になる。その cast をここに閉じ込め、購読側は型付きで書けるようにする。
+export const onApexInbox = (app: Express, listener: (message: ApexInboxMessage) => unknown) => {
+	(app as unknown as EventEmitter).on('apex-inbox', listener);
+};
+
+export const onApexOutbox = (app: Express, listener: (message: ApexOutboxMessage) => unknown) => {
+	(app as unknown as EventEmitter).on('apex-outbox', listener);
+};
