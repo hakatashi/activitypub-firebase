@@ -2,8 +2,8 @@ import assert from 'node:assert';
 import type { DocumentReference, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { onStreamCreated, onStreamWritten } from '../../src/denormalizations.js';
-import { db, escapeFirestoreKey } from '../../src/firebase.js';
-import { UserInfos } from '../../src/schema.js';
+import { escapeFirestoreKey } from '../../src/firebase.js';
+import { Streams, UserInfos } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -41,7 +41,7 @@ describe('denormalizations', () => {
 	// 埋め込みオブジェクトのいずれにもなりうるため、どの表現でも同じキーに正規化されることを確認する。
 	describe('onStreamWritten', () => {
 		test('denormalizes _meta.index from _meta.collection and bare IRI strings', async () => {
-			const ref = db.collection('streams').doc('stream-1');
+			const ref = Streams.doc(escapeFirestoreKey('stream-1'));
 			await ref.set({
 				id: 'https://example.com/activities/1',
 				type: 'Follow',
@@ -67,7 +67,7 @@ describe('denormalizations', () => {
 			// dev 環境で実際に観測された Undo(Follow) は object が埋め込みオブジェクトになる
 			// (Issue #49 のフォローアップ)。Link (href が配列でボックス化される) も含めて
 			// スカラーの IRI 文字列に正規化されることを確認する。
-			const ref = db.collection('streams').doc('stream-2');
+			const ref = Streams.doc(escapeFirestoreKey('stream-2'));
 			await ref.set({
 				id: 'https://example.com/activities/2',
 				type: 'Follow',
@@ -90,7 +90,7 @@ describe('denormalizations', () => {
 		// IRI はドットを含むため、エスケープせずに map のキーにすると Firestore の
 		// フィールドパスの区切りと衝突する (→ ADR-0021)。
 		test('escapes dots and slashes in the index keys', async () => {
-			const ref = db.collection('streams').doc('stream-3');
+			const ref = Streams.doc(escapeFirestoreKey('stream-3'));
 			await ref.set({
 				id: 'https://example.com/activities/3',
 				type: 'Create',
@@ -107,7 +107,7 @@ describe('denormalizations', () => {
 		});
 
 		test('does not write when the index is already up to date', async () => {
-			const ref = db.collection('streams').doc('stream-4');
+			const ref = Streams.doc(escapeFirestoreKey('stream-4'));
 			const index = {
 				collections: {},
 				actors: { [escapeFirestoreKey('https://remote.example/u/alice')]: true },
@@ -140,7 +140,7 @@ describe('denormalizations', () => {
 		});
 
 		test('writes empty maps when the activity has no actor/object/collection', async () => {
-			const ref = db.collection('streams').doc('stream-5');
+			const ref = Streams.doc(escapeFirestoreKey('stream-5'));
 			await ref.set({ id: 'https://example.com/activities/5', type: 'Follow' });
 			const after = await ref.get();
 
@@ -169,7 +169,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('note-stream');
+			const ref = Streams.doc(escapeFirestoreKey('note-stream'));
 			await ref.set({
 				id: 'https://example.com/activities/note-1',
 				type: 'Create',
@@ -202,7 +202,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('follow-stream');
+			const ref = Streams.doc(escapeFirestoreKey('follow-stream'));
 			await ref.set({
 				id: 'https://example.com/activities/follow-1',
 				type: 'Follow',
@@ -235,7 +235,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('undo-stream');
+			const ref = Streams.doc(escapeFirestoreKey('undo-stream'));
 			await ref.set({
 				id: 'https://example.com/activities/undo-1',
 				type: 'Undo',
@@ -270,7 +270,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('undo-stream-embedded');
+			const ref = Streams.doc(escapeFirestoreKey('undo-stream-embedded'));
 			await ref.set({
 				id: 'https://example.com/activities/undo-2',
 				type: 'Undo',
@@ -302,7 +302,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('note-stream-embedded');
+			const ref = Streams.doc(escapeFirestoreKey('note-stream-embedded'));
 			await ref.set({
 				id: 'https://example.com/activities/note-2',
 				type: 'Create',
@@ -334,7 +334,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('note-stream-array-type');
+			const ref = Streams.doc(escapeFirestoreKey('note-stream-array-type'));
 			await ref.set({
 				id: 'https://example.com/activities/note-array',
 				type: ['Create'],
@@ -366,7 +366,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('note-stream-bare-iri');
+			const ref = Streams.doc(escapeFirestoreKey('note-stream-bare-iri'));
 			await ref.set({
 				id: 'https://example.com/activities/note-bare',
 				type: 'Create',
@@ -399,7 +399,7 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = db.collection('streams').doc('undo-stream-array-types');
+			const ref = Streams.doc(escapeFirestoreKey('undo-stream-array-types'));
 			await ref.set({
 				id: 'https://example.com/activities/undo-array',
 				type: ['Undo'],

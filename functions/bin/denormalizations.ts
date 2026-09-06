@@ -1,8 +1,8 @@
 import firebase from 'firebase-admin';
 import { countBy, isEqual } from 'lodash-es';
-import { db, unescapeFirestoreKey } from '../src/firebase.js';
+import { db, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
 import { buildMetaIndex } from '../src/meta.js';
-import { UserInfos } from '../src/schema.js';
+import { Streams, UserInfos } from '../src/schema.js';
 import { toIdArray } from '../src/utils.js';
 
 // ADR-0021 より前のスキーマで書き込まれた非正規化フィールド。バックフィル時に削除する。
@@ -14,7 +14,7 @@ const LEGACY_META_FIELDS = [
 ];
 
 db.runTransaction(async (transaction) => {
-	const streams = await transaction.get(db.collection('streams'));
+	const streams = await transaction.get(Streams);
 	console.log(`streams: ${streams.docs.length}`);
 
 	const userInfos = await transaction.get(UserInfos);
@@ -72,7 +72,7 @@ db.runTransaction(async (transaction) => {
 
 	userInfos.docs.forEach((userInfoDoc) => {
 		const userInfo = userInfoDoc.data();
-		const actorId = unescapeFirestoreKey(userInfoDoc.id);
+		const actorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
 
 		// Denormalize statuses_count
 		const oldStatusCount = userInfo.statuses_count;

@@ -267,8 +267,12 @@ export default class Store extends IApexStore implements ApexStore {
 		id: string,
 		includeMeta?: boolean,
 	) {
-		const streamDocs = await Streams.where(metaIndexPath('collections', collection), '==', true)
-			.where(metaIndexPath(field, id), '==', true)
+		const streamDocs = await Streams.where(
+			metaIndexPath('collections', escapeFirestoreKey(collection)),
+			'==',
+			true,
+		)
+			.where(metaIndexPath(field, escapeFirestoreKey(id)), '==', true)
 			.limit(1)
 			.get();
 
@@ -532,7 +536,7 @@ export default class Store extends IApexStore implements ApexStore {
 
 		await this.db.runTransaction(async (transaction) => {
 			const matchedDocs = await transaction.get(
-				Streams.where(metaIndexPath('objects', object.id), '==', true),
+				Streams.where(metaIndexPath('objects', escapeFirestoreKey(object.id)), '==', true),
 			);
 			matchedDocs.forEach((doc) => {
 				const rawObject = doc.get('object') as unknown;

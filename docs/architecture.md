@@ -65,7 +65,8 @@ apex の `IApexStore` インターフェースを Firestore で実装した `fun
 
 Firestore のドキュメント ID に URL をそのまま使えないため、
 `escapeFirestoreKey` / `unescapeFirestoreKey`(`functions/src/firebase.ts`)で
-`%`, `/`, `.` をエスケープしている。
+`%`, `/`, `.` をエスケープしている。エスケープ済みキーはブランド型 `FirestoreKey` で
+区別され、生文字列の取り違えを型レベルで防止する(→ [ADR-0027](adr/0027-branded-firestore-key.md))。
 
 | コレクション | ドキュメント ID | 内容 |
 |---|---|---|
