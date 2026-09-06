@@ -115,6 +115,41 @@ describe('getFollowers', () => {
 		expect(followers[0].acct).toBe('alice@remote.example');
 	});
 
+	test('handles more than 30 followers by chunking the "in" query', async () => {
+		// Firestore の `in` は最大30件までしか指定できないため、31人以上のフォロワーがいても
+		// userIdsToAcconts がチャンク分割して結合されることを固定する。
+		const followerIds = Array.from(
+			{ length: 31 },
+			(_, i) => `https://remote.example/u/follower-${i}`,
+		);
+		await Promise.all(
+			followerIds.map((followerId, i) =>
+				apex.store.saveObject({
+					id: followerId,
+					type: 'Person',
+					preferredUsername: `follower-${i}`,
+				}),
+			),
+		);
+		await Promise.all(
+			followerIds.map((followerId, i) =>
+				db
+					.collection('streams')
+					.doc(`follow-chunk-${i}`)
+					.set({
+						id: `https://remote.example/activities/follow-chunk-${i}`,
+						type: 'Follow',
+						actor: [followerId],
+						object: [actor.id],
+					}),
+			),
+		);
+
+		const followers = await getFollowers(actor);
+		expect(followers).toHaveLength(31);
+		expect(new Set(followers.map((follower) => follower.acct)).size).toBe(31);
+	});
+
 	test('does not count a Follow directed at a different actor', async () => {
 		const followerId = 'https://remote.example/u/alice';
 		const otherActorId = 'https://example.com/activitypub/u/someoneelse';

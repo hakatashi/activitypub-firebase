@@ -71,6 +71,20 @@ describe('Store', () => {
 			expect(result).toEqual(expect.arrayContaining(objects));
 			expect(result).toHaveLength(2);
 		});
+
+		test('fetches more than 30 objects by chunking the "in" query', async () => {
+			// Firestore の `in` は最大30件までしか指定できないため、31件以上を渡した場合に
+			// チャンク分割して結合されることを固定する。
+			const objects = Array.from({ length: 31 }, (_, i) => ({
+				id: `https://example.com/objects/chunk-${i}`,
+				type: 'Note',
+			}));
+			await Promise.all(objects.map((object) => store.saveObject(object)));
+
+			const result = await store.getObjects(objects.map((object) => object.id));
+			expect(result).toEqual(expect.arrayContaining(objects));
+			expect(result).toHaveLength(31);
+		});
 	});
 
 	describe('saveActivity / getActivity', () => {
@@ -96,6 +110,116 @@ describe('Store', () => {
 
 			const fetched = await store.getActivity(activity.id);
 			expect(fetched?.type).toBe('Create');
+		});
+	});
+
+	describe('findActivityByCollectionAndObjectId', () => {
+		test('finds a Follow activity by collection and object id', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/follow-1',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: { collection: ['https://example.com/following'] },
+			});
+
+			const found = await store.findActivityByCollectionAndObjectId(
+				'https://example.com/following',
+				'https://example.com/users/hakatashi',
+				true,
+			);
+			expect(found?.id).toBe('https://example.com/activities/follow-1');
+		});
+
+		test('returns undefined when the object id matches but the collection does not', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/follow-2',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: { collection: ['https://example.com/followers'] },
+			});
+
+			expect(
+				await store.findActivityByCollectionAndObjectId(
+					'https://example.com/following',
+					'https://example.com/users/hakatashi',
+					true,
+				),
+			).toBeUndefined();
+		});
+
+		test('returns undefined when nothing matches the object id', async () => {
+			expect(
+				await store.findActivityByCollectionAndObjectId(
+					'https://example.com/following',
+					'https://example.com/users/nobody',
+					true,
+				),
+			).toBeUndefined();
+		});
+
+		test('strips _meta by default', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/follow-3',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: { collection: ['https://example.com/following'] },
+			});
+
+			const found = await store.findActivityByCollectionAndObjectId(
+				'https://example.com/following',
+				'https://example.com/users/hakatashi',
+			);
+			expect(found).not.toHaveProperty('_meta');
+		});
+	});
+
+	describe('findActivityByCollectionAndActorId', () => {
+		test('finds a Follow activity by collection and actor id', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/follow-4',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: { collection: ['https://example.com/followers'] },
+			});
+
+			const found = await store.findActivityByCollectionAndActorId(
+				'https://example.com/followers',
+				'https://remote.example/u/alice',
+				true,
+			);
+			expect(found?.id).toBe('https://example.com/activities/follow-4');
+		});
+
+		test('returns undefined when the actor id matches but the collection does not', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/follow-5',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: { collection: ['https://example.com/following'] },
+			});
+
+			expect(
+				await store.findActivityByCollectionAndActorId(
+					'https://example.com/followers',
+					'https://remote.example/u/alice',
+					true,
+				),
+			).toBeUndefined();
+		});
+
+		test('returns undefined when nothing matches the actor id', async () => {
+			expect(
+				await store.findActivityByCollectionAndActorId(
+					'https://example.com/followers',
+					'https://remote.example/u/nobody',
+					true,
+				),
+			).toBeUndefined();
 		});
 	});
 

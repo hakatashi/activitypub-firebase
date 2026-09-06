@@ -5,7 +5,7 @@ import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
 import firebase from 'firebase-admin';
-import { last, zip } from 'lodash-es';
+import { chunk, last, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../activitypub.js';
 import {
@@ -16,6 +16,7 @@ import {
 	unescapeFirestoreKey,
 } from '../firebase.js';
 import { UserInfo, UserInfos } from '../schema.js';
+import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
 import { Counter } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
@@ -184,13 +185,13 @@ const userIdsToAcconts = async (
 		return [];
 	}
 
-	const [actorObjects, userInfos] = await Promise.all([
+	const [actorObjects, userInfoDocsChunks] = await Promise.all([
 		apex.store.getObjects(userIds) as Promise<APActor[]>,
-		UserInfos.where(
-			firebase.firestore.FieldPath.documentId(),
-			'in',
-			userIds.map(escapeFirestoreKey),
-		).get(),
+		Promise.all(
+			chunk(userIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
+				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+			),
+		),
 	]);
 
 	const actorMap = new Map<string, APActor>(
@@ -200,7 +201,9 @@ const userIdsToAcconts = async (
 		}),
 	);
 	const userInfoMap = new Map<string, UserInfo>(
-		userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()]),
+		userInfoDocsChunks.flatMap((userInfos) =>
+			userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()] as const),
+		),
 	);
 
 	return Promise.all(

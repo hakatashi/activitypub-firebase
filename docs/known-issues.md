@@ -123,20 +123,6 @@ inbox 処理(`net/activity.js` の `denormalizeObject` 対象に `undo` が含�
 ([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み、
 [Issue #31](https://github.com/hakatashi/activitypub-firebase/issues/31))
 
-## Store の未実装メソッド
-
-`findActivityByCollectionAndObjectId` と `findActivityByCollectionAndActorId` が
-`functions/src/store.ts` に実装されておらず、基底クラスの `throw new Error('Not implemented')` が生きる。
-
-`activitypub-express/net/validators.js:332,339,346` が outbox 経由の `Undo`(Follow / Block)と
-`Reject` の検証で使うため、**Mastodon API からフォロー解除を実装した時点で落ちる。**
-
-## Firestore クエリの上限
-
-`functions/src/store.ts:86` の `getObjects` と `functions/src/mastodon/api.ts:136` の
-`userIdsToAcconts` は Firestore の `in` クエリを使っているが、`in` は最大30件までしか指定できない。
-フォロワーが30人を超えると破綻する。
-
 ## Mastodon API
 
 ### タイムラインが全 Note を無条件に返す

@@ -5,10 +5,13 @@ import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
-import { mapValues } from 'lodash-es';
+import { chunk, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
+
+// Firestore の `in` フィルタは1クエリにつき最大30件までしか指定できない。
+export const FIRESTORE_IN_QUERY_LIMIT = 30;
 
 // Implements IApexStore:
 // https://github.com/immers-space/activitypub-express/blob/master/store/interface.js
@@ -83,18 +86,25 @@ export default class Store extends IApexStore {
 			return [];
 		}
 
-		const objectDocs = await this.db
-			.collection('objects')
-			.where(firebase.firestore.FieldPath.documentId(), 'in', ids.map(escapeFirestoreKey))
-			.get();
+		const idChunks = chunk(ids.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
+		const objectDocsChunks = await Promise.all(
+			idChunks.map((idChunk) =>
+				this.db
+					.collection('objects')
+					.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk)
+					.get(),
+			),
+		);
 
-		return objectDocs.docs.map((doc) => {
-			const object = doc.data();
-			if (includeMeta !== true) {
-				delete object._meta;
-			}
-			return object;
-		});
+		return objectDocsChunks.flatMap((objectDocs) =>
+			objectDocs.docs.map((doc) => {
+				const object = doc.data();
+				if (includeMeta !== true) {
+					delete object._meta;
+				}
+				return object;
+			}),
+		);
 	}
 
 	// Extended by us
@@ -235,6 +245,70 @@ export default class Store extends IApexStore {
 			assert(data !== undefined, 'data is undefined');
 			return data;
 		});
+	}
+
+	// Firestore は1クエリにつき array-contains を1つしか使えないため、
+	// `_meta.collection` と `object`/`actor` の両方を array-contains で絞り込むことはできない。
+	// object/actor 側(対象アクターのIRIという選択性の高い方)だけを Firestore に絞り込ませ、
+	// `_meta.collection` への所属はアプリケーション側で判定する。
+	async findActivityByCollectionAndObjectId(
+		collection: string,
+		objectId: string,
+		includeMeta?: boolean,
+	) {
+		logger.info({
+			type: 'findActivityByCollectionAndObjectId',
+			collection,
+			objectId,
+		});
+
+		const streamDocs = await this.db
+			.collection('streams')
+			.where('object', 'array-contains', objectId)
+			.get();
+
+		const activityDoc = streamDocs.docs.find((doc) =>
+			(doc.get('_meta')?.collection as string[] | undefined)?.includes(collection),
+		);
+		if (!activityDoc) {
+			return undefined;
+		}
+
+		const activity = activityDoc.data();
+		if (includeMeta !== true) {
+			delete activity._meta;
+		}
+		return activity;
+	}
+
+	async findActivityByCollectionAndActorId(
+		collection: string,
+		actorId: string,
+		includeMeta?: boolean,
+	) {
+		logger.info({
+			type: 'findActivityByCollectionAndActorId',
+			collection,
+			actorId,
+		});
+
+		const streamDocs = await this.db
+			.collection('streams')
+			.where('actor', 'array-contains', actorId)
+			.get();
+
+		const activityDoc = streamDocs.docs.find((doc) =>
+			(doc.get('_meta')?.collection as string[] | undefined)?.includes(collection),
+		);
+		if (!activityDoc) {
+			return undefined;
+		}
+
+		const activity = activityDoc.data();
+		if (includeMeta !== true) {
+			delete activity._meta;
+		}
+		return activity;
 	}
 
 	async getActivity(id: string, includeMeta?: boolean) {
