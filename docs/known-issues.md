@@ -123,19 +123,28 @@ inbox 処理(`net/activity.js` の `denormalizeObject` 対象に `undo` が含�
 ([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み、
 [Issue #31](https://github.com/hakatashi/activitypub-firebase/issues/31))
 
-## Store の未実装メソッド
+## データ更新の反映
 
-`findActivityByCollectionAndObjectId` と `findActivityByCollectionAndActorId` が
-`functions/src/store.ts` に実装されておらず、基底クラスの `throw new Error('Not implemented')` が生きる。
+### `updateObjectCopies` が常に何もしていない
 
-`activitypub-express/net/validators.js:332,339,346` が outbox 経由の `Undo`(Follow / Block)と
-`Reject` の検証で使うため、**Mastodon API からフォロー解除を実装した時点で落ちる。**
+`functions/src/store.ts` の `updateObjectCopies` は `Update`(Note の編集・Actor
+プロフィール更新など)で `updateObject`/`updateActivity` が呼ばれたとき、`streams` に
+埋め込まれている古いコピーを新しい内容へ差し替えるための処理だが、2つの理由で
+**常に何もしていない**ことを実機の Firestore エミュレータで確認した。
 
-## Firestore クエリの上限
+1. `streams.object` は常に配列(activitypub-express が `compactArrays: false` で
+   JSON-LD を正規化するため)だが、`updateObjectCopies` は
+   `.where('object.id', '==', object.id)` という Firestore のドット記法クエリを使っている。
+   ドット記法はマップ型フィールドの中身にしか届かず、配列要素の中のフィールドには届かないため、
+   **このクエリは常にヒット0件になる。**
+2. 仮にクエリがヒットしても、`lodash-es` の `mapValues` は配列を渡すと `{0: ..., 1: ...}`
+   という数値キーのプレーンオブジェクトを返す。これをそのまま `object` フィールドへ
+   書き戻すと、配列だったフィールドがマップに壊れ、`Array.isArray` 判定に依存する他の
+   コード(`toIdArray` を含む非正規化処理全般、→ ADR-0020)が誤動作するデータ破損経路になる。
 
-`functions/src/store.ts:86` の `getObjects` と `functions/src/mastodon/api.ts:136` の
-`userIdsToAcconts` は Firestore の `in` クエリを使っているが、`in` は最大30件までしか指定できない。
-フォロワーが30人を超えると破綻する。
+**Note の編集や Actor のプロフィール更新をしても、他の `streams` ドキュメント
+(Like/Announce/Create などに埋め込まれた `object` のコピー)には反映されない。**
+([Issue #72](https://github.com/hakatashi/activitypub-firebase/issues/72))
 
 ## Mastodon API
 

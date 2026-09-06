@@ -5,7 +5,7 @@ import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
 import firebase from 'firebase-admin';
-import { last, zip } from 'lodash-es';
+import { chunk, last, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../activitypub.js';
 import {
@@ -16,6 +16,7 @@ import {
 	unescapeFirestoreKey,
 } from '../firebase.js';
 import { UserInfo, UserInfos } from '../schema.js';
+import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
 import { Counter } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
@@ -184,13 +185,13 @@ const userIdsToAcconts = async (
 		return [];
 	}
 
-	const [actorObjects, userInfos] = await Promise.all([
+	const [actorObjects, userInfoDocsChunks] = await Promise.all([
 		apex.store.getObjects(userIds) as Promise<APActor[]>,
-		UserInfos.where(
-			firebase.firestore.FieldPath.documentId(),
-			'in',
-			userIds.map(escapeFirestoreKey),
-		).get(),
+		Promise.all(
+			chunk(userIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
+				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+			),
+		),
 	]);
 
 	const actorMap = new Map<string, APActor>(
@@ -200,7 +201,9 @@ const userIdsToAcconts = async (
 		}),
 	);
 	const userInfoMap = new Map<string, UserInfo>(
-		userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()]),
+		userInfoDocsChunks.flatMap((userInfos) =>
+			userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()] as const),
+		),
 	);
 
 	return Promise.all(
@@ -249,10 +252,13 @@ const getInboxId = (actor: APActor) => {
 };
 
 export const getFollowers = async (actor: APActor) => {
+	// object/actor は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、生の
+	// フィールドではなく denormalizations.ts が書き込む `_meta.objectIds`/`_meta.actorIds`
+	// (常にスカラー ID の配列)を見る(→ ADR-0020)。
 	const followStreams = await db
 		.collection('streams')
 		.where('type', '==', 'Follow')
-		.where('object', 'array-contains', actor.id)
+		.where('_meta.objectIds', 'array-contains', actor.id)
 		.get();
 	const unfollowStreams = await db
 		.collection('streams')
@@ -265,14 +271,18 @@ export const getFollowers = async (actor: APActor) => {
 
 	for (const followStream of followStreams.docs) {
 		const follow = followStream.data();
-		const followActor = Array.isArray(follow.actor) ? follow.actor[0] : follow.actor;
-		followCounter.increment(followActor);
+		const followActor = follow._meta?.actorIds?.[0];
+		if (followActor !== undefined) {
+			followCounter.increment(followActor);
+		}
 	}
 
 	for (const unfollowStream of unfollowStreams.docs) {
 		const unfollow = unfollowStream.data();
-		const unfollowActor = Array.isArray(unfollow.actor) ? unfollow.actor[0] : unfollow.actor;
-		followCounter.increment(unfollowActor, -1);
+		const unfollowActor = unfollow._meta?.actorIds?.[0];
+		if (unfollowActor !== undefined) {
+			followCounter.increment(unfollowActor, -1);
+		}
 	}
 
 	const followerIds = Array.from(followCounter)

@@ -5,10 +5,13 @@ import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
-import { mapValues } from 'lodash-es';
+import { chunk, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
+
+// Firestore の `in` フィルタは1クエリにつき最大30件までしか指定できない。
+export const FIRESTORE_IN_QUERY_LIMIT = 30;
 
 // Implements IApexStore:
 // https://github.com/immers-space/activitypub-express/blob/master/store/interface.js
@@ -83,18 +86,25 @@ export default class Store extends IApexStore {
 			return [];
 		}
 
-		const objectDocs = await this.db
-			.collection('objects')
-			.where(firebase.firestore.FieldPath.documentId(), 'in', ids.map(escapeFirestoreKey))
-			.get();
+		const idChunks = chunk(ids.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
+		const objectDocsChunks = await Promise.all(
+			idChunks.map((idChunk) =>
+				this.db
+					.collection('objects')
+					.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk)
+					.get(),
+			),
+		);
 
-		return objectDocs.docs.map((doc) => {
-			const object = doc.data();
-			if (includeMeta !== true) {
-				delete object._meta;
-			}
-			return object;
-		});
+		return objectDocsChunks.flatMap((objectDocs) =>
+			objectDocs.docs.map((doc) => {
+				const object = doc.data();
+				if (includeMeta !== true) {
+					delete object._meta;
+				}
+				return object;
+			}),
+		);
 	}
 
 	// Extended by us
@@ -237,6 +247,75 @@ export default class Store extends IApexStore {
 		});
 	}
 
+	// Firestore は1クエリにつき array-contains を1つしか使えないため、`_meta.collection` と
+	// `_meta.actorIds`/`_meta.objectIds` の両方を array-contains で絞り込むことはできない。
+	// 対象アクターの IRI という選択性の高い方だけを Firestore に絞り込ませ、`_meta.collection`
+	// への所属はアプリケーション側で判定する。
+	//
+	// 生の `object`/`actor` フィールドではなく denormalizations.ts が書き込む
+	// `_meta.objectIds`/`_meta.actorIds` を見るのは、AS2 の `object`/`actor` が IRI 文字列・
+	// Link・埋め込みオブジェクトのいずれにもなりうるため。Mastodon 以外の実装からの入力や
+	// Undo の埋め込みオブジェクトでは、実際に埋め込みオブジェクトが入る(→ ADR-0020)。
+	async findActivityByCollectionAndObjectId(
+		collection: string,
+		objectId: string,
+		includeMeta?: boolean,
+	) {
+		logger.info({
+			type: 'findActivityByCollectionAndObjectId',
+			collection,
+			objectId,
+		});
+
+		const streamDocs = await this.db
+			.collection('streams')
+			.where('_meta.objectIds', 'array-contains', objectId)
+			.get();
+
+		const activityDoc = streamDocs.docs.find((doc) =>
+			(doc.get('_meta')?.collection as string[] | undefined)?.includes(collection),
+		);
+		if (!activityDoc) {
+			return undefined;
+		}
+
+		const activity = activityDoc.data();
+		if (includeMeta !== true) {
+			delete activity._meta;
+		}
+		return activity;
+	}
+
+	async findActivityByCollectionAndActorId(
+		collection: string,
+		actorId: string,
+		includeMeta?: boolean,
+	) {
+		logger.info({
+			type: 'findActivityByCollectionAndActorId',
+			collection,
+			actorId,
+		});
+
+		const streamDocs = await this.db
+			.collection('streams')
+			.where('_meta.actorIds', 'array-contains', actorId)
+			.get();
+
+		const activityDoc = streamDocs.docs.find((doc) =>
+			(doc.get('_meta')?.collection as string[] | undefined)?.includes(collection),
+		);
+		if (!activityDoc) {
+			return undefined;
+		}
+
+		const activity = activityDoc.data();
+		if (includeMeta !== true) {
+			delete activity._meta;
+		}
+		return activity;
+	}
+
 	async getActivity(id: string, includeMeta?: boolean) {
 		const activityDoc = await this.db.collection('streams').doc(escapeFirestoreKey(id)).get();
 
@@ -275,7 +354,7 @@ export default class Store extends IApexStore {
 				this.db
 					.collection('streams')
 					.where('id', '==', activity.id)
-					.where('actor', 'array-contains', actorId),
+					.where('_meta.actorIds', 'array-contains', actorId),
 			);
 			matchedDocs.forEach((doc) => {
 				transaction.delete(doc.ref);
@@ -302,6 +381,8 @@ export default class Store extends IApexStore {
 	// _meta.collection を「アクティビティが所属するコレクションの集合」として扱う apex の
 	// 前提(MongoDB 実装の $addToSet / $pull)に合わせ、配列への重複しない追加・単一値の
 	// 除去として実装する (→ ADR-0017)。
+	// なお、シグネチャとしては任意の key を受け取れるようになっているが、apex 本体の実装を含め
+	// 実際には key === 'collection' (_meta.collection) 専用としてのみ呼び出されている。
 	// eslint-disable-next-line max-params
 	updateActivityMeta(activity: ObjectWithId, key: string, value: any, remove: boolean) {
 		if (key.includes('.')) {
