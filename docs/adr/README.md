@@ -47,3 +47,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0019](0019-find-activity-by-collection-object-actor.md) | `findActivityByCollectionAndObjectId`/`ActorId` は片方だけを Firestore に絞り込ませる | Superseded by ADR-0020 |
 | [0020](0020-denormalize-actor-object-ids.md) | `actor`/`object` の IRI を `_meta.actorIds`/`_meta.objectIds` に非正規化する | Superseded by ADR-0021 |
 | [0021](0021-meta-index-as-maps.md) | `_meta` の非正規化インデックスを map 型の `_meta.index.*` に統一する | Accepted |
+| [0022](0022-filter-blocklist-in-application.md) | `getStream` の `blockList` フィルタをアプリケーション側で行う | Accepted |
+

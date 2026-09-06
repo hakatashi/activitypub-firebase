@@ -112,17 +112,6 @@ inbox 処理(`net/activity.js` の `denormalizeObject` 対象に `undo` が含�
 `followers_count` 減算は実質発火しない。**
 ([Issue #20](https://github.com/hakatashi/activitypub-firebase/issues/20) の実地検証で確認)
 
-### `blockList` を渡すと `getStream` が例外を投げる
-
-`functions/src/store.ts` の `getStream` は `blockList` が指定されると
-`.where('actor', 'not-in', blockList)` を追加するが、`orderBy` は常に
-`FieldPath.documentId()` のみ。Firestore は `not-in` を使う場合、最初の `orderBy` を
-そのフィールド(`actor`)にすることを要求するため、この組み合わせは
-`3 INVALID_ARGUMENT: order by clause cannot contain more fields after the key` で
-必ず失敗する。**ブロックリスト機能は現状まったく動作しない。**
-([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み、
-[Issue #31](https://github.com/hakatashi/activitypub-firebase/issues/31))
-
 ## Mastodon API
 
 ### タイムラインが全 Note を無条件に返す

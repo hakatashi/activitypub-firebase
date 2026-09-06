@@ -173,45 +173,76 @@ export default class Store extends IApexStore {
 			additionalQuery,
 		});
 
-		let query = this.db
-			.collection('streams')
-			.where('_meta.collection', 'array-contains', collectionId);
+		const blockedSet = Array.isArray(blockList) && blockList.length > 0 ? new Set(blockList) : null;
 
-		if (after) {
-			// orderBy is descending, so "after" (the last item of the previous
-			// page) means items that sort strictly lower than it.
-			query = query.where(firebase.firestore.FieldPath.documentId(), '<', after);
-		}
-		if (Array.isArray(blockList) && blockList.length > 0) {
-			query = query.where('actor', 'not-in', blockList);
-		}
-		if (additionalQuery && additionalQuery.length > 0) {
-			for (const queryObject of additionalQuery) {
-				for (const [key, value] of Object.entries(queryObject)) {
-					if (key.startsWith('$')) {
-						throw new Error('getStream: additionalQuery: $-prefixed keys are not supported yet');
-					}
-					if (typeof value === 'object' && value !== null) {
-						throw new Error('getStream: additionalQuery: object values are not supported yet');
-					}
+		const isBlocked = (activity: Record<string, any>) => {
+			if (!blockedSet) {
+				return false;
+			}
+			const actorIds = toIdArray(activity.actor);
+			return actorIds.some((actorId) => blockedSet.has(actorId));
+		};
 
-					query = query.where(key, '==', value);
+		let currentAfter = after;
+		const results: Array<Record<string, any>> = [];
+
+		while (true) {
+			let query = this.db
+				.collection('streams')
+				.where('_meta.collection', 'array-contains', collectionId);
+
+			if (currentAfter) {
+				// orderBy is descending, so "after" (the last item of the previous
+				// page) means items that sort strictly lower than it.
+				query = query.where(firebase.firestore.FieldPath.documentId(), '<', currentAfter);
+			}
+			if (additionalQuery && additionalQuery.length > 0) {
+				for (const queryObject of additionalQuery) {
+					for (const [key, value] of Object.entries(queryObject)) {
+						if (key.startsWith('$')) {
+							throw new Error('getStream: additionalQuery: $-prefixed keys are not supported yet');
+						}
+						if (typeof value === 'object' && value !== null) {
+							throw new Error('getStream: additionalQuery: object values are not supported yet');
+						}
+
+						query = query.where(key, '==', value);
+					}
 				}
 			}
+
+			// Firestore は not-in と documentId() の降順ソートを両立できないため、
+			// blockList による除外は取得後にアプリケーション側で行う (→ ADR-0022)。
+			query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
+
+			const batchLimit = limit ? limit - results.length : null;
+			if (batchLimit !== null) {
+				query = query.limit(batchLimit);
+			}
+
+			const streams = await query.get();
+			if (streams.empty) {
+				break;
+			}
+
+			for (const doc of streams.docs) {
+				const activity = { ...doc.data(), _id: doc.id };
+				if (!isBlocked(activity)) {
+					results.push(activity);
+				}
+			}
+
+			currentAfter = streams.docs.at(-1)!.id;
+
+			if (limit === null || results.length >= limit || streams.docs.length < batchLimit!) {
+				break;
+			}
 		}
-
-		query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
-
-		if (limit) {
-			query = query.limit(limit);
-		}
-
-		const streams = await query.get();
 
 		// activitypub-express's buildCollectionPage uses `_id` (a MongoDB
 		// convention) as the cursor for the next page, so we surface the
 		// Firestore document ID under that key.
-		return streams.docs.map((doc) => ({ ...doc.data(), _id: doc.id }));
+		return results;
 	}
 
 	async getStreamCount(collectionId: string) {

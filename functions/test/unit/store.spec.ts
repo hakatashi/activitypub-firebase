@@ -386,24 +386,114 @@ describe('Store', () => {
 			expect(stream).toHaveLength(3);
 		});
 
-		test('passing a non-empty blockList currently makes the query fail', async () => {
-			// Firestore は not-in フィルタを使う場合、最初の orderBy をそのフィールドに
-			// することを要求する。getStream は orderBy を常に documentId() のみにしているため、
-			// blockList を渡すと "order by clause cannot contain more fields after the key" で
-			// クエリ自体が失敗する。つまり blockList 引数は現状まったく機能しない。
-			// docs/known-issues.md の「blockList を渡すと getStream が例外を投げる」参照。
+		test('excludes activities from actors in blockList', async () => {
 			await store.saveActivity({
-				id: 'https://example.com/activities/from-someone',
+				id: 'https://example.com/activities/from-blocked',
 				type: 'Create',
-				actor: 'https://example.com/users/someone',
+				actor: 'https://example.com/users/blocked',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-allowed',
+				type: 'Create',
+				actor: 'https://example.com/users/allowed',
 				_meta: { collection: ['https://example.com/inbox'] },
 			});
 
-			await expect(
-				store.getStream('https://example.com/inbox', null, null, [
-					'https://example.com/users/blocked',
-				]),
-			).rejects.toThrow('order by clause cannot contain more fields after the key');
+			const stream = await store.getStream('https://example.com/inbox', null, null, [
+				'https://example.com/users/blocked',
+			]);
+			expect(stream).toHaveLength(1);
+			expect(stream[0].id).toBe('https://example.com/activities/from-allowed');
+		});
+
+		test('excludes activities where actor is an array, embedded object, or Link', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-array-actor',
+				type: 'Create',
+				actor: ['https://example.com/users/blocked-array'],
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-embedded-actor',
+				type: 'Create',
+				actor: [{ id: 'https://example.com/users/blocked-embedded', type: 'Person' }],
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-link-actor',
+				type: 'Create',
+				actor: { type: 'Link', href: 'https://example.com/users/blocked-link' },
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-allowed-person',
+				type: 'Create',
+				actor: 'https://example.com/users/allowed-person',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+
+			const stream = await store.getStream('https://example.com/inbox', null, null, [
+				'https://example.com/users/blocked-array',
+				'https://example.com/users/blocked-embedded',
+				'https://example.com/users/blocked-link',
+			]);
+			expect(stream).toHaveLength(1);
+			expect(stream[0].id).toBe('https://example.com/activities/from-allowed-person');
+		});
+
+		test('replenishes up to limit when blocked activities are skipped', async () => {
+			// 1, 2, 3 のうち 1 がブロック対象の場合、limit=2 で 2 と 3 の2件が返ることを確認する。
+			await store.saveActivity({
+				id: 'https://example.com/activities/order-1-blocked',
+				type: 'Create',
+				actor: 'https://example.com/users/blocked-user',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/order-2-allowed',
+				type: 'Create',
+				actor: 'https://example.com/users/allowed-1',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/order-3-allowed',
+				type: 'Create',
+				actor: 'https://example.com/users/allowed-2',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+
+			const stream = await store.getStream('https://example.com/inbox', 2, null, [
+				'https://example.com/users/blocked-user',
+			]);
+			expect(stream).toHaveLength(2);
+			expect(stream.map((a) => a.id)).toEqual([
+				'https://example.com/activities/order-3-allowed',
+				'https://example.com/activities/order-2-allowed',
+			]);
+		});
+
+		test('handles blockList with more than 10 items without Firestore errors', async () => {
+			const blockList = Array.from(
+				{ length: 15 },
+				(_, i) => `https://example.com/users/blocked-${i}`,
+			);
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-blocked-14',
+				type: 'Create',
+				actor: 'https://example.com/users/blocked-14',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-clean',
+				type: 'Create',
+				actor: 'https://example.com/users/clean',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+
+			const stream = await store.getStream('https://example.com/inbox', null, null, blockList);
+			expect(stream).toHaveLength(1);
+			expect(stream[0].id).toBe('https://example.com/activities/from-clean');
 		});
 	});
 
