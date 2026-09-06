@@ -1,8 +1,8 @@
 import assert from 'node:assert';
 import firebase from 'firebase-admin';
-import {onDocumentWritten, onDocumentCreated} from 'firebase-functions/v2/firestore';
-import {db, escapeFirestoreKey} from './firebase.js';
-import {UserInfos} from './schema.js';
+import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { db, escapeFirestoreKey } from './firebase.js';
+import { UserInfos } from './schema.js';
 
 // Check if given two sets are equal
 const setEqual = <T>(a: Set<T>, b: Set<T>) => {
@@ -47,10 +47,9 @@ export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (ev
 	// Denormalize objectType
 
 	const oldObjectType = stream._meta?.objectType ?? undefined;
-	const newObjectType =
-		objects
-			.map((object: any) => object.type)
-			.find((objectType: any) => typeof objectType === 'string');
+	const newObjectType = objects
+		.map((object: any) => object.type)
+		.find((objectType: any) => typeof objectType === 'string');
 
 	if (oldObjectType !== newObjectType) {
 		batch.update(event.data.after.ref, {

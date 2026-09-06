@@ -67,7 +67,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 ```bash
 npm --prefix functions ci        # 依存のインストール
 npm --prefix functions run build # tsc
-npm --prefix functions run lint  # eslint
+npm --prefix functions run lint  # oxlint
 npm --prefix functions test      # Firestore エミュレータ + jest
 ```
 

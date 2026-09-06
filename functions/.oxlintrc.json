@@ -1,0 +1,14 @@
+{
+	"extends": ["./node_modules/@hakatashi/oxlint-config/index.json"],
+	"ignorePatterns": ["lib/**/*"],
+	"env": {
+		"node": true,
+		"es2022": true
+	},
+	"rules": {
+		"import/no-namespace": "off",
+		"import/no-named-as-default-member": "off",
+		"no-underscore-dangle": ["error", { "allow": ["_meta"] }],
+		"typescript/no-explicit-any": "off"
+	}
+}

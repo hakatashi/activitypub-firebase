@@ -33,6 +33,8 @@ jobs:
         run: npm --prefix functions ci
       - name: Run lint
         run: npm --prefix functions run lint
+      - name: Run format check
+        run: npm --prefix functions run format:check
   deploy-hosting:
     name: Deploy to Firebase Hosting
     needs: [test, lint]

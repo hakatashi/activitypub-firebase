@@ -1,8 +1,8 @@
-import type {APActor} from 'activitypub-types';
-import {describe, expect, test, afterEach, beforeEach} from 'vitest';
-import {apex} from '../../src/activitypub.js';
-import {db} from '../../src/firebase.js';
-import {getFollowers} from '../../src/mastodon/api.js';
+import type { APActor } from 'activitypub-types';
+import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { apex } from '../../src/activitypub.js';
+import { db } from '../../src/firebase.js';
+import { getFollowers } from '../../src/mastodon/api.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -38,13 +38,16 @@ describe('getFollowers', () => {
 
 	test('counts a follower with a single Follow activity', async () => {
 		const followerId = 'https://remote.example/u/alice';
-		await apex.store.saveObject({id: followerId, type: 'Person', preferredUsername: 'alice'});
-		await db.collection('streams').doc('follow-1').set({
-			id: 'https://remote.example/activities/follow-1',
-			type: 'Follow',
-			actor: [followerId],
-			object: [actor.id],
-		});
+		await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: 'alice' });
+		await db
+			.collection('streams')
+			.doc('follow-1')
+			.set({
+				id: 'https://remote.example/activities/follow-1',
+				type: 'Follow',
+				actor: [followerId],
+				object: [actor.id],
+			});
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(1);
@@ -53,44 +56,59 @@ describe('getFollowers', () => {
 
 	test('excludes a follower whose Follow was later undone', async () => {
 		const followerId = 'https://remote.example/u/alice';
-		await apex.store.saveObject({id: followerId, type: 'Person', preferredUsername: 'alice'});
-		await db.collection('streams').doc('follow-1').set({
-			id: 'https://remote.example/activities/follow-1',
-			type: 'Follow',
-			actor: [followerId],
-			object: [actor.id],
-		});
-		await db.collection('streams').doc('undo-1').set({
-			id: 'https://remote.example/activities/undo-1',
-			type: 'Undo',
-			actor: [followerId],
-			_meta: {collection: [actor.inbox], objectType: 'Follow'},
-		});
+		await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: 'alice' });
+		await db
+			.collection('streams')
+			.doc('follow-1')
+			.set({
+				id: 'https://remote.example/activities/follow-1',
+				type: 'Follow',
+				actor: [followerId],
+				object: [actor.id],
+			});
+		await db
+			.collection('streams')
+			.doc('undo-1')
+			.set({
+				id: 'https://remote.example/activities/undo-1',
+				type: 'Undo',
+				actor: [followerId],
+				_meta: { collection: [actor.inbox], objectType: 'Follow' },
+			});
 
 		expect(await getFollowers(actor)).toEqual([]);
 	});
 
 	test('keeps a follower who unfollowed and followed again', async () => {
 		const followerId = 'https://remote.example/u/alice';
-		await apex.store.saveObject({id: followerId, type: 'Person', preferredUsername: 'alice'});
-		await db.collection('streams').doc('follow-1').set({
-			id: 'https://remote.example/activities/follow-1',
-			type: 'Follow',
-			actor: [followerId],
-			object: [actor.id],
-		});
-		await db.collection('streams').doc('undo-1').set({
-			id: 'https://remote.example/activities/undo-1',
-			type: 'Undo',
-			actor: [followerId],
-			_meta: {collection: [actor.inbox], objectType: 'Follow'},
-		});
-		await db.collection('streams').doc('follow-2').set({
-			id: 'https://remote.example/activities/follow-2',
-			type: 'Follow',
-			actor: [followerId],
-			object: [actor.id],
-		});
+		await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: 'alice' });
+		await db
+			.collection('streams')
+			.doc('follow-1')
+			.set({
+				id: 'https://remote.example/activities/follow-1',
+				type: 'Follow',
+				actor: [followerId],
+				object: [actor.id],
+			});
+		await db
+			.collection('streams')
+			.doc('undo-1')
+			.set({
+				id: 'https://remote.example/activities/undo-1',
+				type: 'Undo',
+				actor: [followerId],
+				_meta: { collection: [actor.inbox], objectType: 'Follow' },
+			});
+		await db
+			.collection('streams')
+			.doc('follow-2')
+			.set({
+				id: 'https://remote.example/activities/follow-2',
+				type: 'Follow',
+				actor: [followerId],
+				object: [actor.id],
+			});
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(1);
@@ -100,13 +118,16 @@ describe('getFollowers', () => {
 	test('does not count a Follow directed at a different actor', async () => {
 		const followerId = 'https://remote.example/u/alice';
 		const otherActorId = 'https://example.com/activitypub/u/someoneelse';
-		await apex.store.saveObject({id: followerId, type: 'Person', preferredUsername: 'alice'});
-		await db.collection('streams').doc('follow-1').set({
-			id: 'https://remote.example/activities/follow-1',
-			type: 'Follow',
-			actor: [followerId],
-			object: [otherActorId],
-		});
+		await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: 'alice' });
+		await db
+			.collection('streams')
+			.doc('follow-1')
+			.set({
+				id: 'https://remote.example/activities/follow-1',
+				type: 'Follow',
+				actor: [followerId],
+				object: [otherActorId],
+			});
 
 		expect(await getFollowers(actor)).toEqual([]);
 	});

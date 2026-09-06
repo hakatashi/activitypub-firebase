@@ -1,6 +1,6 @@
-import {countBy} from 'lodash-es';
-import {db, unescapeFirestoreKey} from '../src/firebase.js';
-import {UserInfos} from '../src/schema.js';
+import { countBy } from 'lodash-es';
+import { db, unescapeFirestoreKey } from '../src/firebase.js';
+import { UserInfos } from '../src/schema.js';
 
 const setEqual = <T>(a: Set<T>, b: Set<T>) => {
 	if (a.size !== b.size) {
@@ -22,9 +22,9 @@ db.runTransaction(async (transaction) => {
 	console.log(`userInfos: ${userInfos.docs.length}`);
 
 	const statusCounts = countBy(
-		streams.docs.filter((streamDoc) => (
-			(streamDoc.data().object ?? []).some((object: any) => object.type === 'Note')
-		)),
+		streams.docs.filter((streamDoc) =>
+			(streamDoc.data().object ?? []).some((object: any) => object.type === 'Note'),
+		),
 		(streamDoc) => streamDoc.data().actor[0],
 	);
 
@@ -61,8 +61,7 @@ db.runTransaction(async (transaction) => {
 
 		// Denormalize objectType
 		const oldObjectType = stream._meta?.objectType ?? undefined;
-		const newObjectType =
-		objects
+		const newObjectType = objects
 			.map((object: any) => object.type)
 			.find((objectType: any) => typeof objectType === 'string');
 
@@ -103,4 +102,3 @@ db.runTransaction(async (transaction) => {
 		}
 	});
 });
-

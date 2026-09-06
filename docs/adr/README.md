@@ -43,3 +43,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0015](0015-fix-http-signature-keyid-fragment.md) | 配送の HTTP Signature keyId に `#main-key` を付与する | Accepted |
 | [0016](0016-fix-update-activity-meta-array-corruption.md) | `updateActivityMeta` の `_meta.collection` 破損を修正する | Superseded by ADR-0017 |
 | [0017](0017-meta-collection-as-array.md) | `_meta.collection` を Firestore 上でも配列として保存する | Accepted |
+| [0018](0018-eslint-to-oxlint-oxfmt.md) | Lint/Format を ESLint から oxlint + oxfmt に置き換える | Accepted |

@@ -1,7 +1,7 @@
-import type {APActor, APNote} from 'activitypub-types';
-import {describe, expect, test} from 'vitest';
-import {actorObjectToAccount, noteObjectToStatus} from '../../src/mastodon/api.js';
-import type {UserInfo} from '../../src/schema.js';
+import type { APActor, APNote } from 'activitypub-types';
+import { describe, expect, test } from 'vitest';
+import { actorObjectToAccount, noteObjectToStatus } from '../../src/mastodon/api.js';
+import type { UserInfo } from '../../src/schema.js';
 
 const userInfo: UserInfo = {
 	id: '123',
@@ -27,8 +27,8 @@ describe('actorObjectToAccount', () => {
 			name: 'Koki Takahashi',
 			summary: 'こんにちは',
 			discoverable: true,
-			icon: {type: 'Image', url: 'https://example.com/icon.png'},
-			image: {type: 'Image', url: 'https://example.com/header.png'},
+			icon: { type: 'Image', url: 'https://example.com/icon.png' },
+			image: { type: 'Image', url: 'https://example.com/header.png' },
 		} as unknown as APActor;
 
 		const account = await actorObjectToAccount(actor, userInfo);
@@ -87,7 +87,7 @@ describe('noteObjectToStatus', () => {
 	});
 
 	test('takes the first element when content is an array', () => {
-		const account = {username: 'hakatashi'} as any;
+		const account = { username: 'hakatashi' } as any;
 		const note = {
 			id: 'https://example.com/activitypub/o/multi',
 			published: '2023-06-01T00:00:00.000Z',

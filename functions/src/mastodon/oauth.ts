@@ -1,12 +1,15 @@
-import OAuth2Server, {Request as OauthRequest, Response as OauthResponse} from '@node-oauth/oauth2-server';
-import {htmlEscape} from 'escape-goat';
+import OAuth2Server, {
+	Request as OauthRequest,
+	Response as OauthResponse,
+} from '@node-oauth/oauth2-server';
+import { htmlEscape } from 'escape-goat';
 import express from 'express';
 import firebase from 'firebase-admin';
-import {logger} from 'firebase-functions/v2';
+import { logger } from 'firebase-functions/v2';
 import fetch from 'node-fetch';
-import {projectId} from '../firebase.js';
-import {redactSensitiveBody} from '../utils.js';
-import {Oauth2Model} from './oauth2Model.js';
+import { projectId } from '../firebase.js';
+import { redactSensitiveBody } from '../utils.js';
+import { Oauth2Model } from './oauth2Model.js';
 
 const getFirebaseWebapps = async (accessToken: string) => {
 	const endpoint = `https://firebase.googleapis.com/v1beta1/projects/${projectId}/webApps`;
@@ -16,7 +19,7 @@ const getFirebaseWebapps = async (accessToken: string) => {
 		},
 	});
 
-	const data = (await response.json()) as {apps: {appId: string}[]};
+	const data = (await response.json()) as { apps: { appId: string }[] };
 	return data.apps;
 };
 
@@ -77,7 +80,8 @@ router.get('/authorize', async (req, res) => {
 		return;
 	}
 
-	res.status(200)
+	res
+		.status(200)
 		.contentType('text/html')
 		.send(
 			htmlEscape`
@@ -176,7 +180,7 @@ router.post('/authorize', async (req, res) => {
 		});
 
 		// eslint-disable-next-line require-atomic-updates
-		res.locals.oauth = {token};
+		res.locals.oauth = { token };
 
 		res.set(response.headers);
 		res.status(response.status ?? 200).send(response.body);

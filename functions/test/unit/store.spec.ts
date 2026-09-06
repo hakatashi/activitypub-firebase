@@ -1,4 +1,4 @@
-import {describe, expect, test, afterEach, beforeEach} from 'vitest';
+import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import Store from '../../src/store.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -25,16 +25,22 @@ describe('Store', () => {
 
 	describe('saveObject / getObject', () => {
 		test('round-trips an object', async () => {
-			const object = {id: 'https://example.com/objects/1', type: 'Note', content: 'hello'};
+			const object = { id: 'https://example.com/objects/1', type: 'Note', content: 'hello' };
 			await store.saveObject(object);
 			expect(await store.getObject(object.id)).toEqual(object);
 		});
 
 		test('strips _meta by default but keeps it when includeMeta is true', async () => {
-			const object = {id: 'https://example.com/objects/2', type: 'Note', _meta: {collection: ['inbox']}};
+			const object = {
+				id: 'https://example.com/objects/2',
+				type: 'Note',
+				_meta: { collection: ['inbox'] },
+			};
 			await store.saveObject(object);
 			expect(await store.getObject(object.id)).not.toHaveProperty('_meta');
-			expect(await store.getObject(object.id, true)).toHaveProperty('_meta', {collection: ['inbox']});
+			expect(await store.getObject(object.id, true)).toHaveProperty('_meta', {
+				collection: ['inbox'],
+			});
 		});
 
 		test('returns undefined for a non-existent object', async () => {
@@ -43,7 +49,7 @@ describe('Store', () => {
 
 		test('escapes special characters in the id when used as a document key', async () => {
 			// "/" や "." を含む URL がそのまま Firestore のドキュメント ID になっても壊れないことを確認する。
-			const object = {id: 'https://example.com/users/foo.bar/statuses/1', type: 'Note'};
+			const object = { id: 'https://example.com/users/foo.bar/statuses/1', type: 'Note' };
 			await store.saveObject(object);
 			expect(await store.getObject(object.id)).toEqual(object);
 		});
@@ -56,8 +62,8 @@ describe('Store', () => {
 
 		test('fetches multiple objects by id', async () => {
 			const objects = [
-				{id: 'https://example.com/objects/a', type: 'Note'},
-				{id: 'https://example.com/objects/b', type: 'Note'},
+				{ id: 'https://example.com/objects/a', type: 'Note' },
+				{ id: 'https://example.com/objects/b', type: 'Note' },
 			];
 			await Promise.all(objects.map((object) => store.saveObject(object)));
 
@@ -75,7 +81,7 @@ describe('Store', () => {
 			const activity = {
 				id: 'https://example.com/activities/1',
 				type: 'Create',
-				_meta: {collection: ['https://example.com/inbox']},
+				_meta: { collection: ['https://example.com/inbox'] },
 			};
 			expect(await store.saveActivity(activity)).toBe(true);
 
@@ -84,9 +90,9 @@ describe('Store', () => {
 		});
 
 		test('does not overwrite an existing activity with the same id', async () => {
-			const activity = {id: 'https://example.com/activities/2', type: 'Create'};
+			const activity = { id: 'https://example.com/activities/2', type: 'Create' };
 			expect(await store.saveActivity(activity)).toBe(true);
-			expect(await store.saveActivity({...activity, type: 'Update'})).toBeUndefined();
+			expect(await store.saveActivity({ ...activity, type: 'Update' })).toBeUndefined();
 
 			const fetched = await store.getActivity(activity.id);
 			expect(fetched?.type).toBe('Create');
@@ -98,12 +104,12 @@ describe('Store', () => {
 			await store.saveActivity({
 				id: 'https://example.com/activities/in-inbox',
 				type: 'Create',
-				_meta: {collection: ['https://example.com/inbox']},
+				_meta: { collection: ['https://example.com/inbox'] },
 			});
 			await store.saveActivity({
 				id: 'https://example.com/activities/in-outbox',
 				type: 'Create',
-				_meta: {collection: ['https://example.com/outbox']},
+				_meta: { collection: ['https://example.com/outbox'] },
 			});
 
 			const stream = await store.getStream('https://example.com/inbox', null, null);
@@ -118,7 +124,7 @@ describe('Store', () => {
 			await store.saveActivity({
 				id: 'https://example.com/activities/in-both',
 				type: 'Follow',
-				_meta: {collection: ['https://example.com/inbox', 'https://example.com/followers']},
+				_meta: { collection: ['https://example.com/inbox', 'https://example.com/followers'] },
 			});
 
 			const inboxStream = await store.getStream('https://example.com/inbox', null, null);
@@ -130,11 +136,15 @@ describe('Store', () => {
 		});
 
 		test('respects the limit argument', async () => {
-			await Promise.all(['1', '2', '3'].map((suffix) => store.saveActivity({
-				id: `https://example.com/activities/limit-${suffix}`,
-				type: 'Create',
-				_meta: {collection: ['https://example.com/inbox']},
-			})));
+			await Promise.all(
+				['1', '2', '3'].map((suffix) =>
+					store.saveActivity({
+						id: `https://example.com/activities/limit-${suffix}`,
+						type: 'Create',
+						_meta: { collection: ['https://example.com/inbox'] },
+					}),
+				),
+			);
 
 			const stream = await store.getStream('https://example.com/inbox', 2, null);
 			expect(stream).toHaveLength(2);
@@ -150,15 +160,14 @@ describe('Store', () => {
 				id: 'https://example.com/activities/from-someone',
 				type: 'Create',
 				actor: 'https://example.com/users/someone',
-				_meta: {collection: ['https://example.com/inbox']},
+				_meta: { collection: ['https://example.com/inbox'] },
 			});
 
-			await expect(store.getStream(
-				'https://example.com/inbox',
-				null,
-				null,
-				['https://example.com/users/blocked'],
-			)).rejects.toThrow('order by clause cannot contain more fields after the key');
+			await expect(
+				store.getStream('https://example.com/inbox', null, null, [
+					'https://example.com/users/blocked',
+				]),
+			).rejects.toThrow('order by clause cannot contain more fields after the key');
 		});
 	});
 
@@ -169,11 +178,16 @@ describe('Store', () => {
 			const activity = {
 				id: 'https://example.com/activities/accepted-follow',
 				type: 'Follow',
-				_meta: {collection: ['https://example.com/inbox']},
+				_meta: { collection: ['https://example.com/inbox'] },
 			};
 			await store.saveActivity(activity);
 
-			await store.updateActivityMeta(activity, 'collection', 'https://example.com/followers', false);
+			await store.updateActivityMeta(
+				activity,
+				'collection',
+				'https://example.com/followers',
+				false,
+			);
 
 			const fetched = await store.getActivity(activity.id, true);
 			expect(fetched?._meta.collection).toEqual(
@@ -186,7 +200,7 @@ describe('Store', () => {
 			const activity = {
 				id: 'https://example.com/activities/duplicate',
 				type: 'Create',
-				_meta: {collection: ['https://example.com/inbox']},
+				_meta: { collection: ['https://example.com/inbox'] },
 			};
 			await store.saveActivity(activity);
 
@@ -200,7 +214,7 @@ describe('Store', () => {
 			const activity = {
 				id: 'https://example.com/activities/removable-meta',
 				type: 'Follow',
-				_meta: {collection: ['https://example.com/inbox', 'https://example.com/followers']},
+				_meta: { collection: ['https://example.com/inbox', 'https://example.com/followers'] },
 			};
 			await store.saveActivity(activity);
 
@@ -211,12 +225,14 @@ describe('Store', () => {
 		});
 
 		test('throws when the activity does not exist', async () => {
-			await expect(store.updateActivityMeta(
-				{id: 'https://example.com/activities/missing'},
-				'collection',
-				'https://example.com/inbox',
-				false,
-			)).rejects.toThrow('Error updating activity meta: not found');
+			await expect(
+				store.updateActivityMeta(
+					{ id: 'https://example.com/activities/missing' },
+					'collection',
+					'https://example.com/inbox',
+					false,
+				),
+			).rejects.toThrow('Error updating activity meta: not found');
 		});
 	});
 
@@ -243,25 +259,51 @@ describe('Store', () => {
 
 		test('round-trips a successful delivery', async () => {
 			await store.recordDeliveryResult({
-				activityId, actorId, address, body, attempts: 1, status: 'success', statusCode: 202,
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts: 1,
+				status: 'success',
+				statusCode: 202,
 			});
 
 			const delivery = await store.getDelivery(activityId, address);
 			expect(delivery).toMatchObject({
-				activityId, actorId, inbox: address, body, attempts: 1, status: 'success', statusCode: 202, error: null,
+				activityId,
+				actorId,
+				inbox: address,
+				body,
+				attempts: 1,
+				status: 'success',
+				statusCode: 202,
+				error: null,
 			});
 		});
 
 		test('overwrites the previous record for the same activity/address pair', async () => {
 			await store.recordDeliveryResult({
-				activityId, actorId, address, body, attempts: 1, status: 'retrying', statusCode: 503, error: 'boom',
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts: 1,
+				status: 'retrying',
+				statusCode: 503,
+				error: 'boom',
 			});
 			await store.recordDeliveryResult({
-				activityId, actorId, address, body, attempts: 2, status: 'success', statusCode: 202,
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts: 2,
+				status: 'success',
+				statusCode: 202,
 			});
 
 			const delivery = await store.getDelivery(activityId, address);
-			expect(delivery).toMatchObject({attempts: 2, status: 'success', error: null});
+			expect(delivery).toMatchObject({ attempts: 2, status: 'success', error: null });
 		});
 
 		test('getDelivery returns undefined for an unknown pair', async () => {
@@ -270,7 +312,13 @@ describe('Store', () => {
 
 		test('getFailedDeliveries lists only permanent_failure and retrying deliveries', async () => {
 			await store.recordDeliveryResult({
-				activityId, actorId, address, body, attempts: 1, status: 'success', statusCode: 202,
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts: 1,
+				status: 'success',
+				statusCode: 202,
 			});
 			await store.recordDeliveryResult({
 				activityId: 'https://example.com/activities/2',
@@ -294,7 +342,10 @@ describe('Store', () => {
 
 			const failed = await store.getFailedDeliveries();
 			expect(failed).toHaveLength(2);
-			expect(failed.map((delivery) => delivery.status).sort()).toEqual(['permanent_failure', 'retrying']);
+			expect(failed.map((delivery) => delivery.status).sort()).toEqual([
+				'permanent_failure',
+				'retrying',
+			]);
 		});
 	});
 });

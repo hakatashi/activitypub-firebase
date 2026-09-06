@@ -1,11 +1,11 @@
 import cors from 'cors';
 import express from 'express';
-import {https, logger} from 'firebase-functions/v2';
-import {beforeUserCreated, HttpsError} from 'firebase-functions/v2/identity';
-import {apex} from '../activitypub.js';
-import {db, domain, escapeFirestoreKey} from '../firebase.js';
-import {UserInfos} from '../schema.js';
-import {pickSafeHeaders, redactSensitiveBody} from '../utils.js';
+import { https, logger } from 'firebase-functions/v2';
+import { beforeUserCreated, HttpsError } from 'firebase-functions/v2/identity';
+import { apex } from '../activitypub.js';
+import { db, domain, escapeFirestoreKey } from '../firebase.js';
+import { UserInfos } from '../schema.js';
+import { pickSafeHeaders, redactSensitiveBody } from '../utils.js';
 import apiRouter from './api.js';
 import oauthRouter from './oauth.js';
 
@@ -45,7 +45,7 @@ export const beforeUserCreate = beforeUserCreated(async (user) => {
 	}
 
 	const actorId = `https://${domain}/activitypub/u/hakatashi`;
-	const {uid} = user.data;
+	const { uid } = user.data;
 
 	await db.runTransaction(async (transaction) => {
 		const nextUserId = (await transaction.get(UserInfos.count())).data().count + 1;

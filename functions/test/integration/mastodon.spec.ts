@@ -1,6 +1,6 @@
 import request from 'supertest';
-import {describe, expect, test, afterEach, beforeEach} from 'vitest';
-import {mastodonApi as mastodon} from '../../src/mastodon/index.js';
+import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;

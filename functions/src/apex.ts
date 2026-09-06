@@ -1,7 +1,7 @@
 // @ts-expect-error: Not typed
 import ActivitypubExpress from 'activitypub-express';
-import {logger} from 'firebase-functions/v2';
-import {domain} from './firebase.js';
+import { logger } from 'firebase-functions/v2';
+import { domain } from './firebase.js';
 import Store from './store.js';
 
 // activitypub.ts と tasks.ts の両方が apex インスタンスを必要とするため、
