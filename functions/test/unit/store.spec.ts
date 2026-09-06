@@ -463,6 +463,26 @@ describe('Store', () => {
 			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
 		});
 
+		// acceptFollow (activitypub-express/pub/activity.js) は inbox 受信時に保存された、
+		// まだ _meta を持たない Follow アクティビティに対してこれを呼び出す。
+		test('adds a value to _meta.collection when the activity has no _meta yet', async () => {
+			const activity = {
+				id: 'https://example.com/activities/no-meta',
+				type: 'Follow',
+			};
+			await store.saveActivity(activity);
+
+			await store.updateActivityMeta(
+				activity,
+				'collection',
+				'https://example.com/followers',
+				false,
+			);
+
+			const fetched = await store.getActivity(activity.id, true);
+			expect(fetched?._meta.collection).toEqual(['https://example.com/followers']);
+		});
+
 		test('throws when the activity does not exist', async () => {
 			await expect(
 				store.updateActivityMeta(

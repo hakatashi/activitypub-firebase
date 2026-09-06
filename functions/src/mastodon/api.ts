@@ -21,7 +21,7 @@ import { metaIndexPath } from '../meta.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
-import { isAPActor, isAPNote, toIdArray, toStringValue } from '../utils.js';
+import { isAPActor, isAPFollow, isAPNote, isAPUndo, toIdArray, toStringValue } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
 
@@ -267,14 +267,20 @@ export const getFollowers = async (actor: APActor) => {
 		.get();
 
 	const undoneFollowIds = new Set(
-		unfollowStreams.docs.flatMap((unfollowStream) => toIdArray(unfollowStream.data().object)),
+		unfollowStreams.docs.flatMap((unfollowStream) => {
+			const unfollow = unfollowStream.data();
+			if (!isAPUndo(unfollow)) {
+				return [];
+			}
+			return toIdArray(unfollow.object);
+		}),
 	);
 
 	const followerIds = new Set<string>();
 
 	for (const followStream of followStreams.docs) {
 		const follow = followStream.data();
-		if (undoneFollowIds.has(follow.id)) {
+		if (undoneFollowIds.has(follow.id) || !isAPFollow(follow)) {
 			continue;
 		}
 		const followActor = toIdArray(follow.actor)[0];

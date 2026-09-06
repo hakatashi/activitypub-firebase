@@ -8,7 +8,6 @@ import { logger } from 'firebase-functions/v2';
 import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { metaIndexPath } from './meta.js';
-import type { ObjectMeta } from './meta.js';
 import { Contexts, Deliveries, Objects, Streams } from './schema.js';
 import { toIdArray } from './utils.js';
 
@@ -371,8 +370,7 @@ export default class Store extends IApexStore implements ApexStore {
 			}
 			const activityData = activityDoc.data();
 			assert(activityData !== undefined, 'activityData is undefined');
-			const meta: ObjectMeta = { ...activityData._meta };
-			const currentRaw = meta[key];
+			const currentRaw = activityData._meta?.[key];
 			const current = Array.isArray(currentRaw) ? currentRaw : [];
 			let updated = current;
 			if (remove) {
@@ -380,8 +378,7 @@ export default class Store extends IApexStore implements ApexStore {
 			} else if (!current.includes(value)) {
 				updated = [...current, value];
 			}
-			meta[key] = updated;
-			activityData._meta = meta;
+			activityData._meta = { ...activityData._meta, [key]: updated };
 			transaction.update(activityRef, { [`_meta.${key}`]: updated });
 			return activityData;
 		});

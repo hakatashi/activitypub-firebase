@@ -14,7 +14,6 @@ import type {
 import type { mastodon } from 'masto';
 import { db } from './firebase.js';
 import type { FirestoreKey } from './firebase.js';
-import type { ObjectMeta } from './meta.js';
 import type { CamelToSnake } from './utils.js';
 
 // Firestore のコレクション参照とスキーマ型はここに集約する (→ ADR-0023)。
@@ -90,9 +89,5 @@ export interface StoredContext {
 
 export const Contexts = db.collection('contexts') as CollectionReference<StoredContext>;
 
-// `objects` / `streams` は外部インスタンスが送ってくる任意の AP オブジェクトを保持するため、
-// 厳密なスキーマ化はせず `APObject` に `_meta` の緩い型を足すだけに留める(→ ADR-0023 決定2)。
-export type StoredObject = APObject & { _meta?: ObjectMeta };
-
-export const Objects = db.collection('objects') as CollectionReference<StoredObject>;
-export const Streams = db.collection('streams') as CollectionReference<StoredObject>;
+export const Objects = db.collection('objects') as CollectionReference<APObject>;
+export const Streams = db.collection('streams') as CollectionReference<APObject>;

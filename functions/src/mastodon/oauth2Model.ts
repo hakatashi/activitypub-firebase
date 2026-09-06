@@ -112,7 +112,7 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		await AccessTokens.add(accessToken);
 
 		if (token.refreshToken !== undefined) {
-			const refreshToken: RefreshToken = {
+			const refreshToken = {
 				refreshToken: token.refreshToken,
 				...(token.refreshTokenExpiresAt === undefined
 					? {}
@@ -120,7 +120,7 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 				client,
 				user,
 				...(token.scope === undefined ? {} : { scope: token.scope }),
-			};
+			} satisfies RefreshToken;
 			await RefreshTokens.add(refreshToken);
 		}
 

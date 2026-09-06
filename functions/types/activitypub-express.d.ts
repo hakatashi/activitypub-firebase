@@ -8,6 +8,7 @@
 declare module 'activitypub-express' {
 	import type { NextFunction, Request, RequestHandler, Response } from 'express';
 	import type IApexStore from 'activitypub-express/store/interface.js';
+	import type { APObject as OriginalAPObject, APActor, APActivity } from 'activitypub-types';
 	// `_meta` が持つ既知のキーの集合は functions/src/meta.ts の ObjectMeta に集約する
 	// (二重定義による乖離を避けるため)。
 	import type { ObjectMeta } from '../src/meta.js';
@@ -22,18 +23,10 @@ declare module 'activitypub-express' {
 	// (net/activity.js:93 `activity.type.toLowerCase()`)。
 	// プロパティごとに boxing の有無が異なり静的に表現しきれないため、
 	// `id` / `type` 以外は index signature で受ける。
-	export interface APObject {
+	export interface APObject extends OriginalAPObject {
 		id: string;
 		type: string;
 		_meta?: ObjectMeta;
-		[key: string]: unknown;
-	}
-
-	// pub/actor.js createActor が返す actor には _meta.privateKey が必ず入る
-	export interface APActorWithMeta extends APObject {
-		_meta: {
-			privateKey: string;
-		};
 	}
 
 	// toJSONLD が返す jsonld.compact 後の actor 形状(mastodon/api.ts の actorObjectToAccount
@@ -159,14 +152,14 @@ declare module 'activitypub-express' {
 			summary: string,
 			icon: string | undefined,
 			type?: string,
-		): Promise<APActorWithMeta>;
+		): Promise<APObject & APActor>;
 		// pub/activity.js
 		buildActivity(
 			type: string,
 			actorId: string,
 			to: string | string[],
 			etc?: Record<string, unknown>,
-		): Promise<APObject>;
+		): Promise<APObject & APActivity>;
 		addToOutbox(actor: APObject, activity: APObject): Promise<unknown>;
 		acceptFollow(
 			actor: APObject,
