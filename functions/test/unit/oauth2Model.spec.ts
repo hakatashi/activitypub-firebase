@@ -1,6 +1,7 @@
 import type { AuthorizationCode, Client, Token, User } from '@node-oauth/oauth2-server';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
-import { Clients, Oauth2Model, RefreshTokens, Users } from '../../src/mastodon/oauth2Model.js';
+import { Oauth2Model } from '../../src/mastodon/oauth2Model.js';
+import { Clients, RefreshTokens, Users } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;

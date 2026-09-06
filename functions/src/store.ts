@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import type { Firestore } from '@google-cloud/firestore';
-import type { APObject, ApexStore, DeliveryRecord } from 'activitypub-express';
+import type { APObject, ApexStore } from 'activitypub-express';
 import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
@@ -8,6 +8,8 @@ import { logger } from 'firebase-functions/v2';
 import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { metaIndexPath } from './meta.js';
+import type { ObjectMeta } from './meta.js';
+import { Contexts, Deliveries, Objects, Streams } from './schema.js';
 import { toIdArray } from './utils.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
@@ -36,7 +38,7 @@ export default class Store extends IApexStore implements ApexStore {
 	}
 
 	override generateId() {
-		return firebase.firestore().collection('objects').doc().id;
+		return Objects.doc().id;
 	}
 
 	override async getObject(id: string, includeMeta?: boolean) {
@@ -45,13 +47,13 @@ export default class Store extends IApexStore implements ApexStore {
 			id,
 			includeMeta,
 		});
-		const objectDoc = await this.db.collection('objects').doc(escapeFirestoreKey(id)).get();
+		const objectDoc = await Objects.doc(escapeFirestoreKey(id)).get();
 
 		if (!objectDoc.exists) {
 			return undefined;
 		}
 
-		const object = objectDoc.data() as APObject | undefined;
+		const object = objectDoc.data();
 		assert(object !== undefined, 'object is undefined');
 
 		if (includeMeta !== true) {
@@ -75,16 +77,13 @@ export default class Store extends IApexStore implements ApexStore {
 		const idChunks = chunk(ids.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
 		const objectDocsChunks = await Promise.all(
 			idChunks.map((idChunk) =>
-				this.db
-					.collection('objects')
-					.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk)
-					.get(),
+				Objects.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
 			),
 		);
 
 		return objectDocsChunks.flatMap((objectDocs) =>
 			objectDocs.docs.map((doc) => {
-				const object = doc.data() as APObject;
+				const object = doc.data();
 				if (includeMeta !== true) {
 					delete object._meta;
 				}
@@ -103,14 +102,10 @@ export default class Store extends IApexStore implements ApexStore {
 			field,
 			value,
 		});
-		const objectDocs = await this.db
-			.collection('objects')
-			.where(field, '==', value)
-			.orderBy('published', 'desc')
-			.get();
+		const objectDocs = await Objects.where(field, '==', value).orderBy('published', 'desc').get();
 
 		return objectDocs.docs.map((doc) => {
-			const object = doc.data() as APObject;
+			const object = doc.data();
 			if (includeMeta !== true) {
 				delete object._meta;
 			}
@@ -124,13 +119,13 @@ export default class Store extends IApexStore implements ApexStore {
 			field,
 			value,
 		});
-		const objectDocs = await this.db.collection('objects').where(field, '==', value).count().get();
+		const objectDocs = await Objects.where(field, '==', value).count().get();
 
 		return objectDocs.data().count;
 	}
 
 	override async saveObject(object: APObject) {
-		await this.db.collection('objects').doc(escapeFirestoreKey(object.id)).set(object);
+		await Objects.doc(escapeFirestoreKey(object.id)).set(object);
 		return true;
 	}
 
@@ -160,9 +155,7 @@ export default class Store extends IApexStore implements ApexStore {
 			additionalQuery,
 		});
 
-		let query = this.db
-			.collection('streams')
-			.where('_meta.collection', 'array-contains', collectionId);
+		let query = Streams.where('_meta.collection', 'array-contains', collectionId);
 
 		if (after) {
 			// orderBy is descending, so "after" (the last item of the previous
@@ -198,22 +191,18 @@ export default class Store extends IApexStore implements ApexStore {
 		// activitypub-express's buildCollectionPage uses `_id` (a MongoDB
 		// convention) as the cursor for the next page, so we surface the
 		// Firestore document ID under that key.
-		return streams.docs.map((doc) => ({ ...(doc.data() as APObject), _id: doc.id }));
+		return streams.docs.map((doc) => ({ ...doc.data(), _id: doc.id }));
 	}
 
 	override async getStreamCount(collectionId: string) {
-		const result = await this.db
-			.collection('streams')
-			.where('_meta.collection', 'array-contains', collectionId)
+		const result = await Streams.where('_meta.collection', 'array-contains', collectionId)
 			.count()
 			.get();
 		return result.data().count;
 	}
 
 	override async getUserCount() {
-		const count = await this.db
-			.collection('objects')
-			.where('type', '==', 'Person')
+		const count = await Objects.where('type', '==', 'Person')
 			.orderBy('_meta.privateKey', 'desc') // Ensures that the private key exists
 			.count()
 			.get();
@@ -221,7 +210,7 @@ export default class Store extends IApexStore implements ApexStore {
 	}
 
 	override async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
-		const objectDoc = this.db.collection('objects').doc(escapeFirestoreKey(obj.id));
+		const objectDoc = Objects.doc(escapeFirestoreKey(obj.id));
 		if (fullReplace) {
 			await objectDoc.set(obj);
 			await this.updateObjectCopies(obj);
@@ -230,7 +219,7 @@ export default class Store extends IApexStore implements ApexStore {
 		await objectDoc.update(this.objectToUpdateDoc(obj));
 		await this.updateObjectCopies(obj);
 		return objectDoc.get().then((doc) => {
-			const data = doc.data() as APObject | undefined;
+			const data = doc.data();
 			assert(data !== undefined, 'data is undefined');
 			return data;
 		});
@@ -278,14 +267,12 @@ export default class Store extends IApexStore implements ApexStore {
 		id: string,
 		includeMeta?: boolean,
 	) {
-		const streamDocs = await this.db
-			.collection('streams')
-			.where(metaIndexPath('collections', collection), '==', true)
+		const streamDocs = await Streams.where(metaIndexPath('collections', collection), '==', true)
 			.where(metaIndexPath(field, id), '==', true)
 			.limit(1)
 			.get();
 
-		const activity = streamDocs.docs[0]?.data() as APObject | undefined;
+		const activity = streamDocs.docs[0]?.data();
 		if (activity === undefined) {
 			return undefined;
 		}
@@ -297,13 +284,13 @@ export default class Store extends IApexStore implements ApexStore {
 	}
 
 	override async getActivity(id: string, includeMeta?: boolean) {
-		const activityDoc = await this.db.collection('streams').doc(escapeFirestoreKey(id)).get();
+		const activityDoc = await Streams.doc(escapeFirestoreKey(id)).get();
 
 		if (!activityDoc.exists) {
 			return undefined;
 		}
 
-		const activity = activityDoc.data() as APObject | undefined;
+		const activity = activityDoc.data();
 		assert(activity !== undefined, 'activity is undefined');
 
 		if (includeMeta !== true) {
@@ -315,7 +302,7 @@ export default class Store extends IApexStore implements ApexStore {
 
 	override async saveActivity(activity: APObject) {
 		logger.info({ type: 'saveActivity', activity });
-		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
+		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
 		let inserted: undefined | true = undefined;
 		await this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
@@ -333,7 +320,7 @@ export default class Store extends IApexStore implements ApexStore {
 	// actor の照合も取得済みドキュメントに対する判定なので生の `actor` を toIdArray で解決する
 	// (非正規化インデックスの遅延に依存させない → ADR-0021)。
 	override async removeActivity(activity: APObject, actorId: string) {
-		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
+		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
 		await this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
 			if (!activityDoc.exists) {
@@ -347,7 +334,7 @@ export default class Store extends IApexStore implements ApexStore {
 	}
 
 	override async updateActivity(activity: APObject, fullReplace: boolean) {
-		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
+		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
 		if (fullReplace) {
 			await activityRef.set(activity);
 			await this.updateObjectCopies(activity);
@@ -356,7 +343,7 @@ export default class Store extends IApexStore implements ApexStore {
 		await activityRef.update(this.objectToUpdateDoc(activity));
 		await this.updateObjectCopies(activity);
 		return activityRef.get().then((doc) => {
-			const data = doc.data() as APObject | undefined;
+			const data = doc.data();
 			assert(data !== undefined, 'data is undefined');
 			return data;
 		});
@@ -372,13 +359,13 @@ export default class Store extends IApexStore implements ApexStore {
 		if (key.includes('.')) {
 			throw new Error('updateActivityMeta: key must not include "."');
 		}
-		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
+		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
 		return this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
 			if (!activityDoc.exists) {
 				throw new Error('Error updating activity meta: not found');
 			}
-			const activityData = activityDoc.data() as APObject | undefined;
+			const activityData = activityDoc.data();
 			assert(activityData !== undefined, 'activityData is undefined');
 			const meta = (activityData._meta as Record<string, unknown[]> | undefined) ?? {};
 			const current = Array.isArray(meta[key]) ? meta[key] : [];
@@ -389,7 +376,7 @@ export default class Store extends IApexStore implements ApexStore {
 				updated = [...current, value];
 			}
 			meta[key] = updated;
-			activityData._meta = meta;
+			activityData._meta = meta as ObjectMeta;
 			transaction.update(activityRef, { [`_meta.${key}`]: updated });
 			return activityData;
 		});
@@ -456,52 +443,41 @@ export default class Store extends IApexStore implements ApexStore {
 			statusCode,
 		});
 
-		await this.db
-			.collection('deliveries')
-			.doc(this.deliveryDocId(activityId, address))
-			.set({
-				activityId,
-				actorId,
-				inbox: address,
-				body,
-				attempts,
-				status,
-				statusCode: statusCode ?? null,
-				error: error ?? null,
-				updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-			});
+		await Deliveries.doc(this.deliveryDocId(activityId, address)).set({
+			activityId,
+			actorId,
+			inbox: address,
+			body,
+			attempts,
+			status,
+			statusCode: statusCode ?? null,
+			error: error ?? null,
+			updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+		});
 	}
 
 	// → ADR-0012
 	async getFailedDeliveries() {
-		const snapshot = await this.db
-			.collection('deliveries')
-			.where('status', 'in', ['permanent_failure', 'retrying'])
-			.get();
+		const snapshot = await Deliveries.where('status', 'in', [
+			'permanent_failure',
+			'retrying',
+		]).get();
 
-		return snapshot.docs.map((doc) => doc.data() as DeliveryRecord);
+		return snapshot.docs.map((doc) => doc.data());
 	}
 
 	// → ADR-0012
 	async getDelivery(activityId: string, address: string) {
-		const doc = await this.db
-			.collection('deliveries')
-			.doc(this.deliveryDocId(activityId, address))
-			.get();
-		return doc.exists ? (doc.data() as DeliveryRecord) : undefined;
+		const doc = await Deliveries.doc(this.deliveryDocId(activityId, address)).get();
+		return doc.exists ? doc.data() : undefined;
 	}
 
 	override async getContext(documentUrl: string) {
 		logger.info({ type: 'getContext', documentUrl });
 
-		const contextDoc = await this.db
-			.collection('contexts')
-			.doc(escapeFirestoreKey(documentUrl))
-			.get();
+		const contextDoc = await Contexts.doc(escapeFirestoreKey(documentUrl)).get();
 		if (contextDoc.exists) {
-			const contextData = contextDoc.data() as
-				| { contextUrl: string | null; documentUrl: string; document: string }
-				| undefined;
+			const contextData = contextDoc.data();
 			assert(contextData !== undefined, 'contextData is undefined');
 			return { ...contextData, document: JSON.parse(contextData.document) as unknown };
 		}
@@ -516,17 +492,14 @@ export default class Store extends IApexStore implements ApexStore {
 	}: Parameters<ApexStore['saveContext']>[0]) {
 		logger.info({ type: 'saveContext', contextUrl, documentUrl, document });
 
-		await this.db
-			.collection('contexts')
-			.doc(escapeFirestoreKey(documentUrl))
-			.set(
-				{
-					contextUrl,
-					documentUrl,
-					document: typeof document === 'object' ? JSON.stringify(document) : document,
-				},
-				{ merge: true },
-			);
+		await Contexts.doc(escapeFirestoreKey(documentUrl)).set(
+			{
+				contextUrl,
+				documentUrl,
+				document: typeof document === 'object' ? JSON.stringify(document) : (document as string),
+			},
+			{ merge: true },
+		);
 	}
 
 	private objectToUpdateDoc(object: APObject) {
@@ -559,7 +532,7 @@ export default class Store extends IApexStore implements ApexStore {
 
 		await this.db.runTransaction(async (transaction) => {
 			const matchedDocs = await transaction.get(
-				this.db.collection('streams').where(metaIndexPath('objects', object.id), '==', true),
+				Streams.where(metaIndexPath('objects', object.id), '==', true),
 			);
 			matchedDocs.forEach((doc) => {
 				const rawObject = doc.get('object') as unknown;

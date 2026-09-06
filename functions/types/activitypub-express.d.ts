@@ -8,6 +8,9 @@
 declare module 'activitypub-express' {
 	import type { NextFunction, Request, RequestHandler, Response } from 'express';
 	import type IApexStore from 'activitypub-express/store/interface.js';
+	// `deliveries` コレクションのドキュメント形状は Firestore スキーマの一部であり、
+	// functions/src/schema.ts に集約する (→ ADR-0023)。
+	import type { DeliveryRecord } from '../src/schema.js';
 
 	// apex は jsonld.compact(compactArrays: false) を通した「部分展開」形式でオブジェクトを
 	// 扱うため、ほとんどのプロパティは単一要素配列に boxing される
@@ -96,19 +99,6 @@ declare module 'activitypub-express' {
 	export interface DeliverResult {
 		statusCode: number;
 		[key: string]: unknown;
-	}
-
-	// functions/src/store.ts recordDeliveryResult が `deliveries` コレクションへ書き込む形状
-	// (→ ADR-0012)
-	export interface DeliveryRecord {
-		activityId: string;
-		actorId: string;
-		inbox: string;
-		body: string;
-		attempts: number;
-		status: 'permanent_failure' | 'retrying' | 'success';
-		statusCode: number | null;
-		error: string | null;
 	}
 
 	// index.js が受け取る settings のうち、functions/src/apex.ts が渡しているもののみ

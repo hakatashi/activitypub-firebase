@@ -19,6 +19,15 @@ export type IdIndex = Record<string, true>;
 
 export type MetaIndex = Record<MetaIndexField, IdIndex>;
 
+// `objects` / `streams` の `_meta` は apex 本体やこのプロジェクトの拡張が書き込むキーの集合で、
+// AP オブジェクトと同様に厳密なスキーマ化はしない(→ ADR-0023 決定2)。既知のキーだけ型を与える。
+export interface ObjectMeta {
+	collection?: string[];
+	privateKey?: string;
+	index?: MetaIndex;
+	[key: string]: unknown;
+}
+
 // IRI の集合を map 形式のインデックスに変換する。IRI はドットやスラッシュを含むため、
 // ドキュメント ID と同じ escapeFirestoreKey でキーをエスケープする。
 export const toIdIndex = (ids: Iterable<string>): IdIndex =>
