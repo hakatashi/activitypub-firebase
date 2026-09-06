@@ -5,6 +5,7 @@ import { https, logger, params } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
+import { buildDedupedInboxPost } from './inboxDedup.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
@@ -60,7 +61,9 @@ app.use(
 	apex,
 );
 
-app.route(routes.inbox).get(apex.net.inbox.get).post(apex.net.inbox.post);
+// inbox の重複配送で side effect (Follow 自動承認を含む) が再実行されないよう、
+// apex.net.inbox.post の activity.save 前後に判定ミドルウェアを挟む (→ ADR-0030, Issue #50)。
+app.route(routes.inbox).get(apex.net.inbox.get).post(buildDedupedInboxPost());
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
 
 app.get(routes.actor, apex.net.actor.get);
