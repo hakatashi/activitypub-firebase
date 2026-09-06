@@ -9,12 +9,6 @@ declare module 'activitypub-express' {
 	import type { NextFunction, Request, RequestHandler, Response } from 'express';
 	import type IApexStore from 'activitypub-express/store/interface.js';
 	import type { APObject as OriginalAPObject, APActor, APActivity } from 'activitypub-types';
-	// `_meta` が持つ既知のキーの集合は functions/src/meta.ts の ObjectMeta に集約する
-	// (二重定義による乖離を避けるため)。
-	import type { ObjectMeta } from '../src/meta.js';
-	// `deliveries` コレクションのドキュメント形状は Firestore スキーマの一部であり、
-	// functions/src/schema.ts に集約する (→ ADR-0023)。
-	import type { DeliveryRecord } from '../src/schema.js';
 
 	// apex は jsonld.compact(compactArrays: false) を通した「部分展開」形式でオブジェクトを
 	// 扱うため、ほとんどのプロパティは単一要素配列に boxing される
@@ -23,10 +17,17 @@ declare module 'activitypub-express' {
 	// (net/activity.js:93 `activity.type.toLowerCase()`)。
 	// プロパティごとに boxing の有無が異なり静的に表現しきれないため、
 	// `id` / `type` 以外は index signature で受ける。
+	//
+	// `_meta` が持つ既知のキーの集合は functions/src/meta.ts の ObjectMeta に集約する
+	// (二重定義による乖離を避けるため)。アンビエントモジュール宣言の内側では相対パスの
+	// `import` 宣言が使えない (TS2439) ため、インライン `import()` 型で参照する。
+	// `skipLibCheck: true` はこのファイルの意味検査自体をスキップするため、
+	// 通常の `import` で書くと型解決の失敗が黙って `any` にフォールバックし、
+	// ADR-0026 の any 禁止が骨抜きになる。
 	export interface APObject extends OriginalAPObject {
 		id: string;
 		type: string;
-		_meta?: ObjectMeta;
+		_meta?: import('../src/meta.js').ObjectMeta;
 	}
 
 	// toJSONLD が返す jsonld.compact 後の actor 形状(mastodon/api.ts の actorObjectToAccount
@@ -57,6 +58,11 @@ declare module 'activitypub-express' {
 
 	// store/interface.js が定義する契約(20メソッド、IApexStore として別途宣言)に、
 	// このプロジェクトの Store (functions/src/store.ts) が独自に拡張しているメソッドを加えたもの。
+	// `deliveries` コレクションのドキュメント形状は Firestore スキーマの一部であり、
+	// functions/src/schema.ts に集約する (→ ADR-0023)。上記 `_meta` と同様の理由で
+	// インライン `import()` 型で参照する。
+	type DeliveryRecord = import('../src/schema.js').DeliveryRecord;
+
 	export interface ApexStore extends IApexStore {
 		// 以下、Store 独自の拡張 (functions/src/store.ts のコメント参照)
 		getObjects(ids: string[], includeMeta?: boolean): Promise<APObject[]>;
