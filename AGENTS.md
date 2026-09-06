@@ -61,14 +61,18 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 - 秘密鍵・アクセストークン・`Authorization` ヘッダをログに出力しない。
 - Firestore へのクライアントからの直接アクセスは全面禁止されている。
   すべて Cloud Functions 経由。
+- **PR を作成する前に `build` / `lint` / `format:check` / `test` を全て実行し、
+  通ることを確認する。**
 
 ## よく使うコマンド
 
 ```bash
-npm --prefix functions ci        # 依存のインストール
-npm --prefix functions run build # tsc
-npm --prefix functions run lint  # oxlint
-npm --prefix functions test      # Firestore エミュレータ + jest
+npm --prefix functions ci             # 依存のインストール
+npm --prefix functions run build      # tsc
+npm --prefix functions run lint       # oxlint
+npm --prefix functions run format     # oxfmt(自動整形)
+npm --prefix functions run format:check # oxfmt(整形チェックのみ)
+npm --prefix functions test           # Firestore エミュレータ + jest
 ```
 
 ## 現在の最優先事項

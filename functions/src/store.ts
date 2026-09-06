@@ -199,7 +199,7 @@ export default class Store extends IApexStore {
 		// activitypub-express's buildCollectionPage uses `_id` (a MongoDB
 		// convention) as the cursor for the next page, so we surface the
 		// Firestore document ID under that key.
-		return streams.docs.map((doc) => ({...doc.data(), _id: doc.id}));
+		return streams.docs.map((doc) => ({ ...doc.data(), _id: doc.id }));
 	}
 
 	async getStreamCount(collectionId: string) {
