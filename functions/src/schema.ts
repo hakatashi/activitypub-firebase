@@ -1,4 +1,8 @@
-import type { CollectionReference, Timestamp } from '@google-cloud/firestore';
+import type {
+	CollectionReference as GoogleCollectionReference,
+	DocumentReference,
+	Timestamp,
+} from '@google-cloud/firestore';
 import type { APObject } from 'activitypub-express';
 import type {
 	AuthorizationCode,
@@ -9,12 +13,18 @@ import type {
 } from '@node-oauth/oauth2-server';
 import type { mastodon } from 'masto';
 import { db } from './firebase.js';
+import type { FirestoreKey } from './firebase.js';
 import type { ObjectMeta } from './meta.js';
 import type { CamelToSnake } from './utils.js';
 
 // Firestore のコレクション参照とスキーマ型はここに集約する (→ ADR-0023)。
 // 他のファイルは `db.collection(...)` を直接呼ばず、ここで定義した名前付き
 // `CollectionReference` だけを使う。
+
+export type CollectionReference<T> = Omit<GoogleCollectionReference<T>, 'doc'> & {
+	doc(): DocumentReference<T>;
+	doc(documentPath: FirestoreKey): DocumentReference<T>;
+};
 
 export type UserInfo = Pick<
 	CamelToSnake<mastodon.v1.Account>,

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { escapeFirestoreKey, unescapeFirestoreKey } from '../../src/firebase.js';
+import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../../src/firebase.js';
+import { metaIndexPath } from '../../src/meta.js';
+import { UserInfos } from '../../src/schema.js';
 
 describe('escapeFirestoreKey', () => {
 	test('escapes %, / and . with their percent-encoded forms', () => {
@@ -31,5 +33,35 @@ describe('escapeFirestoreKey / unescapeFirestoreKey round trip', () => {
 		'',
 	])('round-trips %j', (original) => {
 		expect(unescapeFirestoreKey(escapeFirestoreKey(original))).toBe(original);
+	});
+});
+
+describe('toFirestoreKey', () => {
+	test('returns the key typed as FirestoreKey without modifying it', () => {
+		const rawKey = 'https:%2F%2Fexample%2Ecom%2Fusers%2Ffoo';
+		const firestoreKey = toFirestoreKey(rawKey);
+		expect(firestoreKey).toBe(rawKey);
+		expect(unescapeFirestoreKey(firestoreKey)).toBe('https://example.com/users/foo');
+	});
+});
+
+describe('FirestoreKey type constraints', () => {
+	test('doc() and metaIndexPath() reject unbranded raw strings at compile time', () => {
+		const rawString = 'https://example.com/users/foo';
+
+		if (false as boolean) {
+			// @ts-expect-error: raw string cannot be passed to doc() without escapeFirestoreKey()
+			UserInfos.doc(rawString);
+			// @ts-expect-error: raw string cannot be passed to metaIndexPath() without escapeFirestoreKey()
+			metaIndexPath('objects', rawString);
+			// @ts-expect-error: raw string cannot be passed to unescapeFirestoreKey() without FirestoreKey
+			unescapeFirestoreKey(rawString);
+		}
+
+		// Valid branded key passes
+		const key = escapeFirestoreKey(rawString);
+		expect(UserInfos.doc(key)).toBeDefined();
+		expect(metaIndexPath('objects', key)).toBeDefined();
+		expect(unescapeFirestoreKey(key)).toBe(rawString);
 	});
 });

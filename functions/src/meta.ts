@@ -1,4 +1,5 @@
 import firebase from 'firebase-admin';
+import type { FirestoreKey } from './firebase.js';
 import { escapeFirestoreKey } from './firebase.js';
 import { toIdArray } from './utils.js';
 
@@ -15,7 +16,7 @@ export const META_INDEX_FIELDS = ['collections', 'actors', 'objects'] as const;
 
 export type MetaIndexField = (typeof META_INDEX_FIELDS)[number];
 
-export type IdIndex = Record<string, true>;
+export type IdIndex = Record<FirestoreKey, true>;
 
 export type MetaIndex = Record<MetaIndexField, IdIndex>;
 
@@ -35,8 +36,8 @@ export const toIdIndex = (ids: Iterable<string>): IdIndex =>
 
 // `_meta.index.<field>.<エスケープした IRI>` を指す FieldPath。IRI に含まれるドットが
 // パス区切りと誤解釈されないよう、文字列連結ではなく必ず配列形式の FieldPath を使う。
-export const metaIndexPath = (field: MetaIndexField, id: string) =>
-	new firebase.firestore.FieldPath('_meta', 'index', field, escapeFirestoreKey(id));
+export const metaIndexPath = (field: MetaIndexField, key: FirestoreKey) =>
+	new firebase.firestore.FieldPath('_meta', 'index', field, key);
 
 // stream ドキュメントの現在の内容から、あるべき `_meta.index` を計算する。
 export const buildMetaIndex = (stream: Record<string, any>): MetaIndex => {

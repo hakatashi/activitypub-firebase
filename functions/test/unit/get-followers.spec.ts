@@ -1,9 +1,10 @@
 import type { APActor } from 'activitypub-types';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { apex } from '../../src/activitypub.js';
-import { db } from '../../src/firebase.js';
+import { escapeFirestoreKey } from '../../src/firebase.js';
 import { getFollowers } from '../../src/mastodon/api.js';
 import { buildMetaIndex } from '../../src/meta.js';
+import { Streams } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -20,13 +21,10 @@ const actor = {
 // Firestore エミュレータのみで実行されるため、トリガーが計算するはずの値をここで
 // あらかじめ与えている。
 const saveStream = (docId: string, activity: Record<string, any>) =>
-	db
-		.collection('streams')
-		.doc(docId)
-		.set({
-			...activity,
-			_meta: { ...activity._meta, index: buildMetaIndex(activity) },
-		});
+	Streams.doc(escapeFirestoreKey(docId)).set({
+		...activity,
+		_meta: { ...activity._meta, index: buildMetaIndex(activity) },
+	});
 
 // eslint-disable-next-line max-params
 const saveFollow = (docId: string, activityId: string, followerId: string, objectId: string) =>

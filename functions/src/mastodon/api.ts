@@ -10,7 +10,13 @@ import { chunk, last, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { z } from 'zod';
 import { apex } from '../activitypub.js';
-import { domain, escapeFirestoreKey, mastodonDomain, unescapeFirestoreKey } from '../firebase.js';
+import {
+	domain,
+	escapeFirestoreKey,
+	mastodonDomain,
+	toFirestoreKey,
+	unescapeFirestoreKey,
+} from '../firebase.js';
 import { metaIndexPath } from '../meta.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
@@ -191,7 +197,9 @@ const userIdsToAcconts = async (
 	);
 	const userInfoMap = new Map<string, UserInfo>(
 		userInfoDocsChunks.flatMap((userInfos) =>
-			userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()] as const),
+			userInfos.docs.map(
+				(doc) => [unescapeFirestoreKey(toFirestoreKey(doc.id)), doc.data()] as const,
+			),
 		),
 	);
 
@@ -245,13 +253,13 @@ export const getFollowers = async (actor: APActor) => {
 	// フィールドではなく denormalizations.ts が書き込む map 形式のインデックス `_meta.index.*`
 	// を等価条件で引く(→ ADR-0021)。
 	const followStreams = await Streams.where('type', '==', 'Follow')
-		.where(metaIndexPath('objects', actor.id), '==', true)
+		.where(metaIndexPath('objects', escapeFirestoreKey(actor.id)), '==', true)
 		.get();
 	// 受信した Undo の object は、Mastodon のように Follow を丸ごと埋め込んでくる場合と
 	// 素の IRI 文字列で届く場合がある。`_meta.objectType` による絞り込みは後者を取りこぼすため、
 	// inbox の Undo をすべて取得し、打ち消された Follow の IRI で突き合わせる(→ ADR-0021)。
 	const unfollowStreams = await Streams.where(
-		metaIndexPath('collections', getInboxId(actor)),
+		metaIndexPath('collections', escapeFirestoreKey(getInboxId(actor))),
 		'==',
 		true,
 	)
@@ -402,7 +410,7 @@ router.get('/v1/accounts/:id/followers', async (req, res) => {
 		return;
 	}
 
-	const userId = unescapeFirestoreKey(userInfo.docs[0].id);
+	const userId = unescapeFirestoreKey(toFirestoreKey(userInfo.docs[0].id));
 	const actorObject = await apex.store.getObject(userId);
 
 	if (actorObject === undefined) {
