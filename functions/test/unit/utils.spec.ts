@@ -1,5 +1,5 @@
-import {describe, expect, test} from 'vitest';
-import {Counter, pickSafeHeaders, redactSensitiveBody} from '../../src/utils.js';
+import { describe, expect, test } from 'vitest';
+import { Counter, pickSafeHeaders, redactSensitiveBody } from '../../src/utils.js';
 
 describe('Counter', () => {
 	test('increments from 0 by default', () => {
@@ -30,8 +30,16 @@ describe('Counter', () => {
 		const counter = new Counter<string>();
 		counter.increment('a');
 		counter.increment('b', 2);
-		expect(new Map(counter)).toEqual(new Map([['a', 1], ['b', 2]]));
-		expect(Array.from(counter.entries())).toEqual([['a', 1], ['b', 2]]);
+		expect(new Map(counter)).toEqual(
+			new Map([
+				['a', 1],
+				['b', 2],
+			]),
+		);
+		expect(Array.from(counter.entries())).toEqual([
+			['a', 1],
+			['b', 2],
+		]);
 	});
 });
 
@@ -51,17 +59,19 @@ describe('pickSafeHeaders', () => {
 	});
 
 	test('omits allow-listed headers that are not present', () => {
-		expect(pickSafeHeaders({host: 'example.com'})).toEqual({host: 'example.com'});
+		expect(pickSafeHeaders({ host: 'example.com' })).toEqual({ host: 'example.com' });
 	});
 });
 
 describe('redactSensitiveBody', () => {
 	test('redacts sensitive fields at the top level', () => {
-		expect(redactSensitiveBody({
-			client_secret: 'super-secret',
-			code: 'auth-code',
-			username: 'hakatashi',
-		})).toEqual({
+		expect(
+			redactSensitiveBody({
+				client_secret: 'super-secret',
+				code: 'auth-code',
+				username: 'hakatashi',
+			}),
+		).toEqual({
 			client_secret: '[REDACTED]',
 			code: '[REDACTED]',
 			username: 'hakatashi',
@@ -69,12 +79,14 @@ describe('redactSensitiveBody', () => {
 	});
 
 	test('redacts sensitive fields inside nested objects', () => {
-		expect(redactSensitiveBody({
-			user: {
-				password: 'hunter2',
-				name: 'hakatashi',
-			},
-		})).toEqual({
+		expect(
+			redactSensitiveBody({
+				user: {
+					password: 'hunter2',
+					name: 'hakatashi',
+				},
+			}),
+		).toEqual({
 			user: {
 				password: '[REDACTED]',
 				name: 'hakatashi',
@@ -83,12 +95,9 @@ describe('redactSensitiveBody', () => {
 	});
 
 	test('redacts sensitive fields inside arrays', () => {
-		expect(redactSensitiveBody([
-			{accessToken: 'a'},
-			{refreshToken: 'b'},
-		])).toEqual([
-			{accessToken: '[REDACTED]'},
-			{refreshToken: '[REDACTED]'},
+		expect(redactSensitiveBody([{ accessToken: 'a' }, { refreshToken: 'b' }])).toEqual([
+			{ accessToken: '[REDACTED]' },
+			{ refreshToken: '[REDACTED]' },
 		]);
 	});
 

@@ -16,10 +16,14 @@ npm --prefix functions ci
 ## ビルドと lint
 
 ```bash
-npm --prefix functions run build      # tsc
+npm --prefix functions run build         # tsc
 npm --prefix functions run build:watch
-npm --prefix functions run lint       # eslint
+npm --prefix functions run lint          # oxlint
+npm --prefix functions run format        # oxfmt --write
+npm --prefix functions run format:check  # oxfmt --check
 ```
+
+lint/format の構成は [ADR-0018](../adr/0018-eslint-to-oxlint-oxfmt.md) を参照。
 
 `tsconfig.json` の `include` は `src` のみ。`test/` と `bin/` はビルド対象外。
 

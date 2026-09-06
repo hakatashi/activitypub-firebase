@@ -1,6 +1,6 @@
-import type {mastodon} from 'masto';
-import {mastodonDomain} from '../firebase.js';
-import type {CamelToSnake} from '../utils.js';
+import type { mastodon } from 'masto';
+import { mastodonDomain } from '../firebase.js';
+import type { CamelToSnake } from '../utils.js';
 
 const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
 	domain: mastodonDomain,
@@ -12,13 +12,13 @@ const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
 		url: 'https://files.mastodon.social/site_uploads/files/000/000/001/@1x/57c12f441d083cde.png',
 		blurhash: 'UeKUpFxuo~R%0nW;WCnhF6RjaJt757oJodS$',
 		versions: {
-			'@1x': 'https://files.mastodon.social/site_uploads/files/000/000/001/@1x/57c12f441d083cde.png',
-			'@2x': 'https://files.mastodon.social/site_uploads/files/000/000/001/@2x/57c12f441d083cde.png',
+			'@1x':
+				'https://files.mastodon.social/site_uploads/files/000/000/001/@1x/57c12f441d083cde.png',
+			'@2x':
+				'https://files.mastodon.social/site_uploads/files/000/000/001/@2x/57c12f441d083cde.png',
 		},
 	},
-	languages: [
-		'ja',
-	],
+	languages: ['ja'],
 	registrations: {
 		enabled: false,
 		approval_required: false,
@@ -68,9 +68,11 @@ const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
 			note: '博多市です。',
 			url: 'https://mastodon.social/@Gargron',
 			avatar: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-			avatar_static: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+			avatar_static:
+				'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
 			header: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-			header_static: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+			header_static:
+				'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
 			followers_count: 1,
 			following_count: 1,
 			statuses_count: 0,
@@ -124,5 +126,4 @@ const instanceV1: CamelToSnake<mastodon.v1.Instance> = {
 	rules: instanceV2.rules,
 };
 
-
-export {instanceV1, instanceV2};
+export { instanceV1, instanceV2 };

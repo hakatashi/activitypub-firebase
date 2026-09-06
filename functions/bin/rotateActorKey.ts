@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
-import {promisify} from 'node:util';
+import { promisify } from 'node:util';
 import Store from '../src/store.js';
 
 // ADR-0009: 配送が未実装の Phase 0 のうちに actor の秘密鍵をローテーションする、使い捨てスクリプト。
@@ -17,7 +17,8 @@ assert(
 	projectId === 'activitypub-firebase' || projectId === 'activitypub-firebase-dev',
 	`GCLOUD_PROJECT must be set to activitypub-firebase or activitypub-firebase-dev, got: ${projectId}`,
 );
-const domain = projectId === 'activitypub-firebase' ? 'hakatashi.com' : 'activitypub-dev.hakatashi.com';
+const domain =
+	projectId === 'activitypub-firebase' ? 'hakatashi.com' : 'activitypub-dev.hakatashi.com';
 
 const actorId = `https://${domain}/activitypub/u/hakatashi`;
 
@@ -31,7 +32,9 @@ const main = async () => {
 	// publicKey は単一オブジェクトではなく1要素の配列、publicKeyPem もその中で
 	// 配列になっている(functions/node_modules/activitypub-express/pub/jsonld.js)。
 	// 将来の実装変化に備え、配列/非配列どちらの形でも動くようにしておく。
-	const currentPublicKeyEntry = Array.isArray(actor.publicKey) ? actor.publicKey[0] : actor.publicKey;
+	const currentPublicKeyEntry = Array.isArray(actor.publicKey)
+		? actor.publicKey[0]
+		: actor.publicKey;
 	assert(currentPublicKeyEntry, 'actor has no existing public key');
 	const currentPublicKeyPem = currentPublicKeyEntry.publicKeyPem;
 	assert(currentPublicKeyPem !== undefined, 'actor has no existing public key pem');
@@ -39,10 +42,10 @@ const main = async () => {
 
 	// apex の createActor と同じパラメータで生成する
 	// (functions/node_modules/activitypub-express/pub/actor.js)
-	const {publicKey, privateKey} = await generateKeyPair('rsa', {
+	const { publicKey, privateKey } = await generateKeyPair('rsa', {
 		modulusLength: 4096,
-		publicKeyEncoding: {type: 'spki', format: 'pem'},
-		privateKeyEncoding: {type: 'pkcs8', format: 'pem'},
+		publicKeyEncoding: { type: 'spki', format: 'pem' },
+		privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 	});
 
 	const newPublicKeyEntry = {

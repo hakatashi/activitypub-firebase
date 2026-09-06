@@ -1,8 +1,8 @@
 import express from 'express';
 import request from 'supertest';
-import {describe, expect, test, afterEach, beforeEach} from 'vitest';
+import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import oauthRouter from '../../src/mastodon/oauth.js';
-import {Clients, Users} from '../../src/mastodon/oauth2Model.js';
+import { Clients, Users } from '../../src/mastodon/oauth2Model.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -12,7 +12,7 @@ const projectId = process.env.GCLOUD_PROJECT;
 // この前提を supertest から再現するため、ここでは同じミドルウェアを自前で挟む。
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({extended: true}));
+app.use(express.urlencoded({ extended: true }));
 app.use('/oauth', oauthRouter);
 
 describe('oauth', () => {
@@ -34,7 +34,7 @@ describe('oauth', () => {
 
 	describe('POST /oauth/token', () => {
 		beforeEach(async () => {
-			await Users.add({id: 'user-1', username: 'hakatashi', password: 'hunter2'});
+			await Users.add({ id: 'user-1', username: 'hakatashi', password: 'hunter2' });
 			await Clients.add({
 				id: '1',
 				name: 'test client',
@@ -49,15 +49,12 @@ describe('oauth', () => {
 		});
 
 		test('issues an access token for the client_credentials grant', async () => {
-			const response = await request(app)
-				.post('/oauth/token')
-				.type('form')
-				.send({
-					grant_type: 'client_credentials',
-					client_id: 'client-id',
-					client_secret: 'client-secret',
-					scope: 'read',
-				});
+			const response = await request(app).post('/oauth/token').type('form').send({
+				grant_type: 'client_credentials',
+				client_id: 'client-id',
+				client_secret: 'client-secret',
+				scope: 'read',
+			});
 
 			expect(response.status).toBe(200);
 			expect(response.body.access_token).toEqual(expect.any(String));
@@ -66,28 +63,23 @@ describe('oauth', () => {
 		});
 
 		test('rejects an unknown client', async () => {
-			const response = await request(app)
-				.post('/oauth/token')
-				.type('form')
-				.send({
-					grant_type: 'client_credentials',
-					client_id: 'unknown-client',
-					client_secret: 'wrong-secret',
-				});
+			const response = await request(app).post('/oauth/token').type('form').send({
+				grant_type: 'client_credentials',
+				client_id: 'unknown-client',
+				client_secret: 'wrong-secret',
+			});
 
 			expect(response.status).toBe(400);
 		});
 
 		test('accepts a JSON body as a workaround for clients that send the wrong content type', async () => {
 			// https://github.com/elk-zone/elk/issues/2244
-			const response = await request(app)
-				.post('/oauth/token')
-				.send({
-					grant_type: 'client_credentials',
-					client_id: 'client-id',
-					client_secret: 'client-secret',
-					scope: 'read',
-				});
+			const response = await request(app).post('/oauth/token').send({
+				grant_type: 'client_credentials',
+				client_id: 'client-id',
+				client_secret: 'client-secret',
+				scope: 'read',
+			});
 
 			expect(response.status).toBe(200);
 			expect(response.body.access_token).toEqual(expect.any(String));

@@ -1,9 +1,11 @@
-import {describe, expect, test} from 'vitest';
-import {escapeFirestoreKey, unescapeFirestoreKey} from '../../src/firebase.js';
+import { describe, expect, test } from 'vitest';
+import { escapeFirestoreKey, unescapeFirestoreKey } from '../../src/firebase.js';
 
 describe('escapeFirestoreKey', () => {
 	test('escapes %, / and . with their percent-encoded forms', () => {
-		expect(escapeFirestoreKey('https://example.com/users/foo')).toBe('https:%2F%2Fexample%2Ecom%2Fusers%2Ffoo');
+		expect(escapeFirestoreKey('https://example.com/users/foo')).toBe(
+			'https:%2F%2Fexample%2Ecom%2Fusers%2Ffoo',
+		);
 		expect(escapeFirestoreKey('50%off')).toBe('50%25off');
 	});
 

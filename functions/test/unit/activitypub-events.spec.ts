@@ -1,8 +1,8 @@
 import express from 'express';
 import request from 'supertest';
-import {afterEach, describe, expect, test, vi} from 'vitest';
-import {apex, app} from '../../src/activitypub.js';
-import {runPostWorkBeforeSend} from '../../src/postWork.js';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { apex, app } from '../../src/activitypub.js';
+import { runPostWorkBeforeSend } from '../../src/postWork.js';
 
 describe('apex-inbox event: Follow auto-accept', () => {
 	afterEach(() => {
@@ -10,33 +10,35 @@ describe('apex-inbox event: Follow auto-accept', () => {
 	});
 
 	test('accepts an incoming Follow and publishes the updated followers collection', async () => {
-		const recipient = {id: 'https://example.com/activitypub/u/hakatashi', followers: ['https://example.com/activitypub/u/hakatashi/followers']};
-		const actor = {id: 'https://remote.example/u/alice'};
+		const recipient = {
+			id: 'https://example.com/activitypub/u/hakatashi',
+			followers: ['https://example.com/activitypub/u/hakatashi/followers'],
+		};
+		const actor = { id: 'https://remote.example/u/alice' };
 		const activity = {
 			id: 'https://remote.example/activities/follow-1',
 			type: 'Follow',
 			actor: actor.id,
 			object: recipient.id,
-			_meta: {collection: ['https://example.com/activitypub/u/hakatashi/inbox']},
+			_meta: { collection: ['https://example.com/activitypub/u/hakatashi/inbox'] },
 		};
-		const acceptActivity = {id: 'https://example.com/activitypub/s/accept-1', type: 'Accept'};
+		const acceptActivity = { id: 'https://example.com/activitypub/s/accept-1', type: 'Accept' };
 		const postTask = vi.fn().mockResolvedValue(undefined);
 
 		const buildActivitySpy = vi.spyOn(apex, 'buildActivity').mockResolvedValue(acceptActivity);
-		const acceptFollowSpy = vi.spyOn(apex, 'acceptFollow').mockResolvedValue({postTask, updated: true});
+		const acceptFollowSpy = vi
+			.spyOn(apex, 'acceptFollow')
+			.mockResolvedValue({ postTask, updated: true });
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: any) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
 
-		await listeners[0]({activity, actor, recipient});
+		await listeners[0]({ activity, actor, recipient });
 
-		expect(buildActivitySpy).toHaveBeenCalledWith(
-			'Accept',
-			recipient.id,
-			actor.id,
-			{object: {id: activity.id, type: 'Follow', actor: actor.id, object: recipient.id}},
-		);
+		expect(buildActivitySpy).toHaveBeenCalledWith('Accept', recipient.id, actor.id, {
+			object: { id: activity.id, type: 'Follow', actor: actor.id, object: recipient.id },
+		});
 		expect(acceptFollowSpy).toHaveBeenCalledWith(recipient, activity);
 		expect(addToOutboxSpy).toHaveBeenCalledWith(recipient, acceptActivity);
 		expect(postTask).toHaveBeenCalledTimes(1);
@@ -44,16 +46,18 @@ describe('apex-inbox event: Follow auto-accept', () => {
 
 	test('does not treat non-Follow activities as follow requests', async () => {
 		const buildActivitySpy = vi.spyOn(apex, 'buildActivity').mockResolvedValue({});
-		const acceptFollowSpy = vi.spyOn(apex, 'acceptFollow').mockResolvedValue({postTask: vi.fn(), updated: true});
+		const acceptFollowSpy = vi
+			.spyOn(apex, 'acceptFollow')
+			.mockResolvedValue({ postTask: vi.fn(), updated: true });
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: any) => Promise<void>)[];
 
 		await listeners[0]({
-			activity: {id: 'https://remote.example/activities/create-1', type: 'Create'},
-			actor: {id: 'https://remote.example/u/alice'},
-			recipient: {id: 'https://example.com/activitypub/u/hakatashi'},
-			object: {type: 'Note'},
+			activity: { id: 'https://remote.example/activities/create-1', type: 'Create' },
+			actor: { id: 'https://remote.example/u/alice' },
+			recipient: { id: 'https://example.com/activitypub/u/hakatashi' },
+			object: { type: 'Note' },
 		});
 
 		expect(buildActivitySpy).not.toHaveBeenCalled();
@@ -104,7 +108,7 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 			res.locals.apex = {
 				postWork: [],
 				eventName: 'custom-apex-event',
-				eventMessage: {foo: 'bar'},
+				eventMessage: { foo: 'bar' },
 			};
 			res.send('done');
 		});
@@ -112,7 +116,7 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 		const response = await request(testApp).get('/test');
 
 		expect(response.status).toBe(200);
-		expect(received).toEqual([{foo: 'bar'}]);
+		expect(received).toEqual([{ foo: 'bar' }]);
 	});
 
 	test('drains postWork and eventName so that apex onFinished does not run them twice', async () => {
@@ -128,7 +132,7 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 			apexLocal = {
 				postWork: [task],
 				eventName: 'custom-apex-event',
-				eventMessage: {foo: 'bar'},
+				eventMessage: { foo: 'bar' },
 			};
 			res.locals.apex = apexLocal;
 			res.send('done');
@@ -179,7 +183,7 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 		const task = vi.fn();
 		const testApp = express();
 		testApp.get('/test', (req, res) => {
-			res.locals.apex = {postWork: [task], eventName: null};
+			res.locals.apex = { postWork: [task], eventName: null };
 			res.status(200).send('untouched');
 		});
 

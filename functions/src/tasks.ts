@@ -1,21 +1,21 @@
-import {getFunctions} from 'firebase-admin/functions';
-import {logger} from 'firebase-functions/v2';
-import {onTaskDispatched} from 'firebase-functions/v2/tasks';
-import {apex} from './apex.js';
+import { getFunctions } from 'firebase-admin/functions';
+import { logger } from 'firebase-functions/v2';
+import { onTaskDispatched } from 'firebase-functions/v2/tasks';
+import { apex } from './apex.js';
 
 interface PingTaskPayload {
 	message: string;
 }
 
 export const pingTask = onTaskDispatched<PingTaskPayload>(
-	{retryConfig: {maxAttempts: 1}},
+	{ retryConfig: { maxAttempts: 1 } },
 	(request) => {
-		logger.info({type: 'pingTaskReceived', message: request.data.message});
+		logger.info({ type: 'pingTaskReceived', message: request.data.message });
 	},
 );
 
 export const enqueuePingTask = async (message: string) => {
-	await getFunctions().taskQueue('pingTask').enqueue({message});
+	await getFunctions().taskQueue('pingTask').enqueue({ message });
 };
 
 interface DeliveryTaskPayload {
@@ -47,16 +47,16 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 		timeoutSeconds: 60,
 	},
 	async (request) => {
-		const {actorId, body, address} = request.data;
+		const { actorId, body, address } = request.data;
 		// Cloud Tasks の初回実行では 0。ADR-0012: Firestore 上の試行回数として使う
 		const attempts = (request.retryCount ?? 0) + 1;
 		const activityId = JSON.parse(body).id;
 
-		logger.info({type: 'deliveryTaskReceived', actorId, address, attempts});
+		logger.info({ type: 'deliveryTaskReceived', actorId, address, attempts });
 
 		const actor = await apex.store.getObject(actorId, true);
 		if (!actor) {
-			logger.error({type: 'deliveryTaskActorNotFound', actorId});
+			logger.error({ type: 'deliveryTaskActorNotFound', actorId });
 			return;
 		}
 
@@ -81,7 +81,7 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 
 		// 本番環境で address が localhost の場合、apex.deliver は null を返す
 		if (result === null) {
-			logger.info({type: 'deliveryTaskSkippedLocalAddress', actorId, address});
+			logger.info({ type: 'deliveryTaskSkippedLocalAddress', actorId, address });
 			return;
 		}
 

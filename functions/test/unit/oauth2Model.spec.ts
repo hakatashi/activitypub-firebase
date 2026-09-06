@@ -1,6 +1,6 @@
-import type {AuthorizationCode, Client, Token, User} from '@node-oauth/oauth2-server';
-import {describe, expect, test, afterEach, beforeEach} from 'vitest';
-import {Clients, Oauth2Model, RefreshTokens, Users} from '../../src/mastodon/oauth2Model.js';
+import type { AuthorizationCode, Client, Token, User } from '@node-oauth/oauth2-server';
+import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { Clients, Oauth2Model, RefreshTokens, Users } from '../../src/mastodon/oauth2Model.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -38,7 +38,7 @@ describe('Oauth2Model', () => {
 			});
 
 			const client = await model.getClient('client-id', 'client-secret');
-			expect(client).toMatchObject({clientId: 'client-id', clientSecret: 'client-secret'});
+			expect(client).toMatchObject({ clientId: 'client-id', clientSecret: 'client-secret' });
 		});
 
 		test('ignores clientSecret when it is null', async () => {
@@ -54,7 +54,7 @@ describe('Oauth2Model', () => {
 			});
 
 			const client = await model.getClient('client-id', null);
-			expect(client).toMatchObject({clientId: 'client-id'});
+			expect(client).toMatchObject({ clientId: 'client-id' });
 		});
 
 		test('returns false when the client does not exist', async () => {
@@ -78,8 +78,8 @@ describe('Oauth2Model', () => {
 	});
 
 	describe('saveToken / getAccessToken', () => {
-		const client = {id: 'client-1', grants: ['authorization_code']} as Client;
-		const user = {id: 'user-1'} as User;
+		const client = { id: 'client-1', grants: ['authorization_code'] } as Client;
+		const user = { id: 'user-1' } as User;
 
 		test('round-trips a token, converting Firestore Timestamps back to Date', async () => {
 			const token = {
@@ -97,7 +97,9 @@ describe('Oauth2Model', () => {
 			expect(fetched).not.toBe(false);
 			expect((fetched as Token).accessToken).toBe('access-token');
 			expect((fetched as Token).accessTokenExpiresAt).toEqual(new Date('2023-01-01T00:00:00.000Z'));
-			expect((fetched as Token).refreshTokenExpiresAt).toEqual(new Date('2023-02-01T00:00:00.000Z'));
+			expect((fetched as Token).refreshTokenExpiresAt).toEqual(
+				new Date('2023-02-01T00:00:00.000Z'),
+			);
 			expect((fetched as Token).client).toEqual(client);
 			expect((fetched as Token).user).toEqual(user);
 		});
@@ -121,8 +123,8 @@ describe('Oauth2Model', () => {
 	});
 
 	describe('saveAuthorizationCode / getAuthorizationCode / revokeAuthorizationCode', () => {
-		const client = {id: 'client-1', grants: ['authorization_code']} as Client;
-		const user = {id: 'user-1'} as User;
+		const client = { id: 'client-1', grants: ['authorization_code'] } as Client;
+		const user = { id: 'user-1' } as User;
 
 		test('round-trips an authorization code, converting expiresAt back to a Date', async () => {
 			const code = {
@@ -138,7 +140,9 @@ describe('Oauth2Model', () => {
 			const fetched = await model.getAuthorizationCode('auth-code');
 			expect(fetched).not.toBe(false);
 			expect((fetched as AuthorizationCode).authorizationCode).toBe('auth-code');
-			expect((fetched as AuthorizationCode).expiresAt).toEqual(new Date('2023-01-01T00:00:00.000Z'));
+			expect((fetched as AuthorizationCode).expiresAt).toEqual(
+				new Date('2023-01-01T00:00:00.000Z'),
+			);
 			expect((fetched as AuthorizationCode).client).toEqual(client);
 			expect((fetched as AuthorizationCode).user).toEqual(user);
 		});
@@ -164,27 +168,27 @@ describe('Oauth2Model', () => {
 
 	describe('getUserFromClient', () => {
 		test('finds the user referenced by client.userId', async () => {
-			await Users.add({id: 'user-1', username: 'hakatashi', password: 'hunter2'});
+			await Users.add({ id: 'user-1', username: 'hakatashi', password: 'hunter2' });
 
-			const user = await model.getUserFromClient({userId: 'user-1'} as Client);
-			expect(user).toMatchObject({id: 'user-1', username: 'hakatashi'});
+			const user = await model.getUserFromClient({ userId: 'user-1' } as Client);
+			expect(user).toMatchObject({ id: 'user-1', username: 'hakatashi' });
 		});
 
 		test('returns false when no user matches', async () => {
-			expect(await model.getUserFromClient({userId: 'missing-user'} as Client)).toBe(false);
+			expect(await model.getUserFromClient({ userId: 'missing-user' } as Client)).toBe(false);
 		});
 	});
 
 	describe('getUser', () => {
 		test('finds a user by matching username and password', async () => {
-			await Users.add({id: 'user-1', username: 'hakatashi', password: 'hunter2'});
+			await Users.add({ id: 'user-1', username: 'hakatashi', password: 'hunter2' });
 
 			const user = await model.getUser('hakatashi', 'hunter2');
-			expect(user).toMatchObject({id: 'user-1', username: 'hakatashi'});
+			expect(user).toMatchObject({ id: 'user-1', username: 'hakatashi' });
 		});
 
 		test('returns false when the password does not match', async () => {
-			await Users.add({id: 'user-1', username: 'hakatashi', password: 'hunter2'});
+			await Users.add({ id: 'user-1', username: 'hakatashi', password: 'hunter2' });
 
 			expect(await model.getUser('hakatashi', 'wrong-password')).toBe(false);
 		});
@@ -192,17 +196,17 @@ describe('Oauth2Model', () => {
 
 	describe('verifyScope', () => {
 		test('returns true when all requested scopes are authorized (string form)', async () => {
-			const token = {scope: 'read write'} as unknown as Token;
+			const token = { scope: 'read write' } as unknown as Token;
 			expect(await model.verifyScope(token, 'read')).toBe(true);
 		});
 
 		test('returns true when all requested scopes are authorized (array form)', async () => {
-			const token = {scope: ['read', 'write']} as unknown as Token;
+			const token = { scope: ['read', 'write'] } as unknown as Token;
 			expect(await model.verifyScope(token, ['read', 'write'])).toBe(true);
 		});
 
 		test('returns false when a requested scope is missing', async () => {
-			const token = {scope: 'read'} as unknown as Token;
+			const token = { scope: 'read' } as unknown as Token;
 			expect(await model.verifyScope(token, ['read', 'write'])).toBe(false);
 		});
 
@@ -213,7 +217,7 @@ describe('Oauth2Model', () => {
 	});
 
 	test('revokeAuthorizationCode returns false for a code that was never saved', async () => {
-		const code = {authorizationCode: 'never-existed'} as AuthorizationCode;
+		const code = { authorizationCode: 'never-existed' } as AuthorizationCode;
 		expect(await model.revokeAuthorizationCode(code)).toBe(false);
 	});
 });

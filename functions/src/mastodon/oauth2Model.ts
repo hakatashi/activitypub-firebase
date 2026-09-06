@@ -1,21 +1,34 @@
-import type {CollectionReference} from '@google-cloud/firestore';
-import type {AuthorizationCodeModel, PasswordModel, ClientCredentialsModel, Token, AuthorizationCode, Client, User, RefreshToken} from '@node-oauth/oauth2-server';
-import {db} from '../firebase.js';
+import type { CollectionReference } from '@google-cloud/firestore';
+import type {
+	AuthorizationCodeModel,
+	PasswordModel,
+	ClientCredentialsModel,
+	Token,
+	AuthorizationCode,
+	Client,
+	User,
+	RefreshToken,
+} from '@node-oauth/oauth2-server';
+import { db } from '../firebase.js';
 
 export interface MastodonClient extends Client {
-	clientId: string,
-	clientSecret: string,
-	vapidKey: string,
-	name: string,
-	scopes: string[]
-	userId?: string,
+	clientId: string;
+	clientSecret: string;
+	vapidKey: string;
+	name: string;
+	scopes: string[];
+	userId?: string;
 }
 
 export const AccessTokens = db.collection('accessTokens') as CollectionReference<Token>;
 export const RefreshTokens = db.collection('refreshTokens') as CollectionReference<RefreshToken>;
-export const AuthorizationCodes = db.collection('authorizationCodes') as CollectionReference<AuthorizationCode>;
+export const AuthorizationCodes = db.collection(
+	'authorizationCodes',
+) as CollectionReference<AuthorizationCode>;
 export const Clients = db.collection('clients') as CollectionReference<MastodonClient>;
-export const Users = db.collection('users') as CollectionReference<User & {username: string, password: string}>;
+export const Users = db.collection('users') as CollectionReference<
+	User & { username: string; password: string }
+>;
 
 export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, ClientCredentialsModel {
 	async getAccessToken(accessToken: string): Promise<Token | false> {
@@ -34,7 +47,11 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | false> {
-		const results = await AuthorizationCodes.where('authorizationCode', '==', authorizationCode).get();
+		const results = await AuthorizationCodes.where(
+			'authorizationCode',
+			'==',
+			authorizationCode,
+		).get();
 		if (results.empty) {
 			return false;
 		}
@@ -47,7 +64,15 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async saveAuthorizationCode(
-		code: Pick<AuthorizationCode, 'authorizationCode' | 'expiresAt' | 'redirectUri' | 'scope' | 'codeChallenge' | 'codeChallengeMethod'>,
+		code: Pick<
+			AuthorizationCode,
+			| 'authorizationCode'
+			| 'expiresAt'
+			| 'redirectUri'
+			| 'scope'
+			| 'codeChallenge'
+			| 'codeChallengeMethod'
+		>,
 		client: Client,
 		user: User,
 	): Promise<AuthorizationCode | false> {
@@ -74,8 +99,7 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async getClient(clientId: string, clientSecret: string | null): Promise<Client | false> {
-		let query = Clients
-			.where('clientId', '==', clientId);
+		let query = Clients.where('clientId', '==', clientId);
 		if (clientSecret !== null) {
 			query = query.where('clientSecret', '==', clientSecret);
 		}
@@ -119,8 +143,7 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async getUser(username: string, password: string): Promise<User | false> {
-		const results = await Users
-			.where('username', '==', username)
+		const results = await Users.where('username', '==', username)
 			.where('password', '==', password)
 			.get();
 		if (results.empty) {
@@ -135,7 +158,9 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		}
 
 		const requestedScopes = new Set(Array.isArray(scope) ? scope : scope.split(' '));
-		const authorizedScopes = new Set(Array.isArray(token.scope) ? token.scope : token.scope.split(' '));
+		const authorizedScopes = new Set(
+			Array.isArray(token.scope) ? token.scope : token.scope.split(' '),
+		);
 
 		for (const requestedScope of requestedScopes) {
 			if (!authorizedScopes.has(requestedScope)) {

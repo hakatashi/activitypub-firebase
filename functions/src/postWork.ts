@@ -1,5 +1,5 @@
 import type express from 'express';
-import {logger} from 'firebase-functions/v2';
+import { logger } from 'firebase-functions/v2';
 
 // apex がリクエストごとに `res.locals.apex` へ積む値のうち、ここで扱うもの。
 interface ApexLocals {
@@ -9,9 +9,8 @@ interface ApexLocals {
 	[key: string]: unknown;
 }
 
-const idOf = (value: unknown) => (
-	typeof value === 'object' && value !== null ? (value as {id?: unknown}).id : undefined
-);
+const idOf = (value: unknown) =>
+	typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
 
 // `res.locals.apex.target` には apex の targetActorWithMeta が入れた `_meta.privateKey` が
 // 含まれうるため、locals をそのままログに出さず安全なフィールドだけを抜き出す (ADR-0013)。
@@ -42,19 +41,21 @@ const runPostWork = async (res: express.Response) => {
 
 	// execute postWork tasks in sequence (not parallel)
 	await originalPostWork.reduce(
-		(acc: Promise<void>, task) => acc.then(async () => {
-			await task(res);
-		}),
+		(acc: Promise<void>, task) =>
+			acc.then(async () => {
+				await task(res);
+			}),
 		Promise.resolve(),
 	);
 
 	const postWorkFinishedAt = Date.now();
 
-	const {eventName} = apexLocal;
+	const { eventName } = apexLocal;
 	if (eventName) {
 		apexLocal.eventName = null;
 		await Promise.all(
-			res.app.listeners(eventName)
+			res.app
+				.listeners(eventName)
 				.map((listener) => listener.call(res.app, apexLocal.eventMessage)),
 		);
 	}

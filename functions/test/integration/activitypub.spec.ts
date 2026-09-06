@@ -1,6 +1,6 @@
 import request from 'supertest';
-import {describe, expect, test, afterEach, beforeEach, vi} from 'vitest';
-import {activitypub, apex} from '../../src/activitypub.js';
+import { describe, expect, test, afterEach, beforeEach, vi } from 'vitest';
+import { activitypub, apex } from '../../src/activitypub.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -90,12 +90,16 @@ describe('activitypub', () => {
 			});
 
 			test('Non-existent user', async () => {
-				const response = await request(activitypub).get(`/.well-known/webfinger?resource=acct:notfound@${DEV_DOMAIN}`);
+				const response = await request(activitypub).get(
+					`/.well-known/webfinger?resource=acct:notfound@${DEV_DOMAIN}`,
+				);
 				expect(response.status).toBe(404);
 			});
 
 			test('Existing user', async () => {
-				const response = await request(activitypub).get(`/.well-known/webfinger?resource=acct:hakatashi@${DEV_DOMAIN}`);
+				const response = await request(activitypub).get(
+					`/.well-known/webfinger?resource=acct:hakatashi@${DEV_DOMAIN}`,
+				);
 				expect(response.status).toBe(200);
 				expect(response.body.subject).toBe(`acct:hakatashi@${DEV_DOMAIN}`);
 				expect(response.body.links).toHaveLength(1);
@@ -123,7 +127,7 @@ describe('activitypub', () => {
 	});
 
 	describe('/activitypub/deliveries', () => {
-		const adminHeader = {'x-hakatashi-token': 'test-token'};
+		const adminHeader = { 'x-hakatashi-token': 'test-token' };
 
 		beforeEach(() => {
 			process.env.HAKATASHI_TOKEN = 'test-token';
@@ -159,7 +163,9 @@ describe('activitypub', () => {
 				statusCode: 202,
 			});
 
-			const response = await request(activitypub).get('/activitypub/deliveries/failed').set(adminHeader);
+			const response = await request(activitypub)
+				.get('/activitypub/deliveries/failed')
+				.set(adminHeader);
 			expect(response.status).toBe(200);
 			expect(response.body).toHaveLength(1);
 			expect(response.body[0].status).toBe('permanent_failure');
@@ -171,7 +177,13 @@ describe('activitypub', () => {
 			const address = 'https://remote.example/u/carol/inbox';
 			const body = `{"id":"${activityId}","type":"Create"}`;
 			await apex.store.recordDeliveryResult({
-				activityId, actorId, address, body, attempts: 1, status: 'permanent_failure', statusCode: 410,
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts: 1,
+				status: 'permanent_failure',
+				statusCode: 410,
 			});
 
 			const enqueueSpy = vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(true);
@@ -179,7 +191,7 @@ describe('activitypub', () => {
 			const response = await request(activitypub)
 				.post('/activitypub/deliveries/resend')
 				.set(adminHeader)
-				.send({activityId, inbox: address});
+				.send({ activityId, inbox: address });
 
 			expect(response.status).toBe(200);
 			expect(enqueueSpy).toHaveBeenCalledWith(actorId, body, address, undefined);
@@ -189,7 +201,10 @@ describe('activitypub', () => {
 			const response = await request(activitypub)
 				.post('/activitypub/deliveries/resend')
 				.set(adminHeader)
-				.send({activityId: 'https://example.com/activities/unknown', inbox: 'https://remote.example/inbox'});
+				.send({
+					activityId: 'https://example.com/activities/unknown',
+					inbox: 'https://remote.example/inbox',
+				});
 
 			expect(response.status).toBe(404);
 		});

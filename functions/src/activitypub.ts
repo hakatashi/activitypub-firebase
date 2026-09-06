@@ -1,12 +1,12 @@
-import type {EventEmitter} from 'node:events';
+import type { EventEmitter } from 'node:events';
 import cors from 'cors';
 import express from 'express';
-import {https, logger, params} from 'firebase-functions/v2';
-import {apex, routes} from './apex.js';
-import {domain, mastodonDomain} from './firebase.js';
-import {runPostWorkBeforeSend} from './postWork.js';
-import {enqueuePingTask} from './tasks.js';
-import {pickSafeHeaders, redactSensitiveBody} from './utils.js';
+import { https, logger, params } from 'firebase-functions/v2';
+import { apex, routes } from './apex.js';
+import { domain, mastodonDomain } from './firebase.js';
+import { runPostWorkBeforeSend } from './postWork.js';
+import { enqueuePingTask } from './tasks.js';
+import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 
@@ -52,18 +52,14 @@ app.use((req, res, next) => {
 
 app.use(
 	express.json(),
-	express.urlencoded({extended: true}),
+	express.urlencoded({ extended: true }),
 	// apex より前に置き、apex が積んだ postWork をレスポンス送出前に実行する (ADR-0013)
 	runPostWorkBeforeSend,
 	apex,
 );
 
-app.route(routes.inbox)
-	.get(apex.net.inbox.get)
-	.post(apex.net.inbox.post);
-app.route(routes.outbox)
-	.get(apex.net.outbox.get)
-	.post(apex.net.outbox.post);
+app.route(routes.inbox).get(apex.net.inbox.get).post(apex.net.inbox.post);
+app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
 
 app.get(routes.actor, apex.net.actor.get);
 
@@ -87,88 +83,118 @@ app.get('/.well-known/webfinger', apex.net.webfinger.get);
 app.get('/.well-known/nodeinfo', nodeinfoCors, apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', nodeinfoCors, apex.net.nodeInfo.get);
 app.post('/activitypub/proxy', apex.net.proxy.post);
-app.get('/activitypub/createAdmin', adminOnly, async (req: express.Request, res: express.Response) => {
-	const actor = await apex.createActor('hakatashi', 'hakatashi', '博多市です。', 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png', 'Person');
-	await apex.store.setup(actor);
-	// eslint-disable-next-line require-atomic-updates
-	apex.systemUser = actor;
-	res.json(actor);
-});
-app.post('/activitypub/createPost', adminOnly, async (req: express.Request, res: express.Response) => {
-	const text = req.body?.text;
-	if (typeof text !== 'string') {
-		res.status(400).send('Text is not correct type');
-		return;
-	}
+app.get(
+	'/activitypub/createAdmin',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		const actor = await apex.createActor(
+			'hakatashi',
+			'hakatashi',
+			'博多市です。',
+			'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+			'Person',
+		);
+		await apex.store.setup(actor);
+		// eslint-disable-next-line require-atomic-updates
+		apex.systemUser = actor;
+		res.json(actor);
+	},
+);
+app.post(
+	'/activitypub/createPost',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		const text = req.body?.text;
+		if (typeof text !== 'string') {
+			res.status(400).send('Text is not correct type');
+			return;
+		}
 
-	const url = apex.utils.objectIdToIRI();
-	const published = new Date().toISOString();
-	const actorId = `https://${domain}/activitypub/u/hakatashi`;
-	const actor = await apex.store.getObject(actorId, true);
-	const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
-	const object = {
-		id: url,
-		url,
-		published,
-		type: 'Note',
-		attributedTo: actor.id,
-		to: 'as:Public',
-		cc: followersId,
-		content: text,
-	};
+		const url = apex.utils.objectIdToIRI();
+		const published = new Date().toISOString();
+		const actorId = `https://${domain}/activitypub/u/hakatashi`;
+		const actor = await apex.store.getObject(actorId, true);
+		const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
+		const object = {
+			id: url,
+			url,
+			published,
+			type: 'Note',
+			attributedTo: actor.id,
+			to: 'as:Public',
+			cc: followersId,
+			content: text,
+		};
 
-	await apex.store.saveObject(object);
-	const message = await apex.buildActivity('Create', actor.id, 'as:Public', {
-		cc: followersId,
-		object,
-		published,
-	});
+		await apex.store.saveObject(object);
+		const message = await apex.buildActivity('Create', actor.id, 'as:Public', {
+			cc: followersId,
+			object,
+			published,
+		});
 
-	logger.info({type: 'createPostMessage', message});
+		logger.info({ type: 'createPostMessage', message });
 
-	const result = await apex.addToOutbox(actor, message);
+		const result = await apex.addToOutbox(actor, message);
 
-	logger.info({type: 'createPostAddToOutboxResult', result});
+		logger.info({ type: 'createPostAddToOutboxResult', result });
 
-	res.send('ok');
-});
-app.get('/activitypub/pingTaskQueue', adminOnly, async (req: express.Request, res: express.Response) => {
-	const message = typeof req.query.message === 'string' ? req.query.message : 'ping';
-	await enqueuePingTask(message);
-	res.send('ok');
-});
-app.get('/activitypub/publishProfileUpdate', adminOnly, async (req: express.Request, res: express.Response) => {
-	const actorId = `https://${domain}/activitypub/u/hakatashi`;
-	const actor = await apex.store.getObject(actorId);
-	const actorWithMeta = await apex.store.getObject(actorId, true);
-	await apex.publishUpdate(actorWithMeta, actor);
-	res.json('ok');
-});
+		res.send('ok');
+	},
+);
+app.get(
+	'/activitypub/pingTaskQueue',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		const message = typeof req.query.message === 'string' ? req.query.message : 'ping';
+		await enqueuePingTask(message);
+		res.send('ok');
+	},
+);
+app.get(
+	'/activitypub/publishProfileUpdate',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		const actorId = `https://${domain}/activitypub/u/hakatashi`;
+		const actor = await apex.store.getObject(actorId);
+		const actorWithMeta = await apex.store.getObject(actorId, true);
+		await apex.publishUpdate(actorWithMeta, actor);
+		res.json('ok');
+	},
+);
 // ADR-0012: 配送に失敗した(または現在リトライ中の)ものを一覧する
-app.get('/activitypub/deliveries/failed', adminOnly, async (req: express.Request, res: express.Response) => {
-	const deliveries = await apex.store.getFailedDeliveries();
-	res.json(deliveries);
-});
+app.get(
+	'/activitypub/deliveries/failed',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		const deliveries = await apex.store.getFailedDeliveries();
+		res.json(deliveries);
+	},
+);
 // ADR-0012: 記録済みの配送結果を元に、同じ body を宛先へ再送する
-app.post('/activitypub/deliveries/resend', adminOnly, async (req: express.Request, res: express.Response) => {
-	const {activityId, inbox} = req.body ?? {};
-	if (typeof activityId !== 'string' || typeof inbox !== 'string') {
-		res.status(400).send('activityId and inbox are required');
-		return;
-	}
+app.post(
+	'/activitypub/deliveries/resend',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		const { activityId, inbox } = req.body ?? {};
+		if (typeof activityId !== 'string' || typeof inbox !== 'string') {
+			res.status(400).send('activityId and inbox are required');
+			return;
+		}
 
-	const delivery = await apex.store.getDelivery(activityId, inbox);
-	if (!delivery) {
-		res.status(404).send('Delivery record not found');
-		return;
-	}
+		const delivery = await apex.store.getDelivery(activityId, inbox);
+		if (!delivery) {
+			res.status(404).send('Delivery record not found');
+			return;
+		}
 
-	await apex.store.deliveryEnqueue(delivery.actorId, delivery.body, inbox, undefined);
-	res.send('ok');
-});
+		await apex.store.deliveryEnqueue(delivery.actorId, delivery.body, inbox, undefined);
+		res.send('ok');
+	},
+);
 
 (app as unknown as EventEmitter).on('apex-outbox', (message: any) => {
-	logger.info({type: 'outbox', message});
+	logger.info({ type: 'outbox', message });
 
 	if (message.activity.type === 'Create') {
 		logger.info(`New ${message.object.type} from ${message.actor}`);
@@ -176,19 +202,22 @@ app.post('/activitypub/deliveries/resend', adminOnly, async (req: express.Reques
 });
 
 (app as unknown as EventEmitter).on('apex-inbox', async (message: any) => {
-	logger.info({type: 'inbox', message});
+	logger.info({ type: 'inbox', message });
 
 	// Auto-accept follow
 	if (message.activity.type === 'Follow') {
 		logger.info(`New follow request from ${message.actor.id}`);
 
-		const object = {...message.activity};
+		const object = { ...message.activity };
 		delete object._meta;
 
 		const accept = await apex.buildActivity('Accept', message.recipient.id, message.actor.id, {
 			object,
 		});
-		const {postTask: publishUpdatedFollowers} = await apex.acceptFollow(message.recipient, message.activity);
+		const { postTask: publishUpdatedFollowers } = await apex.acceptFollow(
+			message.recipient,
+			message.activity,
+		);
 
 		logger.info(`Accepting follow request from ${message.actor.id}`);
 		await apex.addToOutbox(message.recipient, accept);
@@ -206,6 +235,6 @@ app.post('/activitypub/deliveries/resend', adminOnly, async (req: express.Reques
 	}
 });
 
-export const activitypub = https.onRequest({secrets: [hakatashiToken]}, app);
+export const activitypub = https.onRequest({ secrets: [hakatashiToken] }, app);
 
-export {apex, app};
+export { apex, app };

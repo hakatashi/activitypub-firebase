@@ -1,12 +1,12 @@
 import assert from 'node:assert';
-import type {Firestore} from '@google-cloud/firestore';
+import type { Firestore } from '@google-cloud/firestore';
 // @ts-expect-error: Not typed
 import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
-import {getFunctions} from 'firebase-admin/functions';
-import {logger} from 'firebase-functions/v2';
-import {mapValues} from 'lodash-es';
-import {db, escapeFirestoreKey} from './firebase.js';
+import { getFunctions } from 'firebase-admin/functions';
+import { logger } from 'firebase-functions/v2';
+import { mapValues } from 'lodash-es';
+import { db, escapeFirestoreKey } from './firebase.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
 
@@ -14,21 +14,21 @@ import {db, escapeFirestoreKey} from './firebase.js';
 // https://github.com/immers-space/activitypub-express/blob/master/store/interface.js
 
 interface ObjectWithId {
-	id: string,
-	[key: string]: any,
+	id: string;
+	[key: string]: any;
 }
 
 type DeliveryStatus = 'permanent_failure' | 'retrying' | 'success';
 
 interface DeliveryResult {
-	activityId: string,
-	actorId: string,
-	address: string,
-	body: string,
-	attempts: number,
-	status: DeliveryStatus,
-	statusCode?: number,
-	error?: string,
+	activityId: string;
+	actorId: string;
+	address: string;
+	body: string;
+	attempts: number;
+	status: DeliveryStatus;
+	statusCode?: number;
+	error?: string;
 }
 export default class Store extends IApexStore {
 	db: Firestore;
@@ -83,7 +83,8 @@ export default class Store extends IApexStore {
 			return [];
 		}
 
-		const objectDocs = await this.db.collection('objects')
+		const objectDocs = await this.db
+			.collection('objects')
 			.where(firebase.firestore.FieldPath.documentId(), 'in', ids.map(escapeFirestoreKey))
 			.get();
 
@@ -103,7 +104,8 @@ export default class Store extends IApexStore {
 			field,
 			value,
 		});
-		const objectDocs = await this.db.collection('objects')
+		const objectDocs = await this.db
+			.collection('objects')
 			.where(field, '==', value)
 			.orderBy('published', 'desc')
 			.get();
@@ -143,7 +145,13 @@ export default class Store extends IApexStore {
 	 * @returns {Promise<object[]>} - result
 	 */
 	// eslint-disable-next-line max-params
-	async getStream(collectionId: string, limit: number | null, after: string | null, blockList?: string[], additionalQuery?: any[]) {
+	async getStream(
+		collectionId: string,
+		limit: number | null,
+		after: string | null,
+		blockList?: string[],
+		additionalQuery?: any[],
+	) {
 		logger.info({
 			type: 'getStream',
 			collectionId,
@@ -153,7 +161,8 @@ export default class Store extends IApexStore {
 			additionalQuery,
 		});
 
-		let query = this.db.collection('streams')
+		let query = this.db
+			.collection('streams')
 			.where('_meta.collection', 'array-contains', collectionId);
 
 		if (after) {
@@ -189,7 +198,8 @@ export default class Store extends IApexStore {
 	}
 
 	async getStreamCount(collectionId: string) {
-		const result = await this.db.collection('streams')
+		const result = await this.db
+			.collection('streams')
 			.where('_meta.collection', 'array-contains', collectionId)
 			.count()
 			.get();
@@ -197,7 +207,8 @@ export default class Store extends IApexStore {
 	}
 
 	async getUserCount() {
-		const count = await this.db.collection('objects')
+		const count = await this.db
+			.collection('objects')
 			.where('type', '==', 'Person')
 			.orderBy('_meta.privateKey', 'desc') // Ensures that the private key exists
 			.count()
@@ -239,7 +250,7 @@ export default class Store extends IApexStore {
 	}
 
 	async saveActivity(activity: ObjectWithId) {
-		logger.info({type: 'saveActivity', activity});
+		logger.info({ type: 'saveActivity', activity });
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		let inserted: undefined | true = undefined;
 		await this.db.runTransaction(async (transaction) => {
@@ -256,7 +267,8 @@ export default class Store extends IApexStore {
 	async removeActivity(activity: ObjectWithId, actorId: string) {
 		await this.db.runTransaction(async (transaction) => {
 			const matchedDocs = await transaction.get(
-				this.db.collection('streams')
+				this.db
+					.collection('streams')
 					.where('id', '==', activity.id)
 					.where('actor', 'array-contains', actorId),
 			);
@@ -307,13 +319,18 @@ export default class Store extends IApexStore {
 				updated = [...current, value];
 			}
 			activityData._meta[key] = updated;
-			transaction.update(activityRef, {[`_meta.${key}`]: updated});
+			transaction.update(activityRef, { [`_meta.${key}`]: updated });
 			return activityData;
 		});
 	}
 
 	// eslint-disable-next-line max-params
-	async deliveryEnqueue(actorId: string, body: any, addresses: string | string[], _signingKey: string) {
+	async deliveryEnqueue(
+		actorId: string,
+		body: any,
+		addresses: string | string[],
+		_signingKey: string,
+	) {
 		if (!addresses || !addresses.length) {
 			return false;
 		}
@@ -327,9 +344,11 @@ export default class Store extends IApexStore {
 		const normalizedAddresses = Array.isArray(addresses) ? addresses : [addresses];
 
 		// 秘密鍵はタスクペイロードに載せない。ワーカー側で actorId から鍵を引く。
-		await Promise.all(normalizedAddresses.map((address) => (
-			getFunctions().taskQueue('deliveryTask').enqueue({actorId, body, address})
-		)));
+		await Promise.all(
+			normalizedAddresses.map((address) =>
+				getFunctions().taskQueue('deliveryTask').enqueue({ actorId, body, address }),
+			),
+		);
 
 		logger.info({
 			type: 'deliveryEnqueueResult',
@@ -346,7 +365,16 @@ export default class Store extends IApexStore {
 	}
 
 	// Extended by us (ADR-0012)
-	async recordDeliveryResult({activityId, actorId, address, body, attempts, status, statusCode, error}: DeliveryResult) {
+	async recordDeliveryResult({
+		activityId,
+		actorId,
+		address,
+		body,
+		attempts,
+		status,
+		statusCode,
+		error,
+	}: DeliveryResult) {
 		logger.info({
 			type: 'recordDeliveryResult',
 			activityId,
@@ -357,22 +385,26 @@ export default class Store extends IApexStore {
 			statusCode,
 		});
 
-		await this.db.collection('deliveries').doc(this.deliveryDocId(activityId, address)).set({
-			activityId,
-			actorId,
-			inbox: address,
-			body,
-			attempts,
-			status,
-			statusCode: statusCode ?? null,
-			error: error ?? null,
-			updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-		});
+		await this.db
+			.collection('deliveries')
+			.doc(this.deliveryDocId(activityId, address))
+			.set({
+				activityId,
+				actorId,
+				inbox: address,
+				body,
+				attempts,
+				status,
+				statusCode: statusCode ?? null,
+				error: error ?? null,
+				updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+			});
 	}
 
 	// Extended by us (ADR-0012)
 	async getFailedDeliveries() {
-		const snapshot = await this.db.collection('deliveries')
+		const snapshot = await this.db
+			.collection('deliveries')
 			.where('status', 'in', ['permanent_failure', 'retrying'])
 			.get();
 
@@ -381,14 +413,20 @@ export default class Store extends IApexStore {
 
 	// Extended by us (ADR-0012)
 	async getDelivery(activityId: string, address: string) {
-		const doc = await this.db.collection('deliveries').doc(this.deliveryDocId(activityId, address)).get();
+		const doc = await this.db
+			.collection('deliveries')
+			.doc(this.deliveryDocId(activityId, address))
+			.get();
 		return doc.exists ? doc.data() : undefined;
 	}
 
 	async getContext(documentUrl: string) {
-		logger.info({type: 'getContext', documentUrl});
+		logger.info({ type: 'getContext', documentUrl });
 
-		const contextDoc = await this.db.collection('contexts').doc(escapeFirestoreKey(documentUrl)).get();
+		const contextDoc = await this.db
+			.collection('contexts')
+			.doc(escapeFirestoreKey(documentUrl))
+			.get();
 		if (contextDoc.exists) {
 			const contextData = contextDoc.data();
 			assert(contextData !== undefined, 'contextData is undefined');
@@ -399,14 +437,28 @@ export default class Store extends IApexStore {
 		return undefined;
 	}
 
-	async saveContext ({contextUrl, documentUrl, document}: { contextUrl: string, documentUrl: string, document: any }) {
-		logger.info({type: 'saveContext', contextUrl, documentUrl, document});
+	async saveContext({
+		contextUrl,
+		documentUrl,
+		document,
+	}: {
+		contextUrl: string;
+		documentUrl: string;
+		document: any;
+	}) {
+		logger.info({ type: 'saveContext', contextUrl, documentUrl, document });
 
-		await this.db.collection('contexts').doc(escapeFirestoreKey(documentUrl)).set({
-			contextUrl,
-			documentUrl,
-			document: typeof document === 'object' ? JSON.stringify(document) : document,
-		}, {merge: true});
+		await this.db
+			.collection('contexts')
+			.doc(escapeFirestoreKey(documentUrl))
+			.set(
+				{
+					contextUrl,
+					documentUrl,
+					document: typeof document === 'object' ? JSON.stringify(document) : document,
+				},
+				{ merge: true },
+			);
 	}
 
 	private objectToUpdateDoc(object: ObjectWithId) {
@@ -421,8 +473,7 @@ export default class Store extends IApexStore {
 	private async updateObjectCopies(object: ObjectWithId) {
 		await this.db.runTransaction(async (transaction) => {
 			const matchedDocs = await transaction.get(
-				this.db.collection('streams')
-					.where('object.id', '==', object.id),
+				this.db.collection('streams').where('object.id', '==', object.id),
 			);
 			matchedDocs.forEach((doc) => {
 				const newObjectDict = mapValues(doc.get('object'), (value) => {
@@ -431,7 +482,7 @@ export default class Store extends IApexStore {
 					}
 					return value;
 				});
-				transaction.update(doc.ref, {object: newObjectDict});
+				transaction.update(doc.ref, { object: newObjectDict });
 			});
 		});
 	}

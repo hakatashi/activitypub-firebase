@@ -1,22 +1,63 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
-import {Request as OauthRequest, Response as OauthResponse} from '@node-oauth/oauth2-server';
-import type {APNote, APActor, APObject} from 'activitypub-types';
+import { Request as OauthRequest, Response as OauthResponse } from '@node-oauth/oauth2-server';
+import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
 import firebase from 'firebase-admin';
-import {last, zip} from 'lodash-es';
-import type {mastodon} from 'masto';
-import {apex} from '../activitypub.js';
-import {db, domain, escapeFirestoreKey, mastodonDomain, unescapeFirestoreKey} from '../firebase.js';
-import {UserInfo, UserInfos} from '../schema.js';
-import type {CamelToSnake} from '../utils.js';
-import {Counter} from '../utils.js';
-import {instanceV1, instanceV2} from './instanceInformation.js';
-import {oauth} from './oauth.js';
-import {Clients} from './oauth2Model.js';
+import { last, zip } from 'lodash-es';
+import type { mastodon } from 'masto';
+import { apex } from '../activitypub.js';
+import {
+	db,
+	domain,
+	escapeFirestoreKey,
+	mastodonDomain,
+	unescapeFirestoreKey,
+} from '../firebase.js';
+import { UserInfo, UserInfos } from '../schema.js';
+import type { CamelToSnake } from '../utils.js';
+import { Counter } from '../utils.js';
+import { instanceV1, instanceV2 } from './instanceInformation.js';
+import { oauth } from './oauth.js';
+import { Clients } from './oauth2Model.js';
 
-const validScopes = ['follow', 'push', 'read', 'read:accounts', 'read:blocks', 'read:blocks', 'read:bookmarks', 'read:favourites', 'read:filters', 'read:follows', 'read:follows', 'read:lists', 'read:mutes', 'read:mutes', 'read:notifications', 'read:search', 'read:statuses', 'write', 'write:accounts', 'write:blocks', 'write:blocks', 'write:bookmarks', 'write:conversations', 'write:favourites', 'write:filters', 'write:follows', 'write:follows', 'write:lists', 'write:media', 'write:mutes', 'write:mutes', 'write:notifications', 'write:reports', 'write:statuses'];
+const validScopes = [
+	'follow',
+	'push',
+	'read',
+	'read:accounts',
+	'read:blocks',
+	'read:blocks',
+	'read:bookmarks',
+	'read:favourites',
+	'read:filters',
+	'read:follows',
+	'read:follows',
+	'read:lists',
+	'read:mutes',
+	'read:mutes',
+	'read:notifications',
+	'read:search',
+	'read:statuses',
+	'write',
+	'write:accounts',
+	'write:blocks',
+	'write:blocks',
+	'write:bookmarks',
+	'write:conversations',
+	'write:favourites',
+	'write:filters',
+	'write:follows',
+	'write:follows',
+	'write:lists',
+	'write:media',
+	'write:mutes',
+	'write:mutes',
+	'write:notifications',
+	'write:reports',
+	'write:statuses',
+];
 
 const externalUserInfo: UserInfo = {
 	bot: false,
@@ -56,7 +97,9 @@ export const actorObjectToAccount = async (
 	};
 };
 
-const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
+const actorUsernameToAccount = async (
+	username: string,
+): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
 	const actorId = `https://${domain}/activitypub/u/${username}`;
 	const [object, userInfoDoc] = await Promise.all([
 		apex.store.getObject(actorId) as Promise<APActor>,
@@ -70,7 +113,10 @@ const actorUsernameToAccount = async (username: string): Promise<CamelToSnake<ma
 	return actorObjectToAccount(object, userInfo);
 };
 
-export const noteObjectToStatus = (note: APNote, account: CamelToSnake<mastodon.v1.Account>): CamelToSnake<mastodon.v1.Status> => {
+export const noteObjectToStatus = (
+	note: APNote,
+	account: CamelToSnake<mastodon.v1.Account>,
+): CamelToSnake<mastodon.v1.Status> => {
 	assert(note.id !== undefined, 'note.id is undefined');
 	assert(note.published !== undefined, 'note.published is undefined');
 	const id = note.id.split('/').pop();
@@ -131,14 +177,20 @@ const getAttributedTo = (object: APObject): string | undefined => {
 	return undefined;
 };
 
-const userIdsToAcconts = async (userIds: string[]): Promise<CamelToSnake<mastodon.v1.Account>[]> => {
+const userIdsToAcconts = async (
+	userIds: string[],
+): Promise<CamelToSnake<mastodon.v1.Account>[]> => {
 	if (userIds.length === 0) {
 		return [];
 	}
 
 	const [actorObjects, userInfos] = await Promise.all([
 		apex.store.getObjects(userIds) as Promise<APActor[]>,
-		UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', userIds.map(escapeFirestoreKey)).get(),
+		UserInfos.where(
+			firebase.firestore.FieldPath.documentId(),
+			'in',
+			userIds.map(escapeFirestoreKey),
+		).get(),
 	]);
 
 	const actorMap = new Map<string, APActor>(
@@ -151,14 +203,16 @@ const userIdsToAcconts = async (userIds: string[]): Promise<CamelToSnake<mastodo
 		userInfos.docs.map((doc) => [unescapeFirestoreKey(doc.id), doc.data()]),
 	);
 
-	return Promise.all(userIds.map((userId) => {
-		const actor = actorMap.get(userId);
-		assert(actor !== undefined, 'actor is undefined');
+	return Promise.all(
+		userIds.map((userId) => {
+			const actor = actorMap.get(userId);
+			assert(actor !== undefined, 'actor is undefined');
 
-		const userInfo = userInfoMap.get(userId);
+			const userInfo = userInfoMap.get(userId);
 
-		return actorObjectToAccount(actor, userInfo);
-	}));
+			return actorObjectToAccount(actor, userInfo);
+		}),
+	);
 };
 
 const getAllNotes = async () => {
@@ -171,15 +225,17 @@ const getAllNotes = async () => {
 	});
 	const accountsMap = new Map(zip(userIds, await userIdsToAcconts(userIds)));
 
-	return Promise.all(validNotes.map((note) => {
-		const attributedTo = getAttributedTo(note);
-		assert(attributedTo !== undefined, 'attributedTo is undefined');
+	return Promise.all(
+		validNotes.map((note) => {
+			const attributedTo = getAttributedTo(note);
+			assert(attributedTo !== undefined, 'attributedTo is undefined');
 
-		const account = accountsMap.get(attributedTo);
-		assert(account !== undefined, 'account is undefined');
+			const account = accountsMap.get(attributedTo);
+			assert(account !== undefined, 'account is undefined');
 
-		return noteObjectToStatus(note, account);
-	}));
+			return noteObjectToStatus(note, account);
+		}),
+	);
 };
 
 const getInboxId = (actor: APActor) => {
@@ -193,11 +249,13 @@ const getInboxId = (actor: APActor) => {
 };
 
 export const getFollowers = async (actor: APActor) => {
-	const followStreams = await db.collection('streams')
+	const followStreams = await db
+		.collection('streams')
 		.where('type', '==', 'Follow')
 		.where('object', 'array-contains', actor.id)
 		.get();
-	const unfollowStreams = await db.collection('streams')
+	const unfollowStreams = await db
+		.collection('streams')
 		.where('_meta.collection', 'array-contains', getInboxId(actor))
 		.where('type', '==', 'Undo')
 		.where('_meta.objectType', '==', 'Follow')
@@ -224,7 +282,11 @@ export const getFollowers = async (actor: APActor) => {
 	return userIdsToAcconts(followerIds);
 };
 
-const authRequired = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+const authRequired = async (
+	req: express.Request,
+	res: express.Response,
+	next: express.NextFunction,
+) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 	const token = await oauth.authenticate(request, response);
@@ -256,11 +318,14 @@ const getAccount = (acct: string) => {
 
 const router = express.Router();
 
-router.use('/', cors({
-	origin: true,
-	methods: ['GET', 'POST'],
-	allowedHeaders: ['Authorization', 'Content-Type'],
-}));
+router.use(
+	'/',
+	cors({
+		origin: true,
+		methods: ['GET', 'POST'],
+		allowedHeaders: ['Authorization', 'Content-Type'],
+	}),
+);
 
 router.get('/v1/instance', (req, res) => {
 	res.json(instanceV1);
@@ -306,7 +371,7 @@ router.get('/v1/accounts/:id/followers', async (req, res) => {
 	}
 
 	const userId = unescapeFirestoreKey(userInfo.docs[0].id);
-	const actorObject = await apex.store.getObject(userId) as (APActor | undefined);
+	const actorObject = (await apex.store.getObject(userId)) as APActor | undefined;
 
 	if (actorObject === undefined) {
 		res.sendStatus(500);
