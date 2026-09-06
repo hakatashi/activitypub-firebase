@@ -92,6 +92,13 @@ export const toTypeArray = (value: unknown): string[] => {
 	});
 };
 
+export const objectToTypeArray = (value: object): string[] => {
+	if ('type' in value) {
+		return toTypeArray(value.type);
+	}
+	return [];
+};
+
 // AS2 のプロパティ値から単一の文字列を取り出す。文字列配列の場合は先頭要素を返し、
 // 文字列でない場合や空配列の場合は undefined を返す。
 export const toStringValue = (value: unknown): string | undefined => {
@@ -123,7 +130,7 @@ export const isAPActor = <T>(object: T): object is T & APActor => {
 	if (typeof object !== 'object' || object === null) {
 		return false;
 	}
-	const types = toTypeArray((object as { type?: unknown }).type);
+	const types = objectToTypeArray(object);
 	return types.some((type) => ACTOR_TYPES.includes(type as ActorType));
 };
 
@@ -131,21 +138,21 @@ export const isAPNote = <T>(object: T): object is T & APNote => {
 	if (typeof object !== 'object' || object === null) {
 		return false;
 	}
-	return toTypeArray((object as { type?: unknown }).type).includes('Note');
+	return objectToTypeArray(object).includes('Note');
 };
 
 export const isAPFollow = <T>(object: T): object is T & APFollow => {
 	if (typeof object !== 'object' || object === null) {
 		return false;
 	}
-	return toTypeArray((object as { type?: unknown }).type).includes('Follow');
+	return objectToTypeArray(object).includes('Follow');
 };
 
 export const isAPUndo = <T>(object: T): object is T & APUndo => {
 	if (typeof object !== 'object' || object === null) {
 		return false;
 	}
-	return toTypeArray((object as { type?: unknown }).type).includes('Undo');
+	return objectToTypeArray(object).includes('Undo');
 };
 
 // AS2 の Object/Link は id/href を持つが、activitypub-express は compactArrays: false で
@@ -165,7 +172,7 @@ export const toIdArray = (value: unknown): string[] => {
 		if (entry === null || typeof entry !== 'object') {
 			return [];
 		}
-		if (toTypeArray((entry as { type?: unknown }).type).includes('Link')) {
+		if (objectToTypeArray(entry).includes('Link')) {
 			const href = toStringValue((entry as { href?: unknown }).href);
 			return href === undefined ? [] : [href];
 		}

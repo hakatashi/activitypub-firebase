@@ -11,6 +11,7 @@ import {
 	toIdArray,
 	toStringValue,
 	toTypeArray,
+	objectToTypeArray,
 } from '../../src/utils.js';
 
 describe('Counter', () => {
@@ -194,6 +195,21 @@ describe('toTypeArray', () => {
 		expect(toTypeArray(123)).toEqual([]);
 		expect(toTypeArray({})).toEqual([]);
 		expect(toTypeArray(true)).toEqual([]);
+	});
+});
+
+describe('objectToTypeArray', () => {
+	test('returns type as array for objects with string type', () => {
+		expect(objectToTypeArray({ type: 'Note' })).toEqual(['Note']);
+	});
+
+	test('returns type as array for objects with array type', () => {
+		expect(objectToTypeArray({ type: ['Note', 'Article'] })).toEqual(['Note', 'Article']);
+	});
+
+	test('returns an empty array for objects without type', () => {
+		expect(objectToTypeArray({})).toEqual([]);
+		expect(objectToTypeArray({ name: 'test' })).toEqual([]);
 	});
 });
 
