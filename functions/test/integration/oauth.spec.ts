@@ -2,7 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import oauthRouter from '../../src/mastodon/oauth.js';
-import { Clients, Users } from '../../src/mastodon/oauth2Model.js';
+import { Clients, Users } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;

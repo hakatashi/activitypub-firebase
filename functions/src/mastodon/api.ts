@@ -9,21 +9,14 @@ import firebase from 'firebase-admin';
 import { chunk, last, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../activitypub.js';
-import {
-	db,
-	domain,
-	escapeFirestoreKey,
-	mastodonDomain,
-	unescapeFirestoreKey,
-} from '../firebase.js';
+import { domain, escapeFirestoreKey, mastodonDomain, unescapeFirestoreKey } from '../firebase.js';
 import { metaIndexPath } from '../meta.js';
-import { UserInfo, UserInfos } from '../schema.js';
+import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
 import { toIdArray } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
-import { Clients } from './oauth2Model.js';
 
 const validScopes = [
 	'follow',
@@ -280,17 +273,17 @@ export const getFollowers = async (actor: APActor) => {
 	// object/actor は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、生の
 	// フィールドではなく denormalizations.ts が書き込む map 形式のインデックス `_meta.index.*`
 	// を等価条件で引く(→ ADR-0021)。
-	const followStreams = await db
-		.collection('streams')
-		.where('type', '==', 'Follow')
+	const followStreams = await Streams.where('type', '==', 'Follow')
 		.where(metaIndexPath('objects', actor.id), '==', true)
 		.get();
 	// 受信した Undo の object は、Mastodon のように Follow を丸ごと埋め込んでくる場合と
 	// 素の IRI 文字列で届く場合がある。`_meta.objectType` による絞り込みは後者を取りこぼすため、
 	// inbox の Undo をすべて取得し、打ち消された Follow の IRI で突き合わせる(→ ADR-0021)。
-	const unfollowStreams = await db
-		.collection('streams')
-		.where(metaIndexPath('collections', getInboxId(actor)), '==', true)
+	const unfollowStreams = await Streams.where(
+		metaIndexPath('collections', getInboxId(actor)),
+		'==',
+		true,
+	)
 		.where('type', '==', 'Undo')
 		.get();
 

@@ -1,4 +1,3 @@
-import type { CollectionReference } from '@google-cloud/firestore';
 import type {
 	AuthorizationCodeModel,
 	PasswordModel,
@@ -10,25 +9,9 @@ import type {
 	RefreshToken,
 } from '@node-oauth/oauth2-server';
 import { db } from '../firebase.js';
+import { AccessTokens, AuthorizationCodes, Clients, RefreshTokens, Users } from '../schema.js';
 
-export interface MastodonClient extends Client {
-	clientId: string;
-	clientSecret: string;
-	vapidKey: string;
-	name: string;
-	scopes: string[];
-	userId?: string;
-}
-
-export const AccessTokens = db.collection('accessTokens') as CollectionReference<Token>;
-export const RefreshTokens = db.collection('refreshTokens') as CollectionReference<RefreshToken>;
-export const AuthorizationCodes = db.collection(
-	'authorizationCodes',
-) as CollectionReference<AuthorizationCode>;
-export const Clients = db.collection('clients') as CollectionReference<MastodonClient>;
-export const Users = db.collection('users') as CollectionReference<
-	User & { username: string; password: string }
->;
+export type { MastodonClient } from '../schema.js';
 
 export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, ClientCredentialsModel {
 	async getAccessToken(accessToken: string): Promise<Token | false> {
