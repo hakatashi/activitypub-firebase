@@ -28,18 +28,18 @@ export default class Store extends IApexStore implements ApexStore {
 		this.db = db;
 	}
 
-	async setup(initialUser?: APObject) {
+	override async setup(initialUser?: APObject) {
 		logger.info('setup');
 		if (initialUser !== undefined) {
 			await this.saveObject(initialUser);
 		}
 	}
 
-	generateId() {
+	override generateId() {
 		return firebase.firestore().collection('objects').doc().id;
 	}
 
-	async getObject(id: string, includeMeta?: boolean) {
+	override async getObject(id: string, includeMeta?: boolean) {
 		logger.info({
 			type: 'getObject',
 			id,
@@ -61,7 +61,6 @@ export default class Store extends IApexStore implements ApexStore {
 		return object;
 	}
 
-	// Extended by us
 	async getObjects(ids: string[], includeMeta = false): Promise<APObject[]> {
 		logger.info({
 			type: 'getObjects',
@@ -94,7 +93,6 @@ export default class Store extends IApexStore implements ApexStore {
 		);
 	}
 
-	// Extended by us
 	async getObjectsByFieldValue(
 		field: string,
 		value: unknown,
@@ -131,7 +129,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return objectDocs.data().count;
 	}
 
-	async saveObject(object: APObject) {
+	override async saveObject(object: APObject) {
 		await this.db.collection('objects').doc(escapeFirestoreKey(object.id)).set(object);
 		return true;
 	}
@@ -145,8 +143,8 @@ export default class Store extends IApexStore implements ApexStore {
 	 * @param  {object[]} [additionalQuery] - additional aggretation pipeline stages to include
 	 * @returns {Promise<object[]>} - result
 	 */
-	// eslint-disable-next-line max-params
-	async getStream(
+	// oxlint-disable-next-line max-params
+	override async getStream(
 		collectionId: string,
 		limit: number | null,
 		after?: string | null,
@@ -203,7 +201,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return streams.docs.map((doc) => ({ ...(doc.data() as APObject), _id: doc.id }));
 	}
 
-	async getStreamCount(collectionId: string) {
+	override async getStreamCount(collectionId: string) {
 		const result = await this.db
 			.collection('streams')
 			.where('_meta.collection', 'array-contains', collectionId)
@@ -212,7 +210,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return result.data().count;
 	}
 
-	async getUserCount() {
+	override async getUserCount() {
 		const count = await this.db
 			.collection('objects')
 			.where('type', '==', 'Person')
@@ -222,7 +220,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return count.data().count;
 	}
 
-	async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
+	override async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
 		const objectDoc = this.db.collection('objects').doc(escapeFirestoreKey(obj.id));
 		if (fullReplace) {
 			await objectDoc.set(obj);
@@ -245,7 +243,11 @@ export default class Store extends IApexStore implements ApexStore {
 	// 生の `object`/`actor` フィールドを直接引かないのは、AS2 の `object`/`actor` が IRI 文字列・
 	// Link・埋め込みオブジェクトのいずれにもなりうるため。Mastodon 以外の実装からの入力や
 	// Undo の埋め込みオブジェクトでは、実際に埋め込みオブジェクトが入る(→ ADR-0020)。
-	findActivityByCollectionAndObjectId(collection: string, objectId: string, includeMeta?: boolean) {
+	override findActivityByCollectionAndObjectId(
+		collection: string,
+		objectId: string,
+		includeMeta?: boolean,
+	) {
 		logger.info({
 			type: 'findActivityByCollectionAndObjectId',
 			collection,
@@ -255,7 +257,11 @@ export default class Store extends IApexStore implements ApexStore {
 		return this.findActivityByCollectionAndIndex('objects', collection, objectId, includeMeta);
 	}
 
-	findActivityByCollectionAndActorId(collection: string, actorId: string, includeMeta?: boolean) {
+	override findActivityByCollectionAndActorId(
+		collection: string,
+		actorId: string,
+		includeMeta?: boolean,
+	) {
 		logger.info({
 			type: 'findActivityByCollectionAndActorId',
 			collection,
@@ -265,7 +271,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return this.findActivityByCollectionAndIndex('actors', collection, actorId, includeMeta);
 	}
 
-	// eslint-disable-next-line max-params
+	// oxlint-disable-next-line max-params
 	private async findActivityByCollectionAndIndex(
 		field: 'actors' | 'objects',
 		collection: string,
@@ -290,7 +296,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return activity;
 	}
 
-	async getActivity(id: string, includeMeta?: boolean) {
+	override async getActivity(id: string, includeMeta?: boolean) {
 		const activityDoc = await this.db.collection('streams').doc(escapeFirestoreKey(id)).get();
 
 		if (!activityDoc.exists) {
@@ -307,7 +313,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return activity;
 	}
 
-	async saveActivity(activity: APObject) {
+	override async saveActivity(activity: APObject) {
 		logger.info({ type: 'saveActivity', activity });
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		let inserted: undefined | true = undefined;
@@ -326,7 +332,7 @@ export default class Store extends IApexStore implements ApexStore {
 	// ドキュメント ID がアクティビティの IRI そのものなので id での検索はクエリを要さず、
 	// actor の照合も取得済みドキュメントに対する判定なので生の `actor` を toIdArray で解決する
 	// (非正規化インデックスの遅延に依存させない → ADR-0021)。
-	async removeActivity(activity: APObject, actorId: string) {
+	override async removeActivity(activity: APObject, actorId: string) {
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		await this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
@@ -340,7 +346,7 @@ export default class Store extends IApexStore implements ApexStore {
 		});
 	}
 
-	async updateActivity(activity: APObject, fullReplace: boolean) {
+	override async updateActivity(activity: APObject, fullReplace: boolean) {
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		if (fullReplace) {
 			await activityRef.set(activity);
@@ -361,8 +367,8 @@ export default class Store extends IApexStore implements ApexStore {
 	// 除去として実装する (→ ADR-0017)。
 	// なお、シグネチャとしては任意の key を受け取れるようになっているが、apex 本体の実装を含め
 	// 実際には key === 'collection' (_meta.collection) 専用としてのみ呼び出されている。
-	// eslint-disable-next-line max-params
-	updateActivityMeta(activity: APObject, key: string, value: unknown, remove: boolean) {
+	// oxlint-disable-next-line max-params
+	override updateActivityMeta(activity: APObject, key: string, value: unknown, remove: boolean) {
 		if (key.includes('.')) {
 			throw new Error('updateActivityMeta: key must not include "."');
 		}
@@ -389,8 +395,8 @@ export default class Store extends IApexStore implements ApexStore {
 		});
 	}
 
-	// eslint-disable-next-line max-params
-	async deliveryEnqueue(
+	// oxlint-disable-next-line max-params
+	override async deliveryEnqueue(
 		actorId: string,
 		body: string,
 		addresses: string | string[],
@@ -424,12 +430,12 @@ export default class Store extends IApexStore implements ApexStore {
 		return true;
 	}
 
-	// Extended by us (ADR-0012)
+	// → ADR-0012
 	private deliveryDocId(activityId: string, address: string) {
 		return escapeFirestoreKey(`${activityId} ${address}`);
 	}
 
-	// Extended by us (ADR-0012)
+	// → ADR-0012
 	async recordDeliveryResult({
 		activityId,
 		actorId,
@@ -466,7 +472,7 @@ export default class Store extends IApexStore implements ApexStore {
 			});
 	}
 
-	// Extended by us (ADR-0012)
+	// → ADR-0012
 	async getFailedDeliveries() {
 		const snapshot = await this.db
 			.collection('deliveries')
@@ -476,7 +482,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return snapshot.docs.map((doc) => doc.data() as DeliveryRecord);
 	}
 
-	// Extended by us (ADR-0012)
+	// → ADR-0012
 	async getDelivery(activityId: string, address: string) {
 		const doc = await this.db
 			.collection('deliveries')
@@ -485,7 +491,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return doc.exists ? (doc.data() as DeliveryRecord) : undefined;
 	}
 
-	async getContext(documentUrl: string) {
+	override async getContext(documentUrl: string) {
 		logger.info({ type: 'getContext', documentUrl });
 
 		const contextDoc = await this.db
@@ -503,7 +509,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return undefined;
 	}
 
-	async saveContext({
+	override async saveContext({
 		contextUrl,
 		documentUrl,
 		document,

@@ -205,6 +205,7 @@ declare module 'activitypub-express/store/interface.js' {
 			actorId: string,
 			includeMeta?: boolean,
 		): Promise<APObject | undefined>;
+		// oxlint-disable-next-line max-params
 		getStream(
 			collectionId: string,
 			limit: number | null,
@@ -232,6 +233,7 @@ declare module 'activitypub-express/store/interface.js' {
 		saveActivity(activity: APObject): Promise<true | undefined>;
 		removeActivity(activity: APObject, actorId: string): Promise<void>;
 		updateActivity(activity: APObject, fullReplace: boolean): Promise<APObject>;
+		// oxlint-disable-next-line max-params
 		updateActivityMeta(
 			activity: APObject,
 			key: string,
@@ -240,6 +242,7 @@ declare module 'activitypub-express/store/interface.js' {
 		): Promise<APObject>;
 		updateObject(obj: APObject, actorId: string | null, fullReplace: boolean): Promise<APObject>;
 		deliveryDequeue(): Promise<DeliveryQueueRecord | { waitUntil: Date } | null>;
+		// oxlint-disable-next-line max-params
 		deliveryEnqueue(
 			actorId: string,
 			body: string,
