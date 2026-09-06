@@ -112,18 +112,8 @@ export const deliveryTask = onTaskDispatched<unknown>(
 		const privateKey =
 			typeof actor._meta?.privateKey === 'string' ? actor._meta.privateKey : undefined;
 		if (privateKey === undefined) {
+			const error = new Error(`Actor ${actorId} is missing _meta.privateKey`);
 			logger.error({ type: 'deliveryTaskActorMissingPrivateKey', actorId });
-			return;
-		}
-
-		let result;
-		try {
-			// HTTP Signature の keyId には公開鍵の id (`${actorId}#main-key`, apex `pub/actor.js`)
-			// を渡す必要がある。actorId をそのまま渡すと本家 Mastodon 側の鍵解決が失敗する
-			// (→ ADR-0015)
-			result = await apex.deliver(`${actorId}#main-key`, body, address, privateKey);
-		} catch (err: unknown) {
-			const error = toError(err);
 			await apex.store.recordDeliveryResult({
 				activityId,
 				actorId,
@@ -134,6 +124,30 @@ export const deliveryTask = onTaskDispatched<unknown>(
 				error: error.message,
 			});
 			throw error;
+		}
+
+		let result;
+		try {
+			// HTTP Signature の keyId には公開鍵の id (`${actorId}#main-key`, apex `pub/actor.js`)
+			// を渡す必要がある。actorId をそのまま渡すと本家 Mastodon 側の鍵解決が失敗する
+			// (→ ADR-0015)
+			result = await apex.deliver(`${actorId}#main-key`, body, address, privateKey);
+		} catch (err: unknown) {
+			// 捕捉した err は request-promise-core の RequestError の可能性があり、
+			// その場合 `.options.httpSignature.key`(actor の秘密鍵PEM)を保持している。
+			// message だけを取り出した新しい Error に包み直してから rethrow し、
+			// Cloud Functions のエラーログへ秘密鍵が漏れないようにする。
+			const error = toError(err);
+			await apex.store.recordDeliveryResult({
+				activityId,
+				actorId,
+				address,
+				body,
+				attempts,
+				status: 'retrying',
+				error: error.message,
+			});
+			throw new Error(error.message);
 		}
 
 		// 本番環境で address が localhost の場合、apex.deliver は null を返す

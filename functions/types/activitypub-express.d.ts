@@ -8,6 +8,9 @@
 declare module 'activitypub-express' {
 	import type { NextFunction, Request, RequestHandler, Response } from 'express';
 	import type IApexStore from 'activitypub-express/store/interface.js';
+	// `_meta` が持つ既知のキーの集合は functions/src/meta.ts の ObjectMeta に集約する
+	// (二重定義による乖離を避けるため)。
+	import type { ObjectMeta } from '../src/meta.js';
 	// `deliveries` コレクションのドキュメント形状は Firestore スキーマの一部であり、
 	// functions/src/schema.ts に集約する (→ ADR-0023)。
 	import type { DeliveryRecord } from '../src/schema.js';
@@ -22,11 +25,7 @@ declare module 'activitypub-express' {
 	export interface APObject {
 		id: string;
 		type: string;
-		_meta?: {
-			privateKey?: string;
-			collection?: string[];
-			[key: string]: unknown;
-		};
+		_meta?: ObjectMeta;
 		[key: string]: unknown;
 	}
 
@@ -35,6 +34,20 @@ declare module 'activitypub-express' {
 		_meta: {
 			privateKey: string;
 		};
+	}
+
+	// toJSONLD が返す jsonld.compact 後の actor 形状(mastodon/api.ts の actorObjectToAccount
+	// が使う最小限のプロパティのみ)。activitypub-types の APActor は icon/image を
+	// IconField|ImageField の union として定義するなど、jsonld.compact 後の緩いプロパティ
+	// アクセスと厳密には一致しないため、この専用の型を toJSONLD の呼び出し元と共有する。
+	export interface JsonLdActor {
+		id: string;
+		preferredUsername?: string;
+		name?: string;
+		summary?: string;
+		discoverable?: boolean;
+		icon?: { url?: string };
+		image?: { url?: string };
 	}
 
 	// store/index.js (参考実装) の deliveryQueue ドキュメント形状。

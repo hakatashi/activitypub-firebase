@@ -52,6 +52,7 @@ describe('apex-inbox event: Follow auto-accept', () => {
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
+		expect(listeners).toHaveLength(1);
 
 		await listeners[0]?.({
 			activity: { id: 'https://remote.example/activities/create-1', type: 'Create' },

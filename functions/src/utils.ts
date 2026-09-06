@@ -76,14 +76,21 @@ const SENSITIVE_BODY_FIELDS = [
 export const ACTOR_TYPES = ['Person', 'Application', 'Group', 'Organization', 'Service'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
 
+// AS2 のプロパティ値はスカラーまたは配列のいずれでも届きうる(activitypub-express は
+// compactArrays: false で JSON-LD を正規化するため通常は配列になるが、スカラーのまま
+// 保存された既存データも扱う必要がある)。どちらの表現でも同じように扱えるよう配列に正規化する。
+export const toArray = <T>(value: T | T[] | null | undefined): T[] => {
+	if (value === undefined || value === null) {
+		return [];
+	}
+	return Array.isArray(value) ? value : [value];
+};
+
 // AS2 の type は単一の文字列または文字列の配列になりうる(activitypub-express は
 // compactArrays: false で JSON-LD を正規化するため常に配列になる)。
 // どの表現でも同じように判定できるよう、常に文字列の配列に正規化する。
 export const toTypeArray = (value: unknown): string[] => {
-	if (value === undefined || value === null) {
-		return [];
-	}
-	const values = Array.isArray(value) ? value : [value];
+	const values = toArray(value);
 	return values.flatMap((entry): string[] => {
 		if (typeof entry === 'string') {
 			return [entry];
@@ -163,10 +170,7 @@ export const isAPUndo = <T>(object: T): object is T & APUndo => {
 // (activitypub-express/pub/utils.js の actorIdFromActivity / objectIdFromActivity と同じ判定)。
 // どの表現でも同じ IRI として比較できるよう、常にスカラーの ID 文字列の配列に正規化する。
 export const toIdArray = (value: unknown): string[] => {
-	if (value === undefined || value === null) {
-		return [];
-	}
-	const values = Array.isArray(value) ? value : [value];
+	const values = toArray(value);
 	return values.flatMap((entry): string[] => {
 		if (typeof entry === 'string') {
 			return [entry];

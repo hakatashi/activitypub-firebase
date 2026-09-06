@@ -13,10 +13,18 @@ import { AccessTokens, AuthorizationCodes, Clients, RefreshTokens, Users } from 
 
 export type { MastodonClient } from '../schema.js';
 
+// クエリを実行し、最初の1件(なければ undefined)を返す。
+// 各メソッドがそれぞれ独自に `results.docs[0]` を取り出して乖離するのを避ける。
+const getFirstDoc = async <T extends FirebaseFirestore.DocumentData>(
+	query: FirebaseFirestore.Query<T>,
+): Promise<FirebaseFirestore.QueryDocumentSnapshot<T> | undefined> => {
+	const results = await query.get();
+	return results.docs[0];
+};
+
 export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, ClientCredentialsModel {
 	async getAccessToken(accessToken: string): Promise<Token | false> {
-		const results = await AccessTokens.where('accessToken', '==', accessToken).get();
-		const doc = results.docs[0];
+		const doc = await getFirstDoc(AccessTokens.where('accessToken', '==', accessToken));
 		if (!doc) {
 			return false;
 		}
@@ -31,12 +39,9 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | false> {
-		const results = await AuthorizationCodes.where(
-			'authorizationCode',
-			'==',
-			authorizationCode,
-		).get();
-		const doc = results.docs[0];
+		const doc = await getFirstDoc(
+			AuthorizationCodes.where('authorizationCode', '==', authorizationCode),
+		);
 		if (!doc) {
 			return false;
 		}
@@ -90,8 +95,7 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 			query = query.where('clientSecret', '==', clientSecret);
 		}
 
-		const results = await query.get();
-		const doc = results.docs[0];
+		const doc = await getFirstDoc(query);
 		if (!doc) {
 			return false;
 		}
@@ -127,8 +131,7 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		if (!client.userId) {
 			return false;
 		}
-		const results = await Users.where('id', '==', client.userId).get();
-		const doc = results.docs[0];
+		const doc = await getFirstDoc(Users.where('id', '==', client.userId));
 		if (!doc) {
 			return false;
 		}
@@ -136,10 +139,9 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async getUser(username: string, password: string): Promise<User | false> {
-		const results = await Users.where('username', '==', username)
-			.where('password', '==', password)
-			.get();
-		const doc = results.docs[0];
+		const doc = await getFirstDoc(
+			Users.where('username', '==', username).where('password', '==', password),
+		);
 		if (!doc) {
 			return false;
 		}

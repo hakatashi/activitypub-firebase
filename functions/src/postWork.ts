@@ -10,7 +10,10 @@ interface ApexLocals {
 	[key: string]: unknown;
 }
 
-const isApexLocals = (value: unknown): value is ApexLocals =>
+// ApexLocals は全フィールドが optional かつ index signature 付きなので、"object であること"
+// 以上の形状チェックはできない。ここでは apex が res.locals.apex に何か積んだかどうかを
+// 区別できれば十分(未設定/undefined と区別する)。
+const isApexLocalsSet = (value: unknown): value is ApexLocals =>
 	typeof value === 'object' && value !== null;
 
 const idOf = (value: unknown) =>
@@ -36,7 +39,7 @@ const summarizeApexLocals = (apexLocal: ApexLocals) => ({
 // 実行済みの postWork / eventName は落としておき、apex 側の onFinishedHandler で
 // 二重に実行されないようにする。
 const runPostWork = async (res: express.Response) => {
-	const apexLocal = isApexLocals(res.locals.apex) ? res.locals.apex : {};
+	const apexLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : {};
 
 	const startedAt = Date.now();
 
@@ -87,7 +90,7 @@ export const runPostWorkBeforeSend: express.RequestHandler = (req, res, next) =>
 
 	res.send = (body) => {
 		(async () => {
-			const apexLocal = isApexLocals(res.locals.apex) ? res.locals.apex : undefined;
+			const apexLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
 			if (apexLocal) {
 				logger.info({
 					type: 'response',

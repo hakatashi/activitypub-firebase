@@ -59,6 +59,26 @@ describe('actorObjectToAccount', () => {
 
 		expect(account.acct).toBe('anonymous@example.com');
 	});
+
+	// mastodon.v1.Account の avatar/header/note/discoverable は non-optional なので、
+	// icon/image/summary/discoverable を持たない actor でも空文字列/false で埋める必要がある
+	test('fills icon/image/summary/discoverable fields with empty defaults when absent', async () => {
+		const actor = {
+			id: 'https://example.com/activitypub/u/noicon',
+			type: 'Person',
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(actor, userInfo);
+
+		expect(account).toMatchObject({
+			avatar: '',
+			avatar_static: '',
+			header: '',
+			header_static: '',
+			note: '',
+			discoverable: false,
+		});
+	});
 });
 
 describe('noteObjectToStatus', () => {

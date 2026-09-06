@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { Request as OauthRequest, Response as OauthResponse } from '@node-oauth/oauth2-server';
-import type { APObject as ApexObject } from 'activitypub-express';
+import type { APObject as ApexObject, JsonLdActor } from 'activitypub-express';
 import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
@@ -83,16 +83,6 @@ const externalUserInfo: UserInfo = {
 	statuses_count: 0,
 	uid: null,
 };
-
-interface JsonLdActor {
-	id: string;
-	preferredUsername?: string;
-	name?: string;
-	summary?: string;
-	discoverable?: boolean;
-	icon?: { url?: string };
-	image?: { url?: string };
-}
 
 export const actorObjectToAccount = async (
 	actorObject: APActor,
