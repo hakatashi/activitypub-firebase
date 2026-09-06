@@ -186,7 +186,7 @@ export const getFollowers = async (actor: APActor) => {
 		.where('object', 'array-contains', actor.id)
 		.get();
 	const unfollowStreams = await db.collection('streams')
-		.where('_meta.collection', '==', getInboxId(actor))
+		.where('_meta.collection', 'array-contains', getInboxId(actor))
 		.where('type', '==', 'Undo')
 		.where('_meta.objectType', '==', 'Follow')
 		.get();

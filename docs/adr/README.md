@@ -41,4 +41,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0013](0013-scoped-postwork-middleware.md) | `postWork` はレスポンス前に実行し続け、パッチをリクエストスコープに閉じる | Accepted |
 | [0014](0014-self-hosted-federation-test-instance.md) | 連合の検証相手として Mastodon を自前ホストする | Accepted |
 | [0015](0015-fix-http-signature-keyid-fragment.md) | 配送の HTTP Signature keyId に `#main-key` を付与する | Accepted |
-| [0016](0016-fix-update-activity-meta-array-corruption.md) | `updateActivityMeta` の `_meta.collection` 破損を修正する | Accepted |
+| [0016](0016-fix-update-activity-meta-array-corruption.md) | `updateActivityMeta` の `_meta.collection` 破損を修正する | Superseded by ADR-0017 |
+| [0017](0017-meta-collection-as-array.md) | `_meta.collection` を Firestore 上でも配列として保存する | Accepted |

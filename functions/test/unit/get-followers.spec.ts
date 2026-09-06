@@ -64,7 +64,7 @@ describe('getFollowers', () => {
 			id: 'https://remote.example/activities/undo-1',
 			type: 'Undo',
 			actor: [followerId],
-			_meta: {collection: actor.inbox, objectType: 'Follow'},
+			_meta: {collection: [actor.inbox], objectType: 'Follow'},
 		});
 
 		expect(await getFollowers(actor)).toEqual([]);
@@ -83,7 +83,7 @@ describe('getFollowers', () => {
 			id: 'https://remote.example/activities/undo-1',
 			type: 'Undo',
 			actor: [followerId],
-			_meta: {collection: actor.inbox, objectType: 'Follow'},
+			_meta: {collection: [actor.inbox], objectType: 'Follow'},
 		});
 		await db.collection('streams').doc('follow-2').set({
 			id: 'https://remote.example/activities/follow-2',

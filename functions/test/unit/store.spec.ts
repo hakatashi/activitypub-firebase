@@ -69,10 +69,9 @@ describe('Store', () => {
 
 	describe('saveActivity / getActivity', () => {
 		// apex は _meta.collection を常に配列で保持する(activitypub-express の
-		// addMeta が [value] で初期化するため)。Store はこれを Firestore 上では
-		// スカラー文字列として保存し(getStream の等価フィルタで引くため)、
-		// 読み出し時に配列へ戻す。
-		test('round-trips an activity, storing _meta.collection as a scalar and restoring it as an array', async () => {
+		// addMeta が [value] で初期化するため)。Store もこれをそのまま配列で
+		// 保存・返却する(→ ADR-0017)。
+		test('round-trips an activity, keeping _meta.collection as an array', async () => {
 			const activity = {
 				id: 'https://example.com/activities/1',
 				type: 'Create',
@@ -95,7 +94,7 @@ describe('Store', () => {
 	});
 
 	describe('getStream', () => {
-		test('filters by _meta.collection and denormalizes it back to an array', async () => {
+		test('filters by _meta.collection using array-contains', async () => {
 			await store.saveActivity({
 				id: 'https://example.com/activities/in-inbox',
 				type: 'Create',
@@ -111,6 +110,23 @@ describe('Store', () => {
 			expect(stream).toHaveLength(1);
 			expect(stream[0].id).toBe('https://example.com/activities/in-inbox');
 			expect(stream[0]._meta.collection).toEqual(['https://example.com/inbox']);
+		});
+
+		test('returns an activity that belongs to multiple collections for each of them', async () => {
+			// apex は1つのアクティビティが複数のコレクションに所属することを前提にしている
+			// (例: 受理済み Follow は inbox と followers の両方に所属する)。
+			await store.saveActivity({
+				id: 'https://example.com/activities/in-both',
+				type: 'Follow',
+				_meta: {collection: ['https://example.com/inbox', 'https://example.com/followers']},
+			});
+
+			const inboxStream = await store.getStream('https://example.com/inbox', null, null);
+			const followersStream = await store.getStream('https://example.com/followers', null, null);
+			expect(inboxStream).toHaveLength(1);
+			expect(followersStream).toHaveLength(1);
+			expect(inboxStream[0].id).toBe('https://example.com/activities/in-both');
+			expect(followersStream[0].id).toBe('https://example.com/activities/in-both');
 		});
 
 		test('respects the limit argument', async () => {
@@ -143,6 +159,64 @@ describe('Store', () => {
 				null,
 				['https://example.com/users/blocked'],
 			)).rejects.toThrow('order by clause cannot contain more fields after the key');
+		});
+	});
+
+	describe('updateActivityMeta', () => {
+		// MongoDB 実装(activitypub-express/store/index.js)は $addToSet / $pull を使い、
+		// 追加であって上書きではない。Firestore Store も同じ意味論にする必要がある (→ ADR-0017)。
+		test('adds a value to _meta.collection without overwriting existing entries', async () => {
+			const activity = {
+				id: 'https://example.com/activities/accepted-follow',
+				type: 'Follow',
+				_meta: {collection: ['https://example.com/inbox']},
+			};
+			await store.saveActivity(activity);
+
+			await store.updateActivityMeta(activity, 'collection', 'https://example.com/followers', false);
+
+			const fetched = await store.getActivity(activity.id, true);
+			expect(fetched?._meta.collection).toEqual(
+				expect.arrayContaining(['https://example.com/inbox', 'https://example.com/followers']),
+			);
+			expect(fetched?._meta.collection).toHaveLength(2);
+		});
+
+		test('does not add a duplicate when the value is already present', async () => {
+			const activity = {
+				id: 'https://example.com/activities/duplicate',
+				type: 'Create',
+				_meta: {collection: ['https://example.com/inbox']},
+			};
+			await store.saveActivity(activity);
+
+			await store.updateActivityMeta(activity, 'collection', 'https://example.com/inbox', false);
+
+			const fetched = await store.getActivity(activity.id, true);
+			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
+		});
+
+		test('removes only the given value, leaving other collections intact', async () => {
+			const activity = {
+				id: 'https://example.com/activities/removable-meta',
+				type: 'Follow',
+				_meta: {collection: ['https://example.com/inbox', 'https://example.com/followers']},
+			};
+			await store.saveActivity(activity);
+
+			await store.updateActivityMeta(activity, 'collection', 'https://example.com/followers', true);
+
+			const fetched = await store.getActivity(activity.id, true);
+			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
+		});
+
+		test('throws when the activity does not exist', async () => {
+			await expect(store.updateActivityMeta(
+				{id: 'https://example.com/activities/missing'},
+				'collection',
+				'https://example.com/inbox',
+				false,
+			)).rejects.toThrow('Error updating activity meta: not found');
 		});
 	});
 

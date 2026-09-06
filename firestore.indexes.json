@@ -34,7 +34,7 @@
       "fields": [
         {
           "fieldPath": "_meta.collection",
-          "order": "ASCENDING"
+          "arrayConfig": "CONTAINS"
         },
         {
           "fieldPath": "__name__",
@@ -62,7 +62,7 @@
       "fields": [
         {
           "fieldPath": "_meta.collection",
-          "order": "ASCENDING"
+          "arrayConfig": "CONTAINS"
         },
         {
           "fieldPath": "type",

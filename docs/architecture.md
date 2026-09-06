@@ -76,8 +76,9 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 
-apex は `_meta.collection` を配列として扱うが、Firestore の複合クエリ制約のため
-保存時は文字列に正規化している(`normalizeActivity` / `denormalizeActivity`)。
+apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
+Firestore 上でもそのまま配列として保存する。所属判定は `array-contains` クエリで行う
+(→ [ADR-0017](adr/0017-meta-collection-as-array.md))。
 
 apex のストア抽象では集計ができないため、フォロワー数・投稿数は Firestore Trigger
 (`functions/src/denormalizations.ts`)で `userInfos` に非正規化している。
