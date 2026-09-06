@@ -47,3 +47,9 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0019](0019-find-activity-by-collection-object-actor.md) | `findActivityByCollectionAndObjectId`/`ActorId` は片方だけを Firestore に絞り込ませる | Superseded by ADR-0020 |
 | [0020](0020-denormalize-actor-object-ids.md) | `actor`/`object` の IRI を `_meta.actorIds`/`_meta.objectIds` に非正規化する | Superseded by ADR-0021 |
 | [0021](0021-meta-index-as-maps.md) | `_meta` の非正規化インデックスを map 型の `_meta.index.*` に統一する | Accepted |
+| [0022](0022-type-definitions-for-activitypub-express.md) | activitypub-express の型定義を自前で持ち、Store は `implements` で検証する | Accepted |
+| [0023](0023-firestore-schema-as-types.md) | Firestore のコレクションは TypeScript 型で守り、読み出し時に検証しない | Accepted |
+| [0024](0024-validate-external-input-with-zod.md) | 外部から来る入力は zod で検証する | Accepted |
+| [0025](0025-normalize-ap-objects-instead-of-casting.md) | AP オブジェクトは正規化ヘルパーと型ガードで扱い、`as` で絞り込まない | Accepted |
+| [0026](0026-ban-any-and-confine-casts-to-boundaries.md) | `any` を禁止し、型キャストを境界ファイルに閉じ込める | Accepted |
+| [0027](0027-branded-firestore-key.md) | エスケープ済み Firestore キーをブランド型で区別する | Accepted |
