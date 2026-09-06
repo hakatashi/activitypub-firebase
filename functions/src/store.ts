@@ -381,6 +381,8 @@ export default class Store extends IApexStore {
 	// _meta.collection を「アクティビティが所属するコレクションの集合」として扱う apex の
 	// 前提(MongoDB 実装の $addToSet / $pull)に合わせ、配列への重複しない追加・単一値の
 	// 除去として実装する (→ ADR-0017)。
+	// なお、シグネチャとしては任意の key を受け取れるようになっているが、apex 本体の実装を含め
+	// 実際には key === 'collection' (_meta.collection) 専用としてのみ呼び出されている。
 	// eslint-disable-next-line max-params
 	updateActivityMeta(activity: ObjectWithId, key: string, value: any, remove: boolean) {
 		if (key.includes('.')) {

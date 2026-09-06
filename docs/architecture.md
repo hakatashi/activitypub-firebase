@@ -80,6 +80,29 @@ apex は `_meta.collection` を「アクティビティが所属するコレク�
 Firestore 上でもそのまま配列として保存する。所属判定は `array-contains` クエリで行う
 (→ [ADR-0017](adr/0017-meta-collection-as-array.md))。
 
+### `_meta` メタデータフィールド
+
+`objects` および `streams` コレクション内のドキュメントには、内部管理用のメタデータとして `_meta` オブジェクトが付与される。外部への JSON-LD 出力時や `getObject(id, includeMeta=false)` の際には削除（strip）される。
+
+#### 1. `activitypub-express` (apex) 由来のプロパティ
+
+| プロパティ | 対象 | 型 | 役割・書き込みタイミング |
+|---|---|---|---|
+| `_meta.collection` | `streams` | `string[]` | アクティビティが所属するコレクション（`inbox`, `outbox`, `followers`, `following`, `liked`, `blocked`, `rejected`, `rejections`, `shares`, `likes` 等）の IRI 配列。アクティビティの受信/送信時、およびフォロー承認/いいね/ブースト/ブロック/拒絶等の副作用（Side Effects）処理時に書き込まれる (→ [ADR-0017](adr/0017-meta-collection-as-array.md))。 |
+| `_meta.privateKey` | `objects` | `string` | ローカルアクターの HTTP 署名用 RSA 秘密鍵 (PEM)。アクター作成時 (`createActor`) に生成・保存され、連合配信時の署名およびローカルユーザー判定 (`getUserCount`) に使用される。 |
+| `_meta.isPublic` | `objects` / `streams` | `boolean` | オブジェクトまたはアクティビティが公開 (Public) かどうかを示すフラグ。 |
+
+#### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
+
+Firestore 上で効率的にインデックスクエリを行うため、`onStreamWritten` トリガーによって自動的に非正規化・付与される。
+
+| プロパティ | 対象 | 型 | 役割・用途 |
+|---|---|---|---|
+| `_meta.actorIds` | `streams` | `string[]` | `stream.actor` をスカラー IRI の配列に正規化したもの。アクターでの `array-contains` クエリを可能にする (→ [ADR-0020](adr/0020-denormalize-actor-object-ids.md))。 |
+| `_meta.objectIds` | `streams` | `string[]` | `stream.object` をスカラー IRI の配列に正規化したもの。オブジェクトでの `array-contains` クエリを可能にする (→ [ADR-0020](adr/0020-denormalize-actor-object-ids.md))。 |
+| `_meta.objectType` | `streams` | `string` | `stream.object` の先頭要素の `type`（例: `'Note'`, `'Follow'` 等）。等価クエリ用。 |
+| `_meta.objectTypes` | `streams` | `string[]` | `stream.object` 内に含まれるすべての要素の `type` 配列。 |
+
 apex のストア抽象では集計ができないため、フォロワー数・投稿数は Firestore Trigger
 (`functions/src/denormalizations.ts`)で `userInfos` に非正規化している。
 既存データの再計算には `functions/bin/denormalizations.ts` を使う。
