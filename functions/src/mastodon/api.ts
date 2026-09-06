@@ -84,6 +84,16 @@ const externalUserInfo: UserInfo = {
 	uid: null,
 };
 
+interface JsonLdActor {
+	id: string;
+	preferredUsername?: string;
+	name?: string;
+	summary?: string;
+	discoverable?: boolean;
+	icon?: { url?: string };
+	image?: { url?: string };
+}
+
 export const actorObjectToAccount = async (
 	actorObject: APActor,
 	userInfo: UserInfo = externalUserInfo,
@@ -91,22 +101,22 @@ export const actorObjectToAccount = async (
 	// activitypub-types の APActor は icon/image を IconField|ImageField の union として定義するなど
 	// ここでの緩いプロパティアクセスと厳密には一致しない。この不整合の解消は ADR-0022 の対象外
 	// (apex 自体の型付けのみが対象) なので、ここでは toJSONLD 呼び出し以前と同じ緩さを維持する。
-	const actor: any = await apex.toJSONLD(actorObject);
-	const username = actor?.preferredUsername ?? last(actor?.id?.split('/'));
+	const actor = await apex.toJSONLD<JsonLdActor>(actorObject);
+	const username = actor.preferredUsername ?? last(actor.id.split('/')) ?? '';
 	const actorDomain = new URL(actor.id).host;
 
 	return {
 		...userInfo,
-		username: actor.preferredUsername,
+		username,
 		acct: `${username}@${actorDomain}`,
-		display_name: actor.name,
+		display_name: actor.name ?? '',
 		url: `https://elk.zone/${mastodonDomain}/@${username}@${domain}`,
-		avatar: actor?.icon?.url,
-		avatar_static: actor?.icon?.url,
-		header: actor?.image?.url,
-		header_static: actor?.image?.url,
-		note: actor.summary,
-		discoverable: actor.discoverable,
+		avatar: actor.icon?.url ?? '',
+		avatar_static: actor.icon?.url ?? '',
+		header: actor.image?.url ?? '',
+		header_static: actor.image?.url ?? '',
+		note: actor.summary ?? '',
+		discoverable: actor.discoverable ?? false,
 	};
 };
 
@@ -303,6 +313,7 @@ const authRequired = async (
 	assert(userInfoDocs.size === 1);
 
 	const userInfoDoc = userInfoDocs.docs[0];
+	assert(userInfoDoc !== undefined);
 
 	// eslint-disable-next-line require-atomic-updates
 	res.locals.auth = userInfoDoc.data();
@@ -312,6 +323,10 @@ const authRequired = async (
 
 const getAccount = (acct: string) => {
 	const [username, lookupDomain = domain] = acct.split('@');
+
+	if (username === undefined) {
+		return undefined;
+	}
 
 	if (lookupDomain !== domain) {
 		throw new Error('Not implemented');
@@ -337,6 +352,10 @@ router.get('/v1/instance', (req, res) => {
 
 router.get('/v2/instance', (req, res) => {
 	res.json(instanceV2);
+});
+
+router.get('/v1/custom_emojis', (req, res) => {
+	res.json([]);
 });
 
 export const accountLookupQuerySchema = z.object({
@@ -410,7 +429,10 @@ router.get('/v1/accounts/:id/followers', async (req, res) => {
 		return;
 	}
 
-	const userId = unescapeFirestoreKey(toFirestoreKey(userInfo.docs[0].id));
+	const userInfoDoc = userInfo.docs[0];
+	assert(userInfoDoc !== undefined);
+
+	const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
 	const actorObject = await apex.store.getObject(userId);
 
 	if (actorObject === undefined) {

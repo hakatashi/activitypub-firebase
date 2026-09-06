@@ -3,6 +3,7 @@ import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { getFollowers } from '../../src/mastodon/api.js';
+import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import { Streams } from '../../src/schema.js';
 
@@ -20,7 +21,7 @@ const actor = {
 // map 形式の _meta.index を等価条件で引く(→ ADR-0021)。このテストはトリガーが動かない
 // Firestore エミュレータのみで実行されるため、トリガーが計算するはずの値をここで
 // あらかじめ与えている。
-const saveStream = (docId: string, activity: Record<string, any>) =>
+const saveStream = (docId: string, activity: Record<string, unknown> & { _meta?: ObjectMeta }) =>
 	Streams.doc(escapeFirestoreKey(docId)).set({
 		...activity,
 		_meta: { ...activity._meta, index: buildMetaIndex(activity) },

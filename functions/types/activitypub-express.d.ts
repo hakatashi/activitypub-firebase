@@ -22,6 +22,11 @@ declare module 'activitypub-express' {
 	export interface APObject {
 		id: string;
 		type: string;
+		_meta?: {
+			privateKey?: string;
+			collection?: string[];
+			[key: string]: unknown;
+		};
 		[key: string]: unknown;
 	}
 

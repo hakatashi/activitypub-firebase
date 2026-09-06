@@ -97,11 +97,12 @@ const getWebappConfig = async () => {
 	const accessToken = await credential.getAccessToken();
 
 	const apps = await getFirebaseWebapps(accessToken.access_token);
-	if (apps.length === 0) {
+	const app = apps[0];
+	if (!app) {
 		throw new Error('No webapp found');
 	}
 
-	const appId = apps[0].appId;
+	const appId = app.appId;
 	const config = await getFirebaseWebappConfig(accessToken.access_token, appId);
 
 	return config;

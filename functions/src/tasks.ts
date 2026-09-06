@@ -1,9 +1,9 @@
-import type { APActorWithMeta } from 'activitypub-express';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { z } from 'zod';
 import { apex } from './apex.js';
+import { toError } from './utils.js';
 
 export const pingTaskPayloadSchema = z.object({
 	message: z.string(),
@@ -91,9 +91,10 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			}
 			activityId = parsedBody.data.id;
 		} catch (err: unknown) {
+			const error = toError(err);
 			logger.error({
 				type: 'deliveryTaskInvalidJsonBody',
-				error: err instanceof Error ? err.message : String(err),
+				error: error.message,
 				actorId,
 				address,
 			});
@@ -108,18 +109,21 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			return;
 		}
 
+		const privateKey =
+			typeof actor._meta?.privateKey === 'string' ? actor._meta.privateKey : undefined;
+		if (privateKey === undefined) {
+			logger.error({ type: 'deliveryTaskActorMissingPrivateKey', actorId });
+			return;
+		}
+
 		let result;
 		try {
 			// HTTP Signature の keyId には公開鍵の id (`${actorId}#main-key`, apex `pub/actor.js`)
 			// を渡す必要がある。actorId をそのまま渡すと本家 Mastodon 側の鍵解決が失敗する
 			// (→ ADR-0015)
-			result = await apex.deliver(
-				`${actorId}#main-key`,
-				body,
-				address,
-				(actor as APActorWithMeta)._meta.privateKey,
-			);
-		} catch (err: any) {
+			result = await apex.deliver(`${actorId}#main-key`, body, address, privateKey);
+		} catch (err: unknown) {
+			const error = toError(err);
 			await apex.store.recordDeliveryResult({
 				activityId,
 				actorId,
@@ -127,9 +131,9 @@ export const deliveryTask = onTaskDispatched<unknown>(
 				body,
 				attempts,
 				status: 'retrying',
-				error: err?.message ?? String(err),
+				error: error.message,
 			});
-			throw err;
+			throw error;
 		}
 
 		// 本番環境で address が localhost の場合、apex.deliver は null を返す

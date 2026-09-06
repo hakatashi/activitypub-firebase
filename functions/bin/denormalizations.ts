@@ -3,7 +3,7 @@ import { countBy, isEqual } from 'lodash-es';
 import { db, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
 import { buildMetaIndex } from '../src/meta.js';
 import { Streams, UserInfos } from '../src/schema.js';
-import { toIdArray } from '../src/utils.js';
+import { isAPFollow, isAPNote, toIdArray } from '../src/utils.js';
 
 // ADR-0021 より前のスキーマで書き込まれた非正規化フィールド。バックフィル時に削除する。
 const LEGACY_META_FIELDS = [
@@ -23,9 +23,11 @@ db.runTransaction(async (transaction) => {
 	// actor/object は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、
 	// スカラー ID として集計できるよう toIdArray で正規化する(→ ADR-0020)。
 	const statusCounts = countBy(
-		streams.docs.filter((streamDoc) =>
-			(streamDoc.data().object ?? []).some((object: any) => object.type === 'Note'),
-		),
+		streams.docs.filter((streamDoc) => {
+			const rawObject = streamDoc.data().object;
+			const objects = Array.isArray(rawObject) ? rawObject : [rawObject];
+			return objects.some(isAPNote);
+		}),
 		(streamDoc) => toIdArray(streamDoc.data().actor)[0],
 	);
 
@@ -36,9 +38,12 @@ db.runTransaction(async (transaction) => {
 
 	const unfollows = streams.docs
 		.filter((streamDoc) => streamDoc.data().type === 'Undo')
-		.flatMap((streamDoc) => streamDoc.data().object ?? [])
-		.filter((object: any) => object.type === 'Follow')
-		.flatMap((object: any) => toIdArray(object.object));
+		.flatMap((streamDoc) => {
+			const rawObject = streamDoc.data().object;
+			return Array.isArray(rawObject) ? rawObject : [rawObject];
+		})
+		.filter(isAPFollow)
+		.flatMap((object) => toIdArray(object.object));
 	const unfollowCounts = countBy(unfollows);
 
 	streams.docs.forEach((streamDoc) => {

@@ -125,13 +125,15 @@ export const firstOf = <T>(value: T | T[] | undefined | null): T | undefined => 
 	return value;
 };
 
+const ACTOR_TYPE_SET = new Set<string>(ACTOR_TYPES);
+
 // 型ガード関数: AS2 の type が配列で届く場合でも正しく絞り込めるようにする (→ ADR-0025)
 export const isAPActor = <T>(object: T): object is T & APActor => {
 	if (typeof object !== 'object' || object === null) {
 		return false;
 	}
 	const types = objectToTypeArray(object);
-	return types.some((type) => ACTOR_TYPES.includes(type as ActorType));
+	return types.some((type) => ACTOR_TYPE_SET.has(type));
 };
 
 export const isAPNote = <T>(object: T): object is T & APNote => {
@@ -173,10 +175,10 @@ export const toIdArray = (value: unknown): string[] => {
 			return [];
 		}
 		if (objectToTypeArray(entry).includes('Link')) {
-			const href = toStringValue((entry as { href?: unknown }).href);
+			const href = 'href' in entry ? toStringValue(entry.href) : undefined;
 			return href === undefined ? [] : [href];
 		}
-		const id = toStringValue((entry as { id?: unknown }).id);
+		const id = 'id' in entry ? toStringValue(entry.id) : undefined;
 		return id === undefined ? [] : [id];
 	});
 };
@@ -187,7 +189,7 @@ export const redactSensitiveBody = (body: unknown): unknown => {
 	}
 	if (body !== null && typeof body === 'object') {
 		return Object.fromEntries(
-			Object.entries(body as Record<string, unknown>).map(([key, value]) =>
+			Object.entries(body).map(([key, value]) =>
 				SENSITIVE_BODY_FIELDS.includes(key)
 					? [key, '[REDACTED]']
 					: [key, redactSensitiveBody(value)],
@@ -195,4 +197,11 @@ export const redactSensitiveBody = (body: unknown): unknown => {
 		);
 	}
 	return body;
+};
+
+export const toError = (value: unknown): Error => {
+	if (value instanceof Error) {
+		return value;
+	}
+	return new Error(typeof value === 'string' ? value : String(value));
 };

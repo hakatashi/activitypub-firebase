@@ -1,7 +1,9 @@
 import type { APActor, APNote } from 'activitypub-types';
+import type { mastodon } from 'masto';
 import { describe, expect, test } from 'vitest';
 import { actorObjectToAccount, noteObjectToStatus } from '../../src/mastodon/api.js';
 import type { UserInfo } from '../../src/schema.js';
+import type { CamelToSnake } from '../../src/utils.js';
 
 const userInfo: UserInfo = {
 	id: '123',
@@ -87,7 +89,7 @@ describe('noteObjectToStatus', () => {
 	});
 
 	test('takes the first element when content is an array', () => {
-		const account = { username: 'hakatashi' } as any;
+		const account = { username: 'hakatashi' } as unknown as CamelToSnake<mastodon.v1.Account>;
 		const note = {
 			id: 'https://example.com/activitypub/o/multi',
 			published: '2023-06-01T00:00:00.000Z',
