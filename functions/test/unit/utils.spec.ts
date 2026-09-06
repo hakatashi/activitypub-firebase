@@ -1,5 +1,17 @@
 import { describe, expect, test } from 'vitest';
-import { Counter, pickSafeHeaders, redactSensitiveBody, toIdArray } from '../../src/utils.js';
+import {
+	Counter,
+	firstOf,
+	isAPActor,
+	isAPFollow,
+	isAPNote,
+	isAPUndo,
+	pickSafeHeaders,
+	redactSensitiveBody,
+	toIdArray,
+	toStringValue,
+	toTypeArray,
+} from '../../src/utils.js';
 
 describe('Counter', () => {
 	test('increments from 0 by default', () => {
@@ -154,5 +166,154 @@ describe('redactSensitiveBody', () => {
 		expect(redactSensitiveBody('plain string')).toBe('plain string');
 		expect(redactSensitiveBody(null)).toBe(null);
 		expect(redactSensitiveBody(42)).toBe(42);
+	});
+});
+
+describe('toTypeArray', () => {
+	test('returns an empty array for undefined/null', () => {
+		expect(toTypeArray(undefined)).toEqual([]);
+		expect(toTypeArray(null)).toEqual([]);
+	});
+
+	test('wraps a single string in an array', () => {
+		expect(toTypeArray('Note')).toEqual(['Note']);
+	});
+
+	test('passes through an array of strings', () => {
+		expect(toTypeArray(['Note', 'https://schema.org/CreativeWork'])).toEqual([
+			'Note',
+			'https://schema.org/CreativeWork',
+		]);
+	});
+
+	test('filters out non-string entries in an array', () => {
+		expect(toTypeArray(['Note', 123, null, undefined, {}])).toEqual(['Note']);
+	});
+
+	test('returns an empty array for non-string scalars', () => {
+		expect(toTypeArray(123)).toEqual([]);
+		expect(toTypeArray({})).toEqual([]);
+		expect(toTypeArray(true)).toEqual([]);
+	});
+});
+
+describe('toStringValue', () => {
+	test('returns undefined for undefined/null', () => {
+		expect(toStringValue(undefined)).toBeUndefined();
+		expect(toStringValue(null)).toBeUndefined();
+	});
+
+	test('returns the string itself for a string input', () => {
+		expect(toStringValue('hello')).toBe('hello');
+	});
+
+	test('returns the first string from an array of strings', () => {
+		expect(toStringValue(['first', 'second'])).toBe('first');
+	});
+
+	test('returns undefined if the first element of an array is not a string', () => {
+		expect(toStringValue([123, 'second'])).toBeUndefined();
+	});
+
+	test('returns undefined for empty arrays', () => {
+		expect(toStringValue([])).toBeUndefined();
+	});
+
+	test('returns undefined for non-string scalars', () => {
+		expect(toStringValue(123)).toBeUndefined();
+		expect(toStringValue({})).toBeUndefined();
+		expect(toStringValue(true)).toBeUndefined();
+	});
+});
+
+describe('firstOf', () => {
+	test('returns undefined for undefined/null', () => {
+		expect(firstOf(undefined)).toBeUndefined();
+		expect(firstOf(null)).toBeUndefined();
+	});
+
+	test('returns the scalar value for non-array inputs', () => {
+		expect(firstOf('scalar')).toBe('scalar');
+		expect(firstOf(42)).toBe(42);
+		expect(firstOf({ id: '1' })).toEqual({ id: '1' });
+	});
+
+	test('returns the first element from an array', () => {
+		expect(firstOf(['a', 'b'])).toBe('a');
+		expect(firstOf([42, 43])).toBe(42);
+	});
+
+	test('returns undefined for an empty array', () => {
+		expect(firstOf([])).toBeUndefined();
+	});
+});
+
+describe('isAPActor', () => {
+	test('returns true for all actor types with string type', () => {
+		for (const type of ['Person', 'Application', 'Group', 'Organization', 'Service']) {
+			expect(isAPActor({ id: 'https://example.com/u/user', type })).toBe(true);
+		}
+	});
+
+	test('returns true for actor types with array type (compactArrays: false)', () => {
+		expect(isAPActor({ id: 'https://example.com/u/user', type: ['Person'] })).toBe(true);
+	});
+
+	test('returns false for non-actor types', () => {
+		expect(isAPActor({ id: 'https://example.com/o/1', type: 'Note' })).toBe(false);
+		expect(isAPActor({ id: 'https://example.com/o/1', type: ['Note'] })).toBe(false);
+		expect(isAPActor({ id: 'https://example.com/a/1', type: 'Follow' })).toBe(false);
+	});
+
+	test('returns false for primitives, null, and undefined', () => {
+		expect(isAPActor(null)).toBe(false);
+		expect(isAPActor(undefined)).toBe(false);
+		expect(isAPActor('Person')).toBe(false);
+		expect(isAPActor(123)).toBe(false);
+	});
+});
+
+describe('isAPNote', () => {
+	test('returns true for Note with string type', () => {
+		expect(isAPNote({ id: 'https://example.com/o/1', type: 'Note' })).toBe(true);
+	});
+
+	test('returns true for Note with array type (compactArrays: false)', () => {
+		expect(isAPNote({ id: 'https://example.com/o/1', type: ['Note'] })).toBe(true);
+	});
+
+	test('returns false for non-Note types', () => {
+		expect(isAPNote({ id: 'https://example.com/u/user', type: 'Person' })).toBe(false);
+		expect(isAPNote({ id: 'https://example.com/a/1', type: 'Create' })).toBe(false);
+	});
+
+	test('returns false for primitives, null, and undefined', () => {
+		expect(isAPNote(null)).toBe(false);
+		expect(isAPNote(undefined)).toBe(false);
+		expect(isAPNote('Note')).toBe(false);
+	});
+});
+
+describe('isAPFollow', () => {
+	test('returns true for Follow with string or array type', () => {
+		expect(isAPFollow({ id: 'https://example.com/a/1', type: 'Follow' })).toBe(true);
+		expect(isAPFollow({ id: 'https://example.com/a/1', type: ['Follow'] })).toBe(true);
+	});
+
+	test('returns false for other types or non-objects', () => {
+		expect(isAPFollow({ id: 'https://example.com/a/1', type: 'Undo' })).toBe(false);
+		expect(isAPFollow(null)).toBe(false);
+	});
+});
+
+describe('isAPUndo', () => {
+	test('returns true for Undo with string or array type', () => {
+		expect(isAPUndo({ id: 'https://example.com/a/1', type: 'Undo' })).toBe(true);
+		expect(isAPUndo({ id: 'https://example.com/a/1', type: ['Undo'] })).toBe(true);
+	});
+
+	test('returns false for other types or non-objects', () => {
+		expect(isAPUndo({ id: 'https://example.com/a/1', type: 'Follow' })).toBe(false);
+		expect(isAPUndo(null)).toBe(false);
 	});
 });

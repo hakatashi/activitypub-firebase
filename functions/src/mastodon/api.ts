@@ -14,7 +14,7 @@ import { metaIndexPath } from '../meta.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
-import { toIdArray } from '../utils.js';
+import { isAPActor, isAPNote, toIdArray, toStringValue } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
 
@@ -55,22 +55,12 @@ const validScopes = [
 	'write:statuses',
 ];
 
-// apex.store が返す値は id/type しか保証されない緩い APObject (activitypub-express 側の型)
-// なので、activitypub-types の APActor / APNote として扱ってよいかを AS2 の type で
-// 実行時にも確認してから型を絞り込む。Actor 系の type は activitypub-types の
-// APPerson/APApplication/APGroup/APOrganization/APService の union で定義されている。
-const actorTypes = new Set(['Person', 'Application', 'Group', 'Organization', 'Service']);
-const isAPActor = (object: ApexObject): object is ApexObject & APActor =>
-	actorTypes.has(object.type);
-
 const assertIsAPActor: (
 	object: ApexObject | undefined,
 ) => asserts object is ApexObject & APActor = (object) => {
 	assert(object !== undefined, 'object is undefined');
 	assert(isAPActor(object), `object is not an actor: ${object.id}`);
 };
-
-const isAPNote = (object: ApexObject): object is ApexObject & APNote => object.type === 'Note';
 
 const externalUserInfo: UserInfo = {
 	bot: false,
@@ -158,7 +148,7 @@ export const noteObjectToStatus = (
 		muted: false,
 		bookmarked: false,
 		pinned: false,
-		content: Array.isArray(note.content) ? note.content[0] : note.content,
+		content: toStringValue(note.content) ?? '',
 		reblog: null,
 		application: {
 			name: 'activitypub-firebase',
@@ -174,25 +164,7 @@ export const noteObjectToStatus = (
 	};
 };
 
-const getAttributedTo = (object: APObject): string | undefined => {
-	if (object.attributedTo === undefined) {
-		return undefined;
-	}
-
-	if (Array.isArray(object.attributedTo)) {
-		const [user] = object.attributedTo;
-		if (typeof user === 'string') {
-			return user;
-		}
-		return undefined;
-	}
-
-	if (typeof object.attributedTo === 'string') {
-		return object.attributedTo;
-	}
-
-	return undefined;
-};
+const getAttributedTo = (object: APObject): string | undefined => toIdArray(object.attributedTo)[0];
 
 const userIdsToAcconts = async (
 	userIds: string[],
@@ -258,11 +230,9 @@ const getAllNotes = async () => {
 };
 
 const getInboxId = (actor: APActor) => {
-	if (Array.isArray(actor.inbox)) {
-		return actor.inbox[0] as string;
-	}
-	if (typeof actor.inbox === 'string') {
-		return actor.inbox;
+	const inboxId = toIdArray(actor.inbox)[0];
+	if (inboxId !== undefined) {
+		return inboxId;
 	}
 	throw new Error('inbox is not string');
 };

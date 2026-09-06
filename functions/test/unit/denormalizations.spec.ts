@@ -317,6 +317,103 @@ describe('denormalizations', () => {
 			expect(userInfo.statuses_count).toBe(6);
 		});
 
+		test('increments statuses_count when the Note object has type as an array (compactArrays: false)', async () => {
+			const actorId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(actorId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 0,
+				following_count: 0,
+				statuses_count: 5,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = db.collection('streams').doc('note-stream-array-type');
+			await ref.set({
+				id: 'https://example.com/activities/note-array',
+				type: ['Create'],
+				actor: [actorId],
+				object: [{ type: ['Note'] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run({ data: snapshot } as any);
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
+			expect(userInfo.statuses_count).toBe(6);
+		});
+
+		test('does not increment statuses_count when object is a bare IRI rather than an embedded Note', async () => {
+			const actorId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(actorId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 0,
+				following_count: 0,
+				statuses_count: 5,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = db.collection('streams').doc('note-stream-bare-iri');
+			await ref.set({
+				id: 'https://example.com/activities/note-bare',
+				type: 'Create',
+				actor: [actorId],
+				object: ['https://example.com/notes/1'],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run({ data: snapshot } as any);
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
+			expect(userInfo.statuses_count).toBe(5);
+		});
+
+		test('decrements followers_count when stream.type is an array and object.type is an array', async () => {
+			const followerId = 'https://example.com/activitypub/u/follower';
+			const followedId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 3,
+				following_count: 0,
+				statuses_count: 0,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = db.collection('streams').doc('undo-stream-array-types');
+			await ref.set({
+				id: 'https://example.com/activities/undo-array',
+				type: ['Undo'],
+				actor: [followerId],
+				object: [{ type: ['Follow'], object: [followedId] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run({ data: snapshot } as any);
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
+			expect(userInfo.followers_count).toBe(2);
+		});
+
 		test('does nothing when the document was deleted', async () => {
 			await expect(
 				onStreamCreated.run({ data: { data: () => undefined } } as any),
