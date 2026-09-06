@@ -51,7 +51,7 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "object",
+          "fieldPath": "_meta.objectIds",
           "arrayConfig": "CONTAINS"
         }
       ]
@@ -83,7 +83,7 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "actor",
+          "fieldPath": "_meta.actorIds",
           "arrayConfig": "CONTAINS"
         }
       ]

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { Counter, pickSafeHeaders, redactSensitiveBody } from '../../src/utils.js';
+import { Counter, pickSafeHeaders, redactSensitiveBody, toIdArray } from '../../src/utils.js';
 
 describe('Counter', () => {
 	test('increments from 0 by default', () => {
@@ -60,6 +60,55 @@ describe('pickSafeHeaders', () => {
 
 	test('omits allow-listed headers that are not present', () => {
 		expect(pickSafeHeaders({ host: 'example.com' })).toEqual({ host: 'example.com' });
+	});
+});
+
+describe('toIdArray', () => {
+	test('returns an empty array for undefined/null', () => {
+		expect(toIdArray(undefined)).toEqual([]);
+		expect(toIdArray(null)).toEqual([]);
+	});
+
+	test('wraps a bare IRI string in an array', () => {
+		expect(toIdArray('https://example.com/users/alice')).toEqual([
+			'https://example.com/users/alice',
+		]);
+	});
+
+	test('passes through an array of IRI strings', () => {
+		expect(toIdArray(['https://example.com/users/alice', 'https://example.com/users/bob'])).toEqual(
+			['https://example.com/users/alice', 'https://example.com/users/bob'],
+		);
+	});
+
+	test('extracts id from an embedded object', () => {
+		expect(toIdArray([{ id: 'https://example.com/users/alice', type: 'Person' }])).toEqual([
+			'https://example.com/users/alice',
+		]);
+	});
+
+	test('extracts href from a Link (boxed as an array per compactArrays: false)', () => {
+		expect(toIdArray([{ type: 'Link', href: ['https://example.com/users/alice'] }])).toEqual([
+			'https://example.com/users/alice',
+		]);
+	});
+
+	test('drops entries without a usable id/href', () => {
+		expect(toIdArray([{ type: 'Person' }])).toEqual([]);
+	});
+
+	test('handles a mix of strings, embedded objects and Links', () => {
+		expect(
+			toIdArray([
+				'https://example.com/users/alice',
+				{ id: 'https://example.com/users/bob', type: 'Person' },
+				{ type: 'Link', href: ['https://example.com/users/carol'] },
+			]),
+		).toEqual([
+			'https://example.com/users/alice',
+			'https://example.com/users/bob',
+			'https://example.com/users/carol',
+		]);
 	});
 });
 

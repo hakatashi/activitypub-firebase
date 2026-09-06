@@ -247,10 +247,15 @@ export default class Store extends IApexStore {
 		});
 	}
 
-	// Firestore は1クエリにつき array-contains を1つしか使えないため、
-	// `_meta.collection` と `object`/`actor` の両方を array-contains で絞り込むことはできない。
-	// object/actor 側(対象アクターのIRIという選択性の高い方)だけを Firestore に絞り込ませ、
-	// `_meta.collection` への所属はアプリケーション側で判定する。
+	// Firestore は1クエリにつき array-contains を1つしか使えないため、`_meta.collection` と
+	// `_meta.actorIds`/`_meta.objectIds` の両方を array-contains で絞り込むことはできない。
+	// 対象アクターの IRI という選択性の高い方だけを Firestore に絞り込ませ、`_meta.collection`
+	// への所属はアプリケーション側で判定する。
+	//
+	// 生の `object`/`actor` フィールドではなく denormalizations.ts が書き込む
+	// `_meta.objectIds`/`_meta.actorIds` を見るのは、AS2 の `object`/`actor` が IRI 文字列・
+	// Link・埋め込みオブジェクトのいずれにもなりうるため。Mastodon 以外の実装からの入力や
+	// Undo の埋め込みオブジェクトでは、実際に埋め込みオブジェクトが入る(→ ADR-0020)。
 	async findActivityByCollectionAndObjectId(
 		collection: string,
 		objectId: string,
@@ -264,7 +269,7 @@ export default class Store extends IApexStore {
 
 		const streamDocs = await this.db
 			.collection('streams')
-			.where('object', 'array-contains', objectId)
+			.where('_meta.objectIds', 'array-contains', objectId)
 			.get();
 
 		const activityDoc = streamDocs.docs.find((doc) =>
@@ -294,7 +299,7 @@ export default class Store extends IApexStore {
 
 		const streamDocs = await this.db
 			.collection('streams')
-			.where('actor', 'array-contains', actorId)
+			.where('_meta.actorIds', 'array-contains', actorId)
 			.get();
 
 		const activityDoc = streamDocs.docs.find((doc) =>
@@ -349,7 +354,7 @@ export default class Store extends IApexStore {
 				this.db
 					.collection('streams')
 					.where('id', '==', activity.id)
-					.where('actor', 'array-contains', actorId),
+					.where('_meta.actorIds', 'array-contains', actorId),
 			);
 			matchedDocs.forEach((doc) => {
 				transaction.delete(doc.ref);

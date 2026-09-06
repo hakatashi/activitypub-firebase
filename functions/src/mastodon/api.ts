@@ -252,10 +252,13 @@ const getInboxId = (actor: APActor) => {
 };
 
 export const getFollowers = async (actor: APActor) => {
+	// object/actor は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、生の
+	// フィールドではなく denormalizations.ts が書き込む `_meta.objectIds`/`_meta.actorIds`
+	// (常にスカラー ID の配列)を見る(→ ADR-0020)。
 	const followStreams = await db
 		.collection('streams')
 		.where('type', '==', 'Follow')
-		.where('object', 'array-contains', actor.id)
+		.where('_meta.objectIds', 'array-contains', actor.id)
 		.get();
 	const unfollowStreams = await db
 		.collection('streams')
@@ -268,14 +271,18 @@ export const getFollowers = async (actor: APActor) => {
 
 	for (const followStream of followStreams.docs) {
 		const follow = followStream.data();
-		const followActor = Array.isArray(follow.actor) ? follow.actor[0] : follow.actor;
-		followCounter.increment(followActor);
+		const followActor = follow._meta?.actorIds?.[0];
+		if (followActor !== undefined) {
+			followCounter.increment(followActor);
+		}
 	}
 
 	for (const unfollowStream of unfollowStreams.docs) {
 		const unfollow = unfollowStream.data();
-		const unfollowActor = Array.isArray(unfollow.actor) ? unfollow.actor[0] : unfollow.actor;
-		followCounter.increment(unfollowActor, -1);
+		const unfollowActor = unfollow._meta?.actorIds?.[0];
+		if (unfollowActor !== undefined) {
+			followCounter.increment(unfollowActor, -1);
+		}
 	}
 
 	const followerIds = Array.from(followCounter)

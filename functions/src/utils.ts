@@ -71,6 +71,33 @@ const SENSITIVE_BODY_FIELDS = [
 	'refresh_token',
 ];
 
+// AS2 の Object/Link は id/href を持つが、activitypub-express は compactArrays: false で
+// JSON-LD を正規化するため、actor・object のようなプロパティは常に配列になり、その要素は
+// IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうる
+// (activitypub-express/pub/utils.js の actorIdFromActivity / objectIdFromActivity と同じ判定)。
+// どの表現でも同じ IRI として比較できるよう、常にスカラーの ID 文字列の配列に正規化する。
+export const toIdArray = (value: unknown): string[] => {
+	if (value === undefined || value === null) {
+		return [];
+	}
+	const values = Array.isArray(value) ? value : [value];
+	return values.flatMap((entry): string[] => {
+		if (typeof entry === 'string') {
+			return [entry];
+		}
+		if (entry === null || typeof entry !== 'object') {
+			return [];
+		}
+		if ((entry as { type?: unknown }).type === 'Link') {
+			const href = (entry as { href?: unknown }).href;
+			const hrefValue = Array.isArray(href) ? href[0] : href;
+			return typeof hrefValue === 'string' ? [hrefValue] : [];
+		}
+		const id = (entry as { id?: unknown }).id;
+		return typeof id === 'string' ? [id] : [];
+	});
+};
+
 export const redactSensitiveBody = (body: unknown): unknown => {
 	if (Array.isArray(body)) {
 		return body.map(redactSensitiveBody);

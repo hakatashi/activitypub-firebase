@@ -113,6 +113,10 @@ describe('Store', () => {
 		});
 	});
 
+	// findActivityByCollectionAndObjectId/ActorId は生の object/actor フィールドではなく
+	// denormalizations.ts が書き込む _meta.objectIds/_meta.actorIds を見る(→ ADR-0020)。
+	// このテストでは denormalizations.ts のトリガーが動かないため、トリガーが計算するはずの
+	// 値を _meta にあらかじめ与えている(get-followers.spec.ts と同じ方針)。
 	describe('findActivityByCollectionAndObjectId', () => {
 		test('finds a Follow activity by collection and object id', async () => {
 			await store.saveActivity({
@@ -120,7 +124,11 @@ describe('Store', () => {
 				type: 'Follow',
 				actor: ['https://remote.example/u/alice'],
 				object: ['https://example.com/users/hakatashi'],
-				_meta: { collection: ['https://example.com/following'] },
+				_meta: {
+					collection: ['https://example.com/following'],
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
 			});
 
 			const found = await store.findActivityByCollectionAndObjectId(
@@ -131,13 +139,41 @@ describe('Store', () => {
 			expect(found?.id).toBe('https://example.com/activities/follow-1');
 		});
 
+		test('finds a Follow activity whose object is an embedded object rather than a bare IRI', async () => {
+			// AS2 の object は IRI 文字列だけでなく埋め込みオブジェクトにもなりうる
+			// (実際に dev 環境の Undo(Follow) で観測されたケース、Issue #49 のフォローアップ)。
+			// _meta.objectIds は denormalizations.ts がどちらの表現からも同じ値に正規化する。
+			await store.saveActivity({
+				id: 'https://example.com/activities/follow-embedded',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: [{ id: 'https://example.com/users/hakatashi', type: 'Person' }],
+				_meta: {
+					collection: ['https://example.com/following'],
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
+			});
+
+			const found = await store.findActivityByCollectionAndObjectId(
+				'https://example.com/following',
+				'https://example.com/users/hakatashi',
+				true,
+			);
+			expect(found?.id).toBe('https://example.com/activities/follow-embedded');
+		});
+
 		test('returns undefined when the object id matches but the collection does not', async () => {
 			await store.saveActivity({
 				id: 'https://example.com/activities/follow-2',
 				type: 'Follow',
 				actor: ['https://remote.example/u/alice'],
 				object: ['https://example.com/users/hakatashi'],
-				_meta: { collection: ['https://example.com/followers'] },
+				_meta: {
+					collection: ['https://example.com/followers'],
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
 			});
 
 			expect(
@@ -165,7 +201,11 @@ describe('Store', () => {
 				type: 'Follow',
 				actor: ['https://remote.example/u/alice'],
 				object: ['https://example.com/users/hakatashi'],
-				_meta: { collection: ['https://example.com/following'] },
+				_meta: {
+					collection: ['https://example.com/following'],
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
 			});
 
 			const found = await store.findActivityByCollectionAndObjectId(
@@ -183,7 +223,11 @@ describe('Store', () => {
 				type: 'Follow',
 				actor: ['https://remote.example/u/alice'],
 				object: ['https://example.com/users/hakatashi'],
-				_meta: { collection: ['https://example.com/followers'] },
+				_meta: {
+					collection: ['https://example.com/followers'],
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
 			});
 
 			const found = await store.findActivityByCollectionAndActorId(
@@ -194,13 +238,38 @@ describe('Store', () => {
 			expect(found?.id).toBe('https://example.com/activities/follow-4');
 		});
 
+		test('finds a Follow activity whose actor is an embedded object rather than a bare IRI', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/follow-4-embedded',
+				type: 'Follow',
+				actor: [{ id: 'https://remote.example/u/alice', type: 'Person' }],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: {
+					collection: ['https://example.com/followers'],
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
+			});
+
+			const found = await store.findActivityByCollectionAndActorId(
+				'https://example.com/followers',
+				'https://remote.example/u/alice',
+				true,
+			);
+			expect(found?.id).toBe('https://example.com/activities/follow-4-embedded');
+		});
+
 		test('returns undefined when the actor id matches but the collection does not', async () => {
 			await store.saveActivity({
 				id: 'https://example.com/activities/follow-5',
 				type: 'Follow',
 				actor: ['https://remote.example/u/alice'],
 				object: ['https://example.com/users/hakatashi'],
-				_meta: { collection: ['https://example.com/following'] },
+				_meta: {
+					collection: ['https://example.com/following'],
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
 			});
 
 			expect(
@@ -425,10 +494,13 @@ describe('Store', () => {
 
 	describe('removeActivity', () => {
 		test('removes an activity attributed to the given actor', async () => {
+			// removeActivity は _meta.actorIds (denormalizations.ts が書き込む) で絞り込むため、
+			// トリガーが動かないこのテストではあらかじめ値を与えている(→ ADR-0020)。
 			const activity = {
 				id: 'https://example.com/activities/removable',
 				type: 'Create',
 				actor: ['https://example.com/users/actor'],
+				_meta: { actorIds: ['https://example.com/users/actor'] },
 			};
 			await store.saveActivity(activity);
 			expect(await store.getActivity(activity.id)).toBeDefined();

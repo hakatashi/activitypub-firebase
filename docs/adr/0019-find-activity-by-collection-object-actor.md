@@ -1,6 +1,6 @@
 # ADR-0019: `findActivityByCollectionAndObjectId`/`ActorId` は片方だけを Firestore に絞り込ませる
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0020
 - **Date:** 2026-09-06
 
 ## 背景

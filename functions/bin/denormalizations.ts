@@ -1,6 +1,7 @@
 import { countBy } from 'lodash-es';
 import { db, unescapeFirestoreKey } from '../src/firebase.js';
 import { UserInfos } from '../src/schema.js';
+import { toIdArray } from '../src/utils.js';
 
 const setEqual = <T>(a: Set<T>, b: Set<T>) => {
 	if (a.size !== b.size) {
@@ -21,24 +22,26 @@ db.runTransaction(async (transaction) => {
 	const userInfos = await transaction.get(UserInfos);
 	console.log(`userInfos: ${userInfos.docs.length}`);
 
+	// actor/object は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、
+	// スカラー ID として集計できるよう toIdArray で正規化する(→ ADR-0020)。
 	const statusCounts = countBy(
 		streams.docs.filter((streamDoc) =>
 			(streamDoc.data().object ?? []).some((object: any) => object.type === 'Note'),
 		),
-		(streamDoc) => streamDoc.data().actor[0],
+		(streamDoc) => toIdArray(streamDoc.data().actor)[0],
 	);
 
 	const follows = streams.docs
 		.filter((streamDoc) => streamDoc.data().type === 'Follow')
-		.flatMap((streamDoc) => streamDoc.data().object ?? []);
-	const followCounts = countBy(follows, (object: any) => object);
+		.flatMap((streamDoc) => toIdArray(streamDoc.data().object));
+	const followCounts = countBy(follows);
 
 	const unfollows = streams.docs
 		.filter((streamDoc) => streamDoc.data().type === 'Undo')
 		.flatMap((streamDoc) => streamDoc.data().object ?? [])
 		.filter((object: any) => object.type === 'Follow')
-		.flatMap((object: any) => object.object ?? []);
-	const unfollowCounts = countBy(unfollows, (object: any) => object);
+		.flatMap((object: any) => toIdArray(object.object));
+	const unfollowCounts = countBy(unfollows);
 
 	streams.docs.forEach((streamDoc) => {
 		const stream = streamDoc.data();
@@ -75,6 +78,25 @@ db.runTransaction(async (transaction) => {
 		if (typeof stream._meta?.collection === 'string') {
 			transaction.update(streamDoc.ref, {
 				'_meta.collection': [stream._meta.collection],
+			});
+		}
+
+		// Backfill _meta.actorIds / _meta.objectIds (→ ADR-0020)
+		const oldActorIds = new Set<string>(stream._meta?.actorIds ?? []);
+		const newActorIds = new Set<string>(toIdArray(stream.actor));
+
+		if (!setEqual(oldActorIds, newActorIds)) {
+			transaction.update(streamDoc.ref, {
+				'_meta.actorIds': Array.from(newActorIds),
+			});
+		}
+
+		const oldObjectIds = new Set<string>(stream._meta?.objectIds ?? []);
+		const newObjectIds = new Set<string>(toIdArray(stream.object));
+
+		if (!setEqual(oldObjectIds, newObjectIds)) {
+			transaction.update(streamDoc.ref, {
+				'_meta.objectIds': Array.from(newObjectIds),
 			});
 		}
 	});

@@ -90,6 +90,71 @@ describe('denormalizations', () => {
 			const updated = await getData(ref);
 			expect(updated._meta).toBeUndefined();
 		});
+
+		// findActivityByCollectionAndActorId/ObjectId (→ ADR-0020) はこの _meta.actorIds/objectIds を
+		// array-contains で引く。actor/object は IRI 文字列・Link・埋め込みオブジェクトのいずれにも
+		// なりうるため、どの表現でも同じ ID に正規化されることを確認する。
+		test('denormalizes _meta.actorIds and _meta.objectIds from bare IRI strings', async () => {
+			const ref = db.collection('streams').doc('stream-4');
+			await ref.set({
+				id: 'https://example.com/activities/4',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+			});
+			const after = await ref.get();
+
+			await onStreamWritten.run({ data: { before: undefined, after } } as any);
+
+			const updated = await getData(ref);
+			expect(updated._meta.actorIds).toEqual(['https://remote.example/u/alice']);
+			expect(updated._meta.objectIds).toEqual(['https://example.com/users/hakatashi']);
+		});
+
+		test('denormalizes _meta.actorIds and _meta.objectIds from embedded objects and Links', async () => {
+			// dev 環境で実際に観測された Undo(Follow) は object が埋め込みオブジェクトになる
+			// (Issue #49 のフォローアップ)。Link (href が配列でボックス化される) も含めて
+			// スカラーの IRI 文字列に正規化されることを確認する。
+			const ref = db.collection('streams').doc('stream-5');
+			await ref.set({
+				id: 'https://example.com/activities/5',
+				type: 'Follow',
+				actor: [{ id: 'https://remote.example/u/alice', type: 'Person' }],
+				object: [{ type: 'Link', href: ['https://example.com/users/hakatashi'] }],
+			});
+			const after = await ref.get();
+
+			await onStreamWritten.run({ data: { before: undefined, after } } as any);
+
+			const updated = await getData(ref);
+			expect(updated._meta.actorIds).toEqual(['https://remote.example/u/alice']);
+			expect(updated._meta.objectIds).toEqual(['https://example.com/users/hakatashi']);
+		});
+
+		test('does not write _meta.actorIds/objectIds when already up to date', async () => {
+			const ref = db.collection('streams').doc('stream-6');
+			await ref.set({
+				id: 'https://example.com/activities/6',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: {
+					actorIds: ['https://remote.example/u/alice'],
+					objectIds: ['https://example.com/users/hakatashi'],
+				},
+			});
+			const after = await ref.get();
+
+			await expect(
+				onStreamWritten.run({ data: { before: undefined, after } } as any),
+			).resolves.toBeUndefined();
+
+			const updated = await getData(ref);
+			expect(updated._meta).toEqual({
+				actorIds: ['https://remote.example/u/alice'],
+				objectIds: ['https://example.com/users/hakatashi'],
+			});
+		});
 	});
 
 	describe('onStreamCreated', () => {
@@ -189,6 +254,73 @@ describe('denormalizations', () => {
 
 			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
 			expect(userInfo.followers_count).toBe(2);
+		});
+
+		test('decrements followers_count when the Undo(Follow) target is an embedded object rather than a bare IRI', async () => {
+			// AS2 の object は IRI 文字列だけでなく埋め込みオブジェクトにもなりうる。
+			// toIdArray を介さず直接 escapeFirestoreKey に渡すと例外になっていた(Issue #49 のフォローアップ)。
+			const followerId = 'https://example.com/activitypub/u/follower';
+			const followedId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 3,
+				following_count: 0,
+				statuses_count: 0,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = db.collection('streams').doc('undo-stream-embedded');
+			await ref.set({
+				id: 'https://example.com/activities/undo-2',
+				type: 'Undo',
+				actor: [followerId],
+				object: [{ type: 'Follow', object: [{ id: followedId, type: 'Person' }] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await expect(onStreamCreated.run({ data: snapshot } as any)).resolves.toBeUndefined();
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
+			expect(userInfo.followers_count).toBe(2);
+		});
+
+		test('does not crash when the actor of a Note stream is an embedded object rather than a bare IRI', async () => {
+			const actorId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(actorId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 0,
+				following_count: 0,
+				statuses_count: 5,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = db.collection('streams').doc('note-stream-embedded');
+			await ref.set({
+				id: 'https://example.com/activities/note-2',
+				type: 'Create',
+				actor: [{ id: actorId, type: 'Person' }],
+				object: [{ type: 'Note' }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await expect(onStreamCreated.run({ data: snapshot } as any)).resolves.toBeUndefined();
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
+			expect(userInfo.statuses_count).toBe(6);
 		});
 
 		test('does nothing when the document was deleted', async () => {
