@@ -7,6 +7,7 @@
 
 declare module 'activitypub-express' {
 	import type { NextFunction, Request, RequestHandler, Response } from 'express';
+	import type IApexStore from 'activitypub-express/store/interface.js';
 
 	// apex は jsonld.compact(compactArrays: false) を通した「部分展開」形式でオブジェクトを
 	// 扱うため、ほとんどのプロパティは単一要素配列に boxing される
@@ -40,72 +41,9 @@ declare module 'activitypub-express' {
 		after: Date;
 	}
 
-	// store/interface.js が定義する契約(20メソッド)に、このプロジェクトの Store
-	// (functions/src/store.ts) が独自に拡張しているメソッドを加えたもの。
-	// interface.js 自体は `getUsercount` という誤字だが、実際に呼ばれるのは
-	// pub/nodeinfo.js:13 の `getUserCount` なのでそちらを正とする。
-	export interface ApexStore {
-		setup(initialUser?: APObject): Promise<void>;
-		generateId(): string;
-		getObject(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
-		saveObject(object: APObject): Promise<boolean>;
-		getActivity(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
-		findActivityByCollectionAndObjectId(
-			collection: string,
-			objectId: string,
-			includeMeta?: boolean,
-		): Promise<APObject | undefined>;
-		findActivityByCollectionAndActorId(
-			collection: string,
-			actorId: string,
-			includeMeta?: boolean,
-		): Promise<APObject | undefined>;
-		// eslint-disable-next-line max-params
-		getStream(
-			collectionId: string,
-			limit: number | null,
-			after?: string | null,
-			blockList?: string[],
-			additionalQuery?: Record<string, unknown>[],
-		): Promise<(APObject & { _id: string })[]>;
-		getStreamCount(collectionId: string): Promise<number>;
-		getContext(documentUrl: string): Promise<
-			| {
-					contextUrl: string | null;
-					documentUrl: string;
-					document: unknown;
-			  }
-			| undefined
-		>;
-		getUserCount(): Promise<number>;
-		saveContext(context: {
-			contextUrl: string | null;
-			documentUrl: string;
-			document: unknown;
-		}): Promise<void>;
-		saveActivity(activity: APObject): Promise<true | undefined>;
-		removeActivity(activity: APObject, actorId: string): Promise<void>;
-		updateActivity(activity: APObject, fullReplace: boolean): Promise<APObject>;
-		// eslint-disable-next-line max-params
-		updateActivityMeta(
-			activity: APObject,
-			key: string,
-			value: unknown,
-			remove: boolean,
-		): Promise<APObject>;
-		updateObject(obj: APObject, actorId: string | null, fullReplace: boolean): Promise<APObject>;
-		// このプロジェクトでは apex 組み込みの配送キューを使わないため未実装
-		// (functions/src/store.ts, → ADR-0003)。呼び出されると常に例外を投げる。
-		deliveryDequeue(): Promise<DeliveryQueueRecord | { waitUntil: Date } | null>;
-		deliveryRequeue(delivery: DeliveryQueueRecord): Promise<boolean>;
-		// eslint-disable-next-line max-params
-		deliveryEnqueue(
-			actorId: string,
-			body: string,
-			addresses: string | string[],
-			signingKey: string | undefined,
-		): Promise<boolean>;
-
+	// store/interface.js が定義する契約(20メソッド、IApexStore として別途宣言)に、
+	// このプロジェクトの Store (functions/src/store.ts) が独自に拡張しているメソッドを加えたもの。
+	export interface ApexStore extends IApexStore {
 		// 以下、Store 独自の拡張 (functions/src/store.ts のコメント参照)
 		getObjects(ids: string[], includeMeta?: boolean): Promise<APObject[]>;
 		getObjectsByFieldValue(
@@ -208,7 +146,6 @@ declare module 'activitypub-express' {
 
 		// pub/actor.js
 		createActor(
-			// eslint-disable-next-line max-params
 			username: string,
 			displayName: string,
 			summary: string,
@@ -234,7 +171,6 @@ declare module 'activitypub-express' {
 		toJSONLD<T = Record<string, unknown>>(obj: object): Promise<T>;
 		// pub/federation.js
 		deliver(
-			// eslint-disable-next-line max-params
 			actorId: string,
 			activity: string,
 			address: string,
@@ -244,4 +180,72 @@ declare module 'activitypub-express' {
 
 	function ActivitypubExpress(settings: ApexSettings): Apex;
 	export default ActivitypubExpress;
+}
+
+// store/interface.js: 全メソッドが `throw new Error('Not implemented')` するだけの基底クラス。
+// functions/src/store.ts の Store はこれを継承し、必要なメソッドだけを override する。
+// override しないメソッド(deliveryDequeue/deliveryRequeue)はこの基底クラスの実装がそのまま
+// 使われ、呼び出されると例外を投げる (→ ADR-0003, Issue #84)。
+declare module 'activitypub-express/store/interface.js' {
+	import type { APObject, DeliveryQueueRecord } from 'activitypub-express';
+
+	export default class IApexStore {
+		setup(initialUser?: APObject): Promise<void>;
+		generateId(): string;
+		getObject(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
+		saveObject(object: APObject): Promise<boolean>;
+		getActivity(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
+		findActivityByCollectionAndObjectId(
+			collection: string,
+			objectId: string,
+			includeMeta?: boolean,
+		): Promise<APObject | undefined>;
+		findActivityByCollectionAndActorId(
+			collection: string,
+			actorId: string,
+			includeMeta?: boolean,
+		): Promise<APObject | undefined>;
+		getStream(
+			collectionId: string,
+			limit: number | null,
+			after?: string | null,
+			blockList?: string[],
+			additionalQuery?: Record<string, unknown>[],
+		): Promise<(APObject & { _id: string })[]>;
+		getStreamCount(collectionId: string): Promise<number>;
+		getContext(documentUrl: string): Promise<
+			| {
+					contextUrl: string | null;
+					documentUrl: string;
+					document: unknown;
+			  }
+			| undefined
+		>;
+		// interface.js 自体は `getUsercount` という誤字だが、実際に呼ばれるのは
+		// pub/nodeinfo.js:13 の `getUserCount` なのでそちらを正とする。
+		getUserCount(): Promise<number>;
+		saveContext(context: {
+			contextUrl: string | null;
+			documentUrl: string;
+			document: unknown;
+		}): Promise<void>;
+		saveActivity(activity: APObject): Promise<true | undefined>;
+		removeActivity(activity: APObject, actorId: string): Promise<void>;
+		updateActivity(activity: APObject, fullReplace: boolean): Promise<APObject>;
+		updateActivityMeta(
+			activity: APObject,
+			key: string,
+			value: unknown,
+			remove: boolean,
+		): Promise<APObject>;
+		updateObject(obj: APObject, actorId: string | null, fullReplace: boolean): Promise<APObject>;
+		deliveryDequeue(): Promise<DeliveryQueueRecord | { waitUntil: Date } | null>;
+		deliveryEnqueue(
+			actorId: string,
+			body: string,
+			addresses: string | string[],
+			signingKey: string | undefined,
+		): Promise<boolean>;
+		deliveryRequeue(delivery: DeliveryQueueRecord): Promise<boolean>;
+	}
 }

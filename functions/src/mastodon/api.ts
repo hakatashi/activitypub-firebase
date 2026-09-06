@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { Request as OauthRequest, Response as OauthResponse } from '@node-oauth/oauth2-server';
+import type { APObject as ApexObject } from 'activitypub-express';
 import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
@@ -61,6 +62,23 @@ const validScopes = [
 	'write:statuses',
 ];
 
+// apex.store が返す値は id/type しか保証されない緩い APObject (activitypub-express 側の型)
+// なので、activitypub-types の APActor / APNote として扱ってよいかを AS2 の type で
+// 実行時にも確認してから型を絞り込む。Actor 系の type は activitypub-types の
+// APPerson/APApplication/APGroup/APOrganization/APService の union で定義されている。
+const actorTypes = new Set(['Person', 'Application', 'Group', 'Organization', 'Service']);
+const isAPActor = (object: ApexObject): object is ApexObject & APActor =>
+	actorTypes.has(object.type);
+
+const assertIsAPActor: (
+	object: ApexObject | undefined,
+) => asserts object is ApexObject & APActor = (object) => {
+	assert(object !== undefined, 'object is undefined');
+	assert(isAPActor(object), `object is not an actor: ${object.id}`);
+};
+
+const isAPNote = (object: ApexObject): object is ApexObject & APNote => object.type === 'Note';
+
 const externalUserInfo: UserInfo = {
 	bot: false,
 	created_at: '2021-01-01T00:00:00.000Z',
@@ -107,12 +125,13 @@ const actorUsernameToAccount = async (
 ): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
 	const actorId = `https://${domain}/activitypub/u/${username}`;
 	const [object, userInfoDoc] = await Promise.all([
-		apex.store.getObject(actorId) as unknown as Promise<APActor>,
+		apex.store.getObject(actorId),
 		UserInfos.doc(escapeFirestoreKey(actorId)).get(),
 	]);
 	if (object === undefined || !userInfoDoc.exists) {
 		return undefined;
 	}
+	assertIsAPActor(object);
 	const userInfo = userInfoDoc.data();
 	assert(userInfo !== undefined, 'userInfo is undefined');
 	return actorObjectToAccount(object, userInfo);
@@ -190,7 +209,7 @@ const userIdsToAcconts = async (
 	}
 
 	const [actorObjects, userInfoDocsChunks] = await Promise.all([
-		apex.store.getObjects(userIds) as unknown as Promise<APActor[]>,
+		apex.store.getObjects(userIds),
 		Promise.all(
 			chunk(userIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
 				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
@@ -200,7 +219,7 @@ const userIdsToAcconts = async (
 
 	const actorMap = new Map<string, APActor>(
 		actorObjects.map((actor) => {
-			assert(actor.id !== undefined, 'actor.id is undefined');
+			assertIsAPActor(actor);
 			return [actor.id, actor];
 		}),
 	);
@@ -223,7 +242,7 @@ const userIdsToAcconts = async (
 };
 
 const getAllNotes = async () => {
-	const notes = (await apex.store.getObjectsByFieldValue('type', 'Note')) as APNote[];
+	const notes = (await apex.store.getObjectsByFieldValue('type', 'Note')).filter(isAPNote);
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
 	const userIds = validNotes.map((note) => {
 		const attributedTo = getAttributedTo(note);
@@ -384,12 +403,13 @@ router.get('/v1/accounts/:id/followers', async (req, res) => {
 	}
 
 	const userId = unescapeFirestoreKey(userInfo.docs[0].id);
-	const actorObject = (await apex.store.getObject(userId)) as APActor | undefined;
+	const actorObject = await apex.store.getObject(userId);
 
 	if (actorObject === undefined) {
 		res.sendStatus(500);
 		return;
 	}
+	assertIsAPActor(actorObject);
 
 	res.json(await getFollowers(actorObject));
 });

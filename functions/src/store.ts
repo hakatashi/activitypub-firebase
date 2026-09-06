@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import type { Firestore } from '@google-cloud/firestore';
-import type { APObject, ApexStore, DeliveryQueueRecord, DeliveryRecord } from 'activitypub-express';
+import type { APObject, ApexStore, DeliveryRecord } from 'activitypub-express';
+import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
@@ -14,12 +15,16 @@ import { toIdArray } from './utils.js';
 // Firestore の `in` フィルタは1クエリにつき最大30件までしか指定できない。
 export const FIRESTORE_IN_QUERY_LIMIT = 30;
 
-// Implements ApexStore (functions/types/activitypub-express.d.ts):
-// https://github.com/immers-space/activitypub-express/blob/master/store/interface.js
-export default class Store implements ApexStore {
+// IApexStore (store/interface.js) を継承しつつ、ApexStore (Store 独自の拡張込みの契約、
+// functions/types/activitypub-express.d.ts) を implements することで、override していない
+// メソッドが残っていても型チェックが通る(=実装漏れがコンパイルエラーにならない)ことを防ぐ
+// (→ ADR-0022)。deliveryDequeue/deliveryRequeue は override しておらず、IApexStore 由来の
+// 「呼ばれたら例外を投げる」実装のままになっている (→ Issue #84)。
+export default class Store extends IApexStore implements ApexStore {
 	db: Firestore;
 
 	constructor() {
+		super();
 		this.db = db;
 	}
 
@@ -564,17 +569,5 @@ export default class Store implements ApexStore {
 				transaction.update(doc.ref, { object: newObject });
 			});
 		});
-	}
-
-	// apex 組み込みの配送キュー用メソッド。このプロジェクトでは配送を Cloud Tasks 経由で行い
-	// (deliveryEnqueue 参照)、apex.offlineMode = true により apex 自身の配送ループ
-	// (pub/federation.js runDelivery)が動かないため呼ばれることはない。
-	// → Issue #84 で未実装のまま残っていることを追跡する。
-	deliveryDequeue(): never {
-		throw new Error('Not implemented: delivery is handled via Cloud Tasks (ADR-0003)');
-	}
-
-	deliveryRequeue(_delivery: DeliveryQueueRecord): never {
-		throw new Error('Not implemented: delivery is handled via Cloud Tasks (ADR-0003)');
 	}
 }
