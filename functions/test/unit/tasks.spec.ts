@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
-import { deliveryTask } from '../../src/tasks.js';
+import { deliveryTask, pingTask } from '../../src/tasks.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -126,5 +126,43 @@ describe('deliveryTask', () => {
 
 		expect(deliverSpy).not.toHaveBeenCalled();
 		expect(await apex.store.getDelivery(activityId, address)).toBeUndefined();
+	});
+
+	test('discards the task when payload structure is invalid', async () => {
+		const deliverSpy = vi.spyOn(apex, 'deliver');
+
+		// Missing actorId / body / address
+		await expect(deliveryTask.run({ data: { actorId } } as any)).resolves.toBeUndefined();
+
+		await expect(deliveryTask.run({ data: null } as any)).resolves.toBeUndefined();
+
+		expect(deliverSpy).not.toHaveBeenCalled();
+	});
+
+	test('discards the task when body is invalid JSON or missing activity id', async () => {
+		const deliverSpy = vi.spyOn(apex, 'deliver');
+
+		// Malformed JSON
+		await expect(
+			deliveryTask.run({ data: { actorId, body: '{malformed', address } } as any),
+		).resolves.toBeUndefined();
+
+		// JSON without id
+		await expect(
+			deliveryTask.run({ data: { actorId, body: '{"type":"Create"}', address } } as any),
+		).resolves.toBeUndefined();
+
+		expect(deliverSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe('pingTask', () => {
+	test('handles valid payload without error', () => {
+		expect(() => pingTask.run({ data: { message: 'hello' } } as any)).not.toThrow();
+	});
+
+	test('handles invalid payload without throwing', () => {
+		expect(() => pingTask.run({ data: { message: 123 } } as any)).not.toThrow();
+		expect(() => pingTask.run({ data: null } as any)).not.toThrow();
 	});
 });

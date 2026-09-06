@@ -1,6 +1,6 @@
 import express from 'express';
 import request from 'supertest';
-import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { describe, expect, test, afterEach, beforeEach, vi } from 'vitest';
 import oauthRouter from '../../src/mastodon/oauth.js';
 import { Clients, Users } from '../../src/schema.js';
 
@@ -83,6 +83,65 @@ describe('oauth', () => {
 
 			expect(response.status).toBe(200);
 			expect(response.body.access_token).toEqual(expect.any(String));
+		});
+
+		test('rejects request with missing grant_type', async () => {
+			const response = await request(app).post('/oauth/token').type('form').send({
+				client_id: 'client-id',
+				client_secret: 'client-secret',
+			});
+
+			expect(response.status).toBe(400);
+		});
+	});
+
+	describe('GET /oauth/authorize', () => {
+		test('rejects missing or invalid query parameters', async () => {
+			const response1 = await request(app).get('/oauth/authorize');
+			expect(response1.status).toBe(400);
+
+			const response2 = await request(app).get('/oauth/authorize').query({
+				client_id: 'client-id',
+				// missing redirect_uri and response_type
+			});
+			expect(response2.status).toBe(400);
+		});
+
+		test('renders authorization page on valid query parameters', async () => {
+			const response = await request(app).get('/oauth/authorize').query({
+				client_id: 'client-id',
+				redirect_uri: 'https://example.com/callback',
+				response_type: 'code',
+				scope: 'read',
+			});
+			expect(response.status).toBe(200);
+			expect(response.text).toContain('name="client_id" id="client_id" value="client-id"');
+		});
+
+		test('returns 500 if external webapp config retrieval fails', async () => {
+			const { default: firebase } = await import('firebase-admin');
+			const spy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
+				getAccessToken: () => Promise.reject(new Error('ADC failure')),
+			} as any);
+
+			try {
+				const response = await request(app).get('/oauth/authorize').query({
+					client_id: 'client-id',
+					redirect_uri: 'https://example.com/callback',
+					response_type: 'code',
+					scope: 'read',
+				});
+				expect(response.status).toBe(500);
+			} finally {
+				spy.mockRestore();
+			}
+		});
+	});
+
+	describe('POST /oauth/authorize', () => {
+		test('rejects missing idToken in body', async () => {
+			const response = await request(app).post('/oauth/authorize').send({});
+			expect(response.status).toBe(400);
 		});
 	});
 

@@ -197,6 +197,15 @@ describe('activitypub', () => {
 			expect(enqueueSpy).toHaveBeenCalledWith(actorId, body, address, undefined);
 		});
 
+		test('POST /resend rejects invalid request body', async () => {
+			const response = await request(activitypub)
+				.post('/activitypub/deliveries/resend')
+				.set(adminHeader)
+				.send({ activityId: 'https://example.com/activities/1' }); // missing inbox
+
+			expect(response.status).toBe(400);
+		});
+
 		test('POST /resend 404s for an unknown activity/inbox pair', async () => {
 			const response = await request(activitypub)
 				.post('/activitypub/deliveries/resend')
@@ -207,6 +216,27 @@ describe('activitypub', () => {
 				});
 
 			expect(response.status).toBe(404);
+		});
+	});
+
+	describe('/activitypub/createPost', () => {
+		const adminHeader = { 'x-hakatashi-token': 'test-token' };
+
+		beforeEach(() => {
+			process.env.HAKATASHI_TOKEN = 'test-token';
+		});
+
+		afterEach(() => {
+			delete process.env.HAKATASHI_TOKEN;
+		});
+
+		test('POST /createPost rejects invalid payload', async () => {
+			const response = await request(activitypub)
+				.post('/activitypub/createPost')
+				.set(adminHeader)
+				.send({}); // missing text
+
+			expect(response.status).toBe(400);
 		});
 	});
 });
