@@ -20,7 +20,16 @@ export const FIRESTORE_IN_QUERY_LIMIT = 30;
 // functions/types/activitypub-express.d.ts) を implements することで、override していない
 // メソッドが残っていても型チェックが通る(=実装漏れがコンパイルエラーにならない)ことを防ぐ
 // (→ ADR-0022)。deliveryDequeue/deliveryRequeue は override しておらず、IApexStore 由来の
-// 「呼ばれたら例外を投げる」実装のままになっている (→ Issue #84)。
+// 「呼ばれたら例外を投げる」実装のままになっている。
+//
+// これは意図的なスタブであり安全: apex 本体で deliveryDequeue/deliveryRequeue を呼ぶのは
+// pub/federation.js の runDelivery のみで、runDelivery は startDelivery 経由でしか
+// 呼ばれない。startDelivery は `if (isDelivering || this.offlineMode) return` で
+// offlineMode が真なら即 return し runDelivery を呼ばない。このプロジェクトの apex 初期化
+// (apex.ts) は常に offlineMode: true で、配送は Store.deliveryEnqueue が Cloud Tasks へ直接
+// enqueue することで行っている (→ ADR-0003)。deliveryEnqueue の override 自身も
+// startDelivery/runDelivery を呼んでいないため、deliveryDequeue/deliveryRequeue が実行時に
+// 呼ばれる経路は存在しない (→ Issue #84 で確認)。
 export default class Store extends IApexStore implements ApexStore {
 	db: Firestore;
 
