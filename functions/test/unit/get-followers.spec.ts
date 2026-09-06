@@ -3,6 +3,7 @@ import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { db } from '../../src/firebase.js';
 import { getFollowers } from '../../src/mastodon/api.js';
+import { buildMetaIndex } from '../../src/meta.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -15,38 +16,43 @@ const actor = {
 } as unknown as APActor;
 
 // getFollowers は生の object/actor フィールドではなく denormalizations.ts が書き込む
-// _meta.objectIds/_meta.actorIds を見る(→ ADR-0020)。このテストはトリガーが動かない
+// map 形式の _meta.index を等価条件で引く(→ ADR-0021)。このテストはトリガーが動かない
 // Firestore エミュレータのみで実行されるため、トリガーが計算するはずの値をここで
 // あらかじめ与えている。
-// eslint-disable-next-line max-params
-const saveFollow = (docId: string, activityId: string, followerId: string, objectId: string) =>
+const saveStream = (docId: string, activity: Record<string, any>) =>
 	db
 		.collection('streams')
 		.doc(docId)
 		.set({
-			id: activityId,
-			type: 'Follow',
-			actor: [followerId],
-			object: [objectId],
-			_meta: { actorIds: [followerId], objectIds: [objectId] },
+			...activity,
+			_meta: { ...activity._meta, index: buildMetaIndex(activity) },
 		});
 
+// eslint-disable-next-line max-params
+const saveFollow = (docId: string, activityId: string, followerId: string, objectId: string) =>
+	saveStream(docId, {
+		id: activityId,
+		type: 'Follow',
+		actor: [followerId],
+		object: [objectId],
+	});
+
+// Undo の object は、Mastodon のように Follow を丸ごと埋め込んでくる場合と素の IRI 文字列で
+// 届く場合がある。どちらも打ち消しとして扱われることを確認するため、object の表現を選べるようにする。
 // eslint-disable-next-line max-params
 const saveUndoFollow = (
 	docId: string,
 	activityId: string,
 	followerId: string,
-	collection: string,
+	undoneFollow: unknown,
 ) =>
-	db
-		.collection('streams')
-		.doc(docId)
-		.set({
-			id: activityId,
-			type: 'Undo',
-			actor: [followerId],
-			_meta: { collection: [collection], objectType: 'Follow', actorIds: [followerId] },
-		});
+	saveStream(docId, {
+		id: activityId,
+		type: 'Undo',
+		actor: [followerId],
+		object: [undoneFollow],
+		_meta: { collection: [actor.inbox] },
+	});
 
 describe('getFollowers', () => {
 	beforeEach(async () => {
@@ -88,19 +94,15 @@ describe('getFollowers', () => {
 	test('finds a follower even when the Follow object is an embedded object rather than a bare IRI', async () => {
 		// AS2 の object は IRI 文字列だけでなく埋め込みオブジェクトにもなりうる
 		// (実際に dev 環境の Undo(Follow) で観測されたケース、Issue #49 のフォローアップ)。
-		// _meta.objectIds はどちらの表現からも denormalizations.ts が同じ値に正規化する。
+		// _meta.index はどちらの表現からも denormalizations.ts が同じキーに正規化する。
 		const followerId = 'https://remote.example/u/alice';
 		await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: 'alice' });
-		await db
-			.collection('streams')
-			.doc('follow-1')
-			.set({
-				id: 'https://remote.example/activities/follow-1',
-				type: 'Follow',
-				actor: [{ id: followerId, type: 'Person' }],
-				object: [{ id: actor.id, type: 'Person' }],
-				_meta: { actorIds: [followerId], objectIds: [actor.id] },
-			});
+		await saveStream('follow-1', {
+			id: 'https://remote.example/activities/follow-1',
+			type: 'Follow',
+			actor: [{ id: followerId, type: 'Person' }],
+			object: [{ id: actor.id, type: 'Person' }],
+		});
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(1);
@@ -120,10 +122,51 @@ describe('getFollowers', () => {
 			'undo-1',
 			'https://remote.example/activities/undo-1',
 			followerId,
-			actor.inbox,
+			'https://remote.example/activities/follow-1',
 		);
 
 		expect(await getFollowers(actor)).toEqual([]);
+	});
+
+	// Mastodon の UndoFollowSerializer は Follow を丸ごと埋め込んでくる (→ ADR-0020)。
+	test('excludes a follower whose Undo embeds the Follow activity instead of its IRI', async () => {
+		const followerId = 'https://remote.example/u/alice';
+		await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: 'alice' });
+		await saveFollow(
+			'follow-1',
+			'https://remote.example/activities/follow-1',
+			followerId,
+			actor.id,
+		);
+		await saveUndoFollow('undo-1', 'https://remote.example/activities/undo-1', followerId, {
+			id: 'https://remote.example/activities/follow-1',
+			type: 'Follow',
+			actor: [followerId],
+			object: [actor.id],
+		});
+
+		expect(await getFollowers(actor)).toEqual([]);
+	});
+
+	test('does not exclude a follower whose Undo targets a different Follow', async () => {
+		const followerId = 'https://remote.example/u/alice';
+		await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: 'alice' });
+		await saveFollow(
+			'follow-1',
+			'https://remote.example/activities/follow-1',
+			followerId,
+			actor.id,
+		);
+		await saveUndoFollow(
+			'undo-1',
+			'https://remote.example/activities/undo-1',
+			followerId,
+			'https://remote.example/activities/follow-somebody-else',
+		);
+
+		const followers = await getFollowers(actor);
+		expect(followers).toHaveLength(1);
+		expect(followers[0].acct).toBe('alice@remote.example');
 	});
 
 	test('keeps a follower who unfollowed and followed again', async () => {
@@ -139,7 +182,7 @@ describe('getFollowers', () => {
 			'undo-1',
 			'https://remote.example/activities/undo-1',
 			followerId,
-			actor.inbox,
+			'https://remote.example/activities/follow-1',
 		);
 		await saveFollow(
 			'follow-2',

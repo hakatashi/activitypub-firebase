@@ -20,7 +20,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ |
 | `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ |
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
-| `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.objectType(s)` を非正規化 |
+| `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数・フォロワー数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
@@ -77,20 +77,22 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 
 apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
-Firestore 上でもそのまま配列として保存する。所属判定は `array-contains` クエリで行う
-(→ [ADR-0017](adr/0017-meta-collection-as-array.md))。
+Firestore 上でもそのまま配列として保存する。コレクション単体での所属判定
+(`getStream`/`getStreamCount`)は `array-contains` クエリで行い
+(→ [ADR-0017](adr/0017-meta-collection-as-array.md))、他の条件と組み合わせる検索は
+後述の `_meta.index` を使う(→ [ADR-0021](adr/0021-meta-index-as-maps.md))。
 
 ### `_meta` メタデータフィールド
 
-`objects` および `streams` コレクション内のドキュメントには、内部管理用のメタデータとして `_meta` オブジェクトが付与される。外部への JSON-LD 出力時や `getObject(id, includeMeta=false)` の際には削除（strip）される。
+`objects` および `streams` コレクション内のドキュメントには、内部管理用のメタデータとして `_meta` オブジェクトが付与される。apex は JSON-LD 出力時に `_` で始まるプロパティをすべて落とし(`pub/utils.js` の `skipPrivate`)、`getObject`/`getActivity`/`findActivityByCollectionAnd*Id` も `includeMeta` が真でなければ `_meta` を削除する。
 
 #### 1. `activitypub-express` (apex) 由来のプロパティ
 
 | プロパティ | 対象 | 型 | 役割・書き込みタイミング |
 |---|---|---|---|
-| `_meta.collection` | `streams` | `string[]` | アクティビティが所属するコレクション（`inbox`, `outbox`, `followers`, `following`, `liked`, `blocked`, `rejected`, `rejections`, `shares`, `likes` 等）の IRI 配列。アクティビティの受信/送信時、およびフォロー承認/いいね/ブースト/ブロック/拒絶等の副作用（Side Effects）処理時に書き込まれる (→ [ADR-0017](adr/0017-meta-collection-as-array.md))。 |
+| `_meta.collection` | `streams` | `string[]` | アクティビティが所属するコレクション（`inbox`, `outbox`, `followers`, `following`, `liked`, `blocked`, `rejected`, `rejections`, `shares`, `likes` 等）の IRI 配列。受信時 (`net/validators.js`) と送信時 (`net/validators.js` / `pub/activity.js`) に apex が `addMeta` で積み、フォロー承認/いいね/ブースト/ブロック/拒絶等の副作用処理では `updateActivityMeta` が追加・削除する。apex の `hasMeta`/`removeMeta` が `Array.isArray` を要求するため、Firestore 上でも配列のまま保存する (→ [ADR-0017](adr/0017-meta-collection-as-array.md))。 |
 | `_meta.privateKey` | `objects` | `string` | ローカルアクターの HTTP 署名用 RSA 秘密鍵 (PEM)。アクター作成時 (`createActor`) に生成・保存され、連合配信時の署名およびローカルユーザー判定 (`getUserCount`) に使用される。 |
-| `_meta.isPublic` | `objects` / `streams` | `boolean` | オブジェクトまたはアクティビティが公開 (Public) かどうかを示すフラグ。 |
+| `_meta.isPublic` | `objects` / `streams` | `boolean` | apex の `isPublic()` (`pub/utils.js`) が宛先判定のショートカットとして読むだけのフィールドで、**apex 自身もこのプロジェクトも書き込んでいない**(常に `undefined`)。公開判定は実際には `to`/`cc` 等の `as:Public` で行われている。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
 
@@ -98,10 +100,21 @@ Firestore 上で効率的にインデックスクエリを行うため、`onStre
 
 | プロパティ | 対象 | 型 | 役割・用途 |
 |---|---|---|---|
-| `_meta.actorIds` | `streams` | `string[]` | `stream.actor` をスカラー IRI の配列に正規化したもの。アクターでの `array-contains` クエリを可能にする (→ [ADR-0020](adr/0020-denormalize-actor-object-ids.md))。 |
-| `_meta.objectIds` | `streams` | `string[]` | `stream.object` をスカラー IRI の配列に正規化したもの。オブジェクトでの `array-contains` クエリを可能にする (→ [ADR-0020](adr/0020-denormalize-actor-object-ids.md))。 |
-| `_meta.objectType` | `streams` | `string` | `stream.object` の先頭要素の `type`（例: `'Note'`, `'Follow'` 等）。等価クエリ用。 |
-| `_meta.objectTypes` | `streams` | `string[]` | `stream.object` 内に含まれるすべての要素の `type` 配列。 |
+| `_meta.index.collections` | `streams` | `{[key: string]: true}` | `_meta.collection` の写し。 |
+| `_meta.index.actors` | `streams` | `{[key: string]: true}` | `stream.actor` をスカラー IRI に解決したもの (`toIdArray`)。 |
+| `_meta.index.objects` | `streams` | `{[key: string]: true}` | `stream.object` をスカラー IRI に解決したもの (`toIdArray`)。 |
+
+`_meta.index.*` は IRI の集合を「キーの存在」で表す map で、キーはドキュメント ID と同じ
+`escapeFirestoreKey` でエスケープする。Firestore は1クエリにつき `array-contains` を1つしか
+使えないため、コレクションと actor/object を組み合わせて絞り込むクエリはすべてこの map への
+等価条件で書く(等価条件どうしは複合インデックスの定義なしに index merging で処理される)。
+IRI はドットを含むので、クエリのフィールドパスは必ず
+`new FieldPath('_meta', 'index', field, escapeFirestoreKey(iri))` の配列形式で組む
+(→ [ADR-0021](adr/0021-meta-index-as-maps.md)、ヘルパーは `functions/src/meta.ts`)。
+
+このインデックスは **Firestore に絞り込ませるためだけに使う。** 取得済みドキュメントに対する
+判定(`removeActivity` の actor 照合、`getFollowers` の Undo 突き合わせなど)は、トリガーの遅延に
+依存しないよう生の `actor`/`object` を `toIdArray` で解決して行う。
 
 apex のストア抽象では集計ができないため、フォロワー数・投稿数は Firestore Trigger
 (`functions/src/denormalizations.ts`)で `userInfos` に非正規化している。

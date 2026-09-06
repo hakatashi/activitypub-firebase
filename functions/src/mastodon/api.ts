@@ -15,10 +15,11 @@ import {
 	mastodonDomain,
 	unescapeFirestoreKey,
 } from '../firebase.js';
+import { metaIndexPath } from '../meta.js';
 import { UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
-import { Counter } from '../utils.js';
+import { toIdArray } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
 import { Clients } from './oauth2Model.js';
@@ -252,44 +253,43 @@ const getInboxId = (actor: APActor) => {
 };
 
 export const getFollowers = async (actor: APActor) => {
+	assert(actor.id !== undefined, 'actor.id is undefined');
+
 	// object/actor は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、生の
-	// フィールドではなく denormalizations.ts が書き込む `_meta.objectIds`/`_meta.actorIds`
-	// (常にスカラー ID の配列)を見る(→ ADR-0020)。
+	// フィールドではなく denormalizations.ts が書き込む map 形式のインデックス `_meta.index.*`
+	// を等価条件で引く(→ ADR-0021)。
 	const followStreams = await db
 		.collection('streams')
 		.where('type', '==', 'Follow')
-		.where('_meta.objectIds', 'array-contains', actor.id)
+		.where(metaIndexPath('objects', actor.id), '==', true)
 		.get();
+	// 受信した Undo の object は、Mastodon のように Follow を丸ごと埋め込んでくる場合と
+	// 素の IRI 文字列で届く場合がある。`_meta.objectType` による絞り込みは後者を取りこぼすため、
+	// inbox の Undo をすべて取得し、打ち消された Follow の IRI で突き合わせる(→ ADR-0021)。
 	const unfollowStreams = await db
 		.collection('streams')
-		.where('_meta.collection', 'array-contains', getInboxId(actor))
+		.where(metaIndexPath('collections', getInboxId(actor)), '==', true)
 		.where('type', '==', 'Undo')
-		.where('_meta.objectType', '==', 'Follow')
 		.get();
 
-	const followCounter = new Counter<string>();
+	const undoneFollowIds = new Set(
+		unfollowStreams.docs.flatMap((unfollowStream) => toIdArray(unfollowStream.data().object)),
+	);
+
+	const followerIds = new Set<string>();
 
 	for (const followStream of followStreams.docs) {
 		const follow = followStream.data();
-		const followActor = follow._meta?.actorIds?.[0];
+		if (undoneFollowIds.has(follow.id)) {
+			continue;
+		}
+		const followActor = toIdArray(follow.actor)[0];
 		if (followActor !== undefined) {
-			followCounter.increment(followActor);
+			followerIds.add(followActor);
 		}
 	}
 
-	for (const unfollowStream of unfollowStreams.docs) {
-		const unfollow = unfollowStream.data();
-		const unfollowActor = unfollow._meta?.actorIds?.[0];
-		if (unfollowActor !== undefined) {
-			followCounter.increment(unfollowActor, -1);
-		}
-	}
-
-	const followerIds = Array.from(followCounter)
-		.filter(([, count]) => count > 0)
-		.map(([followerActor]) => followerActor);
-
-	return userIdsToAcconts(followerIds);
+	return userIdsToAcconts(Array.from(followerIds));
 };
 
 const authRequired = async (

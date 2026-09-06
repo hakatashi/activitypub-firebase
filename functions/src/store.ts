@@ -5,8 +5,10 @@ import IApexStore from 'activitypub-express/store/interface.js';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
-import { chunk, mapValues } from 'lodash-es';
+import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
+import { metaIndexPath } from './meta.js';
+import { toIdArray } from './utils.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
 
@@ -247,69 +249,52 @@ export default class Store extends IApexStore {
 		});
 	}
 
-	// Firestore は1クエリにつき array-contains を1つしか使えないため、`_meta.collection` と
-	// `_meta.actorIds`/`_meta.objectIds` の両方を array-contains で絞り込むことはできない。
-	// 対象アクターの IRI という選択性の高い方だけを Firestore に絞り込ませ、`_meta.collection`
-	// への所属はアプリケーション側で判定する。
+	// denormalizations.ts が書き込む map 形式のインデックス `_meta.index.*` を等価条件で引く
+	// (→ ADR-0021)。等価条件どうしなら Firestore の array-contains 1個制限を受けないため、
+	// コレクションへの所属と対象 IRI の両方を Firestore 側で絞り込める。
 	//
-	// 生の `object`/`actor` フィールドではなく denormalizations.ts が書き込む
-	// `_meta.objectIds`/`_meta.actorIds` を見るのは、AS2 の `object`/`actor` が IRI 文字列・
+	// 生の `object`/`actor` フィールドを直接引かないのは、AS2 の `object`/`actor` が IRI 文字列・
 	// Link・埋め込みオブジェクトのいずれにもなりうるため。Mastodon 以外の実装からの入力や
 	// Undo の埋め込みオブジェクトでは、実際に埋め込みオブジェクトが入る(→ ADR-0020)。
-	async findActivityByCollectionAndObjectId(
-		collection: string,
-		objectId: string,
-		includeMeta?: boolean,
-	) {
+	findActivityByCollectionAndObjectId(collection: string, objectId: string, includeMeta?: boolean) {
 		logger.info({
 			type: 'findActivityByCollectionAndObjectId',
 			collection,
 			objectId,
 		});
 
-		const streamDocs = await this.db
-			.collection('streams')
-			.where('_meta.objectIds', 'array-contains', objectId)
-			.get();
-
-		const activityDoc = streamDocs.docs.find((doc) =>
-			(doc.get('_meta')?.collection as string[] | undefined)?.includes(collection),
-		);
-		if (!activityDoc) {
-			return undefined;
-		}
-
-		const activity = activityDoc.data();
-		if (includeMeta !== true) {
-			delete activity._meta;
-		}
-		return activity;
+		return this.findActivityByCollectionAndIndex('objects', collection, objectId, includeMeta);
 	}
 
-	async findActivityByCollectionAndActorId(
-		collection: string,
-		actorId: string,
-		includeMeta?: boolean,
-	) {
+	findActivityByCollectionAndActorId(collection: string, actorId: string, includeMeta?: boolean) {
 		logger.info({
 			type: 'findActivityByCollectionAndActorId',
 			collection,
 			actorId,
 		});
 
+		return this.findActivityByCollectionAndIndex('actors', collection, actorId, includeMeta);
+	}
+
+	// eslint-disable-next-line max-params
+	private async findActivityByCollectionAndIndex(
+		field: 'actors' | 'objects',
+		collection: string,
+		id: string,
+		includeMeta?: boolean,
+	) {
 		const streamDocs = await this.db
 			.collection('streams')
-			.where('_meta.actorIds', 'array-contains', actorId)
+			.where(metaIndexPath('collections', collection), '==', true)
+			.where(metaIndexPath(field, id), '==', true)
+			.limit(1)
 			.get();
 
-		const activityDoc = streamDocs.docs.find((doc) =>
-			(doc.get('_meta')?.collection as string[] | undefined)?.includes(collection),
-		);
-		if (!activityDoc) {
+		const activity = streamDocs.docs[0]?.data();
+		if (activity === undefined) {
 			return undefined;
 		}
 
-		const activity = activityDoc.data();
 		if (includeMeta !== true) {
 			delete activity._meta;
 		}
@@ -348,17 +333,21 @@ export default class Store extends IApexStore {
 		return inserted;
 	}
 
+	// MongoDB 実装の `deleteMany({ id: activity.id, actor: actorId })` に対応する。
+	// ドキュメント ID がアクティビティの IRI そのものなので id での検索はクエリを要さず、
+	// actor の照合も取得済みドキュメントに対する判定なので生の `actor` を toIdArray で解決する
+	// (非正規化インデックスの遅延に依存させない → ADR-0021)。
 	async removeActivity(activity: ObjectWithId, actorId: string) {
+		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		await this.db.runTransaction(async (transaction) => {
-			const matchedDocs = await transaction.get(
-				this.db
-					.collection('streams')
-					.where('id', '==', activity.id)
-					.where('_meta.actorIds', 'array-contains', actorId),
-			);
-			matchedDocs.forEach((doc) => {
-				transaction.delete(doc.ref);
-			});
+			const activityDoc = await transaction.get(activityRef);
+			if (!activityDoc.exists) {
+				return;
+			}
+			if (!toIdArray(activityDoc.get('actor')).includes(actorId)) {
+				return;
+			}
+			transaction.delete(activityRef);
 		});
 	}
 
@@ -556,19 +545,37 @@ export default class Store extends IApexStore {
 		});
 	}
 
+	// `streams` に埋め込まれている古いコピーを新しい内容へ差し替える。
+	// `streams.object` は常に配列なので、ドット記法(`where('object.id', '==', ...)`)では
+	// 引けない。denormalizations.ts が書き込む map 形式のインデックスを使う(→ ADR-0021)。
+	//
+	// 置き換えるのは MongoDB 実装の arrayFilters(`{ 'element.id': object.id }`)と同じく
+	// `id` が一致する埋め込みオブジェクトの要素だけで、IRI 文字列の要素はそのまま残す。
+	// MongoDB 実装は配送キューの署名鍵も更新するが、こちらは配送時に actor を読み直すため不要。
 	private async updateObjectCopies(object: ObjectWithId) {
+		const replaceCopy = (value: any) => {
+			if (typeof value === 'object' && value !== null && value.id === object.id) {
+				return object;
+			}
+			return value;
+		};
+
 		await this.db.runTransaction(async (transaction) => {
 			const matchedDocs = await transaction.get(
-				this.db.collection('streams').where('object.id', '==', object.id),
+				this.db.collection('streams').where(metaIndexPath('objects', object.id), '==', true),
 			);
 			matchedDocs.forEach((doc) => {
-				const newObjectDict = mapValues(doc.get('object'), (value) => {
-					if (value.id === object.id) {
-						return object;
-					}
-					return value;
-				});
-				transaction.update(doc.ref, { object: newObjectDict });
+				const rawObject = doc.get('object');
+				// 配列を配列のまま保つ(lodash の mapValues は配列を数値キーのマップに壊す)。
+				const newObject = Array.isArray(rawObject)
+					? rawObject.map(replaceCopy)
+					: replaceCopy(rawObject);
+				// IRI 文字列で参照しているだけのドキュメントには書き込まない
+				// (無意味な書き込みで onStreamWritten を再発火させない)。
+				if (isEqual(rawObject, newObject)) {
+					return;
+				}
+				transaction.update(doc.ref, { object: newObject });
 			});
 		});
 	}
