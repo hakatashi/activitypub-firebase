@@ -150,6 +150,69 @@ describe('Store', () => {
 			expect(stream).toHaveLength(2);
 		});
 
+		test('includes the Firestore document ID as _id for use as a pagination cursor', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/cursor-check',
+				type: 'Create',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+
+			const stream = await store.getStream('https://example.com/inbox', null, null);
+			expect(stream).toHaveLength(1);
+			expect(typeof stream[0]._id).toBe('string');
+			expect(stream[0]._id.length).toBeGreaterThan(0);
+		});
+
+		test('pages through a collection using the _id cursor without duplicates or gaps', async () => {
+			await Promise.all(
+				['1', '2', '3', '4', '5'].map((suffix) =>
+					store.saveActivity({
+						id: `https://example.com/activities/page-${suffix}`,
+						type: 'Create',
+						_meta: { collection: ['https://example.com/inbox'] },
+					}),
+				),
+			);
+
+			const collected: string[] = [];
+			let after: string | null = null;
+			for (let i = 0; i < 10; i++) {
+				const page: any[] = await store.getStream('https://example.com/inbox', 2, after);
+				if (page.length === 0) {
+					break;
+				}
+				collected.push(...page.map((activity) => activity.id));
+				after = page.at(-1)._id;
+			}
+
+			expect(collected).toHaveLength(5);
+			expect(new Set(collected).size).toBe(5);
+			expect(new Set(collected)).toEqual(
+				new Set([
+					'https://example.com/activities/page-1',
+					'https://example.com/activities/page-2',
+					'https://example.com/activities/page-3',
+					'https://example.com/activities/page-4',
+					'https://example.com/activities/page-5',
+				]),
+			);
+		});
+
+		test('limit === null (page === Infinity) still returns every matching activity', async () => {
+			await Promise.all(
+				['1', '2', '3'].map((suffix) =>
+					store.saveActivity({
+						id: `https://example.com/activities/all-${suffix}`,
+						type: 'Create',
+						_meta: { collection: ['https://example.com/inbox'] },
+					}),
+				),
+			);
+
+			const stream = await store.getStream('https://example.com/inbox', null, null);
+			expect(stream).toHaveLength(3);
+		});
+
 		test('passing a non-empty blockList currently makes the query fail', async () => {
 			// Firestore は not-in フィルタを使う場合、最初の orderBy をそのフィールドに
 			// することを要求する。getStream は orderBy を常に documentId() のみにしているため、

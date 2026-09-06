@@ -8,7 +8,7 @@
 	"rules": {
 		"import/no-namespace": "off",
 		"import/no-named-as-default-member": "off",
-		"no-underscore-dangle": ["error", { "allow": ["_meta"] }],
+		"no-underscore-dangle": ["error", { "allow": ["_meta", "_id"] }],
 		"typescript/no-explicit-any": "off"
 	}
 }

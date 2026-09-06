@@ -166,7 +166,9 @@ export default class Store extends IApexStore {
 			.where('_meta.collection', 'array-contains', collectionId);
 
 		if (after) {
-			query = query.where(firebase.firestore.FieldPath.documentId(), '>', after);
+			// orderBy is descending, so "after" (the last item of the previous
+			// page) means items that sort strictly lower than it.
+			query = query.where(firebase.firestore.FieldPath.documentId(), '<', after);
 		}
 		if (Array.isArray(blockList) && blockList.length > 0) {
 			query = query.where('actor', 'not-in', blockList);
@@ -194,7 +196,10 @@ export default class Store extends IApexStore {
 
 		const streams = await query.get();
 
-		return streams.docs.map((doc) => doc.data());
+		// activitypub-express's buildCollectionPage uses `_id` (a MongoDB
+		// convention) as the cursor for the next page, so we surface the
+		// Firestore document ID under that key.
+		return streams.docs.map((doc) => ({...doc.data(), _id: doc.id}));
 	}
 
 	async getStreamCount(collectionId: string) {

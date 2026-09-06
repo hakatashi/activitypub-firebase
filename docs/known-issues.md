@@ -91,14 +91,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 ## コレクションとページネーション
 
-### コレクションのページングが常に1ページ目を返す
-
-apex は次ページのカーソルを `stream[stream.length - 1]?._id` から取得する
-(`activitypub-express/pub/collection.js:72`)が、Firestore Store の `getStream` は
-`doc.data()` をそのまま返すため **`_id` フィールドが存在しない。**
-カーソルは常に `undefined` になり、outbox / followers などは何ページ目を要求しても
-1ページ目が返る。
-
 ### `followers` が匿名リクエストに対して常に空を返す
 
 `activitypub-express` の `getCollection`(`pub/collection.js`)は `includePrivate`
@@ -130,11 +122,6 @@ inbox 処理(`net/activity.js` の `denormalizeObject` 対象に `undo` が含�
 必ず失敗する。**ブロックリスト機能は現状まったく動作しない。**
 ([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み、
 [Issue #31](https://github.com/hakatashi/activitypub-firebase/issues/31))
-
-### `getStream` のカーソル方向が逆
-
-`functions/src/store.ts:171-173` は `after` を `documentId() > after` で絞る一方、
-`:192` で `documentId(), 'desc'` の降順に並べている。降順カーソルなら比較は `<` であるべき。
 
 ## Store の未実装メソッド
 
