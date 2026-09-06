@@ -146,6 +146,7 @@ export default class Store extends IApexStore implements ApexStore {
 	 * @param  {object[]} [additionalQuery] - additional aggretation pipeline stages to include
 	 * @returns {Promise<object[]>} - result
 	 */
+	// blockList は Firestore の not-in ではなく取得後にアプリケーション側でフィルタする(→ ADR-0029)。
 	// oxlint-disable-next-line max-params
 	override async getStream(
 		collectionId: string,
@@ -170,9 +171,6 @@ export default class Store extends IApexStore implements ApexStore {
 			// page) means items that sort strictly lower than it.
 			query = query.where(firebase.firestore.FieldPath.documentId(), '<', after);
 		}
-		if (Array.isArray(blockList) && blockList.length > 0) {
-			query = query.where('actor', 'not-in', blockList);
-		}
 		if (additionalQuery && additionalQuery.length > 0) {
 			for (const queryObject of additionalQuery) {
 				for (const [key, value] of Object.entries(queryObject)) {
@@ -196,10 +194,18 @@ export default class Store extends IApexStore implements ApexStore {
 
 		const streams = await query.get();
 
+		const blockSet = new Set(blockList);
+		const docs =
+			blockSet.size > 0
+				? streams.docs.filter(
+						(doc) => !toIdArray(doc.get('actor')).some((actor) => blockSet.has(actor)),
+					)
+				: streams.docs;
+
 		// activitypub-express's buildCollectionPage uses `_id` (a MongoDB
 		// convention) as the cursor for the next page, so we surface the
 		// Firestore document ID under that key.
-		return streams.docs.map((doc) => ({ ...doc.data(), _id: doc.id }));
+		return docs.map((doc) => ({ ...doc.data(), _id: doc.id }));
 	}
 
 	override async getStreamCount(collectionId: string) {

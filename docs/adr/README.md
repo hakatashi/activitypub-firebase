@@ -54,3 +54,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0026](0026-ban-any-and-confine-casts-to-boundaries.md) | `any` を禁止し、型キャストを境界ファイルに閉じ込める | Accepted |
 | [0027](0027-branded-firestore-key.md) | エスケープ済み Firestore キーをブランド型で区別する | Accepted |
 | [0028](0028-allow-as-casts-in-test-files.md) | 型アサーションの配置ルールにテストファイルの例外を加える | Accepted |
+| [0029](0029-blocklist-filter-in-application.md) | `getStream` の `blockList` フィルタはアプリケーション側で行う | Accepted |
