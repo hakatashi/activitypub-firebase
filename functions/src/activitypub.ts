@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import cors from 'cors';
 import express from 'express';
 import { https, logger, params } from 'firebase-functions/v2';
+import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { runPostWorkBeforeSend } from './postWork.js';
@@ -64,13 +65,30 @@ app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
 
 app.get(routes.actor, apex.net.actor.get);
 
+const actorParamsSchema = z.object({
+	actor: z.string().min(1),
+});
+
+const createPostBodySchema = z.object({
+	text: z.string().min(1),
+});
+
+const pingTaskQueueQuerySchema = z.object({
+	message: z.string().default('ping'),
+});
+
+const resendDeliveryBodySchema = z.object({
+	activityId: z.string().min(1),
+	inbox: z.string().min(1),
+});
+
 app.get(routes.actor, (req: express.Request, res: express.Response) => {
-	const actor = req.params.actor;
-	if (typeof actor !== 'string') {
+	const parsedParams = actorParamsSchema.safeParse(req.params);
+	if (!parsedParams.success) {
 		res.status(400).send('Actor is not specified');
 		return;
 	}
-	res.redirect(`https://elk.zone/${mastodonDomain}/@${actor}@${domain}`);
+	res.redirect(`https://elk.zone/${mastodonDomain}/@${parsedParams.data.actor}@${domain}`);
 });
 
 app.get(routes.followers, apex.net.followers.get);
@@ -105,11 +123,13 @@ app.post(
 	'/activitypub/createPost',
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
-		const text = req.body?.text;
-		if (typeof text !== 'string') {
+		const parsedBody = createPostBodySchema.safeParse(req.body);
+		if (!parsedBody.success) {
 			res.status(400).send('Text is not correct type');
 			return;
 		}
+
+		const { text } = parsedBody.data;
 
 		const url = apex.utils.objectIdToIRI();
 		const published = new Date().toISOString();
@@ -148,7 +168,8 @@ app.get(
 	'/activitypub/pingTaskQueue',
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
-		const message = typeof req.query.message === 'string' ? req.query.message : 'ping';
+		const parsedQuery = pingTaskQueueQuerySchema.safeParse(req.query);
+		const message = parsedQuery.success ? parsedQuery.data.message : 'ping';
 		await enqueuePingTask(message);
 		res.send('ok');
 	},
@@ -180,11 +201,13 @@ app.post(
 	'/activitypub/deliveries/resend',
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
-		const { activityId, inbox } = req.body ?? {};
-		if (typeof activityId !== 'string' || typeof inbox !== 'string') {
+		const parsedBody = resendDeliveryBodySchema.safeParse(req.body);
+		if (!parsedBody.success) {
 			res.status(400).send('activityId and inbox are required');
 			return;
 		}
+
+		const { activityId, inbox } = parsedBody.data;
 
 		const delivery = await apex.store.getDelivery(activityId, inbox);
 		if (!delivery) {

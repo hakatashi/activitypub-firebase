@@ -8,6 +8,7 @@ import express from 'express';
 import firebase from 'firebase-admin';
 import { chunk, last, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
+import { z } from 'zod';
 import { apex } from '../activitypub.js';
 import { domain, escapeFirestoreKey, mastodonDomain, unescapeFirestoreKey } from '../firebase.js';
 import { metaIndexPath } from '../meta.js';
@@ -330,16 +331,36 @@ router.get('/v2/instance', (req, res) => {
 	res.json(instanceV2);
 });
 
+const accountLookupQuerySchema = z.object({
+	acct: z.string().min(1),
+});
+
+const accountParamsSchema = z.object({
+	id: z.string().min(1),
+});
+
+const createAppBodySchema = z.object({
+	client_name: z.string().min(1),
+	redirect_uris: z.string().min(1),
+	scopes: z
+		.string()
+		.default('read')
+		.refine((scopes) => scopes.split(' ').every((scope) => validScopes.includes(scope)), {
+			message: 'Invalid scope included',
+		}),
+	website: z.string().default(''),
+});
+
 router.get('/v1/accounts/lookup', async (req, res) => {
-	const acct = req.query.acct;
-	if (typeof acct !== 'string') {
+	const parsedQuery = accountLookupQuerySchema.safeParse(req.query);
+	if (!parsedQuery.success) {
 		res.status(404).json({
 			error: 'Record not found',
 		});
 		return;
 	}
 
-	const account = await getAccount(acct);
+	const account = await getAccount(parsedQuery.data.acct);
 
 	if (account === undefined) {
 		res.status(404).json({
@@ -352,11 +373,27 @@ router.get('/v1/accounts/lookup', async (req, res) => {
 });
 
 router.get('/v1/accounts/:id/statuses', async (req, res) => {
+	const parsedParams = accountParamsSchema.safeParse(req.params);
+	if (!parsedParams.success) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
 	res.json(await getAllNotes());
 });
 
 router.get('/v1/accounts/:id/followers', async (req, res) => {
-	const userInfo = await UserInfos.where('id', '==', req.params.id).get();
+	const parsedParams = accountParamsSchema.safeParse(req.params);
+	if (!parsedParams.success) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
+	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
 
 	if (userInfo.docs.length !== 1) {
 		res.status(404).json({
@@ -406,28 +443,15 @@ router.get('/v1/timelines/home', authRequired, async (req, res) => {
 });
 
 router.post('/v1/apps', async (req, res) => {
-	const clientName = req.body?.client_name;
-	const redirectUris = req.body?.redirect_uris;
-	const scopes = req.body?.scopes ?? 'read';
-	const website = req.body?.website ?? '';
-
-	if (
-		typeof clientName !== 'string' ||
-		typeof redirectUris !== 'string' ||
-		typeof scopes !== 'string' ||
-		typeof website !== 'string'
-	) {
+	const parsedBody = createAppBodySchema.safeParse(req.body);
+	if (!parsedBody.success) {
 		res.status(400).send('Bad request');
 		return;
 	}
 
+	const { client_name: clientName, redirect_uris: redirectUris, scopes, website } = parsedBody.data;
+
 	const scopeSet = new Set<string>(scopes.split(' '));
-	for (const scope of scopeSet) {
-		if (!validScopes.includes(scope)) {
-			res.status(400).send('Bad request');
-			return;
-		}
-	}
 
 	const id = (await Clients.count().get()).data().count + 1;
 	const clientId = crypto.randomBytes(32).toString('hex');

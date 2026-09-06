@@ -7,9 +7,36 @@ import express from 'express';
 import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import fetch from 'node-fetch';
+import { z } from 'zod';
 import { projectId } from '../firebase.js';
 import { redactSensitiveBody } from '../utils.js';
 import { Oauth2Model } from './oauth2Model.js';
+
+const firebaseWebappsResponseSchema = z.object({
+	apps: z
+		.array(z.object({ appId: z.string() }))
+		.optional()
+		.default([]),
+});
+
+const firebaseWebappConfigSchema = z.record(z.string(), z.unknown());
+
+const oauthAuthorizeQuerySchema = z.object({
+	client_id: z.string().min(1),
+	redirect_uri: z.string().min(1),
+	response_type: z.string().min(1),
+	scope: z.string().default('scope'),
+});
+
+const oauthAuthorizeBodySchema = z.object({
+	idToken: z.string().min(1),
+});
+
+const oauthTokenBodySchema = z
+	.object({
+		grant_type: z.string().min(1),
+	})
+	.passthrough();
 
 const getFirebaseWebapps = async (accessToken: string) => {
 	const endpoint = `https://firebase.googleapis.com/v1beta1/projects/${projectId}/webApps`;
@@ -19,8 +46,23 @@ const getFirebaseWebapps = async (accessToken: string) => {
 		},
 	});
 
-	const data = (await response.json()) as { apps: { appId: string }[] };
-	return data.apps;
+	if (!response.ok) {
+		throw new Error(
+			`Firebase WebApps API failed with status ${response.status}: ${response.statusText}`,
+		);
+	}
+
+	const json: unknown = await response.json();
+	const parsed = firebaseWebappsResponseSchema.safeParse(json);
+	if (!parsed.success) {
+		logger.error({
+			type: 'firebaseWebappsResponseValidationError',
+			error: parsed.error,
+		});
+		throw new Error(`Invalid Firebase WebApps response: ${parsed.error.message}`);
+	}
+
+	return parsed.data.apps;
 };
 
 const getFirebaseWebappConfig = async (accessToken: string, appId: string) => {
@@ -31,9 +73,23 @@ const getFirebaseWebappConfig = async (accessToken: string, appId: string) => {
 		},
 	});
 
-	const data = (await response.json()) as Record<string, any>;
+	if (!response.ok) {
+		throw new Error(
+			`Firebase WebApp config API failed with status ${response.status}: ${response.statusText}`,
+		);
+	}
 
-	return data;
+	const json: unknown = await response.json();
+	const parsed = firebaseWebappConfigSchema.safeParse(json);
+	if (!parsed.success) {
+		logger.error({
+			type: 'firebaseWebappConfigResponseValidationError',
+			error: parsed.error,
+		});
+		throw new Error(`Invalid Firebase WebApp config response: ${parsed.error.message}`);
+	}
+
+	return parsed.data;
 };
 
 const getWebappConfig = async () => {
@@ -63,20 +119,28 @@ router.get('/authorize', async (req, res) => {
 		params: req.query,
 	});
 
-	const config = await getWebappConfig();
-
-	const clientId = req.query.client_id;
-	const redirectUri = req.query.redirect_uri;
-	const responseType = req.query.response_type;
-	const scope = req.query.scope ?? 'scope';
-
-	if (
-		typeof clientId !== 'string' ||
-		typeof redirectUri !== 'string' ||
-		typeof responseType !== 'string' ||
-		typeof scope !== 'string'
-	) {
+	const parsedQuery = oauthAuthorizeQuerySchema.safeParse(req.query);
+	if (!parsedQuery.success) {
 		res.status(400).send('Bad request');
+		return;
+	}
+
+	const {
+		client_id: clientId,
+		redirect_uri: redirectUri,
+		response_type: responseType,
+		scope,
+	} = parsedQuery.data;
+
+	let config: Record<string, unknown>;
+	try {
+		config = await getWebappConfig();
+	} catch (error) {
+		logger.error({
+			type: 'oauthAuthorizeGetConfigError',
+			error: error instanceof Error ? error.message : String(error),
+		});
+		res.status(500).send('Internal server error');
 		return;
 	}
 
@@ -149,13 +213,26 @@ router.post('/authorize', async (req, res) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 
-	const idToken = req.body.idToken;
-	if (typeof idToken !== 'string') {
+	const parsedBody = oauthAuthorizeBodySchema.safeParse(req.body);
+	if (!parsedBody.success) {
 		res.sendStatus(400);
 		return;
 	}
 
-	const authUser = await firebase.auth().verifyIdToken(idToken);
+	const { idToken } = parsedBody.data;
+
+	let authUser: firebase.auth.DecodedIdToken;
+	try {
+		authUser = await firebase.auth().verifyIdToken(idToken);
+	} catch (error) {
+		logger.error({
+			type: 'oauthAuthorizeVerifyIdTokenError',
+			error: error instanceof Error ? error.message : String(error),
+		});
+		res.status(400).send('Bad request');
+		return;
+	}
+
 	logger.info({
 		type: 'oauthAuthorizePost',
 		uid: authUser.uid,
@@ -194,6 +271,12 @@ router.post('/authorize', async (req, res) => {
 });
 
 router.post('/token', async (req, res) => {
+	const parsedBody = oauthTokenBodySchema.safeParse(req.body);
+	if (!parsedBody.success) {
+		res.status(400).send('Bad request');
+		return;
+	}
+
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 

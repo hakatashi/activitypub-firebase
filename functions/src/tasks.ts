@@ -2,16 +2,26 @@ import type { APActorWithMeta } from 'activitypub-express';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
+import { z } from 'zod';
 import { apex } from './apex.js';
 
-interface PingTaskPayload {
-	message: string;
-}
+const pingTaskPayloadSchema = z.object({
+	message: z.string(),
+});
 
-export const pingTask = onTaskDispatched<PingTaskPayload>(
+export const pingTask = onTaskDispatched<unknown>(
 	{ retryConfig: { maxAttempts: 1 } },
 	(request) => {
-		logger.info({ type: 'pingTaskReceived', message: request.data.message });
+		const parsed = pingTaskPayloadSchema.safeParse(request.data);
+		if (!parsed.success) {
+			logger.error({
+				type: 'pingTaskInvalidPayload',
+				error: parsed.error,
+				data: request.data,
+			});
+			return;
+		}
+		logger.info({ type: 'pingTaskReceived', message: parsed.data.message });
 	},
 );
 
@@ -19,11 +29,15 @@ export const enqueuePingTask = async (message: string) => {
 	await getFunctions().taskQueue('pingTask').enqueue({ message });
 };
 
-interface DeliveryTaskPayload {
-	actorId: string;
-	body: string;
-	address: string;
-}
+const deliveryTaskPayloadSchema = z.object({
+	actorId: z.string().min(1),
+	body: z.string().min(1),
+	address: z.string().min(1),
+});
+
+const activityBodySchema = z.object({
+	id: z.string().min(1),
+});
 
 // apex.deliver は request-promise-native の `simple: false` で呼ばれ、
 // 4xx/5xx でも例外を投げずレスポンスを返す。ステータスコードごとに
@@ -31,7 +45,7 @@ interface DeliveryTaskPayload {
 // 破棄すべきか(正常終了する)を判定する。ネットワークエラー/タイムアウトは
 // apex.deliver 自体が reject するため、結果を記録してからそのまま
 // Cloud Tasks の再試行に委ねる(ADR-0012)。
-export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
+export const deliveryTask = onTaskDispatched<unknown>(
 	{
 		retryConfig: {
 			maxAttempts: 5,
@@ -48,10 +62,43 @@ export const deliveryTask = onTaskDispatched<DeliveryTaskPayload>(
 		timeoutSeconds: 60,
 	},
 	async (request) => {
-		const { actorId, body, address } = request.data;
+		const parsedPayload = deliveryTaskPayloadSchema.safeParse(request.data);
+		if (!parsedPayload.success) {
+			logger.error({
+				type: 'deliveryTaskInvalidPayload',
+				error: parsedPayload.error,
+				data: request.data,
+			});
+			return;
+		}
+
+		const { actorId, body, address } = parsedPayload.data;
 		// Cloud Tasks の初回実行では 0。ADR-0012: Firestore 上の試行回数として使う
 		const attempts = (request.retryCount ?? 0) + 1;
-		const activityId = JSON.parse(body).id;
+
+		let activityId: string;
+		try {
+			const parsedJson: unknown = JSON.parse(body);
+			const parsedBody = activityBodySchema.safeParse(parsedJson);
+			if (!parsedBody.success) {
+				logger.error({
+					type: 'deliveryTaskInvalidBody',
+					error: parsedBody.error,
+					actorId,
+					address,
+				});
+				return;
+			}
+			activityId = parsedBody.data.id;
+		} catch (err: unknown) {
+			logger.error({
+				type: 'deliveryTaskInvalidJsonBody',
+				error: err instanceof Error ? err.message : String(err),
+				actorId,
+				address,
+			});
+			return;
+		}
 
 		logger.info({ type: 'deliveryTaskReceived', actorId, address, attempts });
 
