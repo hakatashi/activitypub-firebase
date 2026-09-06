@@ -123,29 +123,6 @@ inbox 処理(`net/activity.js` の `denormalizeObject` 対象に `undo` が含�
 ([`functions/test/unit/store.spec.ts`](../functions/test/unit/store.spec.ts) で再現を確認済み、
 [Issue #31](https://github.com/hakatashi/activitypub-firebase/issues/31))
 
-## データ更新の反映
-
-### `updateObjectCopies` が常に何もしていない
-
-`functions/src/store.ts` の `updateObjectCopies` は `Update`(Note の編集・Actor
-プロフィール更新など)で `updateObject`/`updateActivity` が呼ばれたとき、`streams` に
-埋め込まれている古いコピーを新しい内容へ差し替えるための処理だが、2つの理由で
-**常に何もしていない**ことを実機の Firestore エミュレータで確認した。
-
-1. `streams.object` は常に配列(activitypub-express が `compactArrays: false` で
-   JSON-LD を正規化するため)だが、`updateObjectCopies` は
-   `.where('object.id', '==', object.id)` という Firestore のドット記法クエリを使っている。
-   ドット記法はマップ型フィールドの中身にしか届かず、配列要素の中のフィールドには届かないため、
-   **このクエリは常にヒット0件になる。**
-2. 仮にクエリがヒットしても、`lodash-es` の `mapValues` は配列を渡すと `{0: ..., 1: ...}`
-   という数値キーのプレーンオブジェクトを返す。これをそのまま `object` フィールドへ
-   書き戻すと、配列だったフィールドがマップに壊れ、`Array.isArray` 判定に依存する他の
-   コード(`toIdArray` を含む非正規化処理全般、→ ADR-0020)が誤動作するデータ破損経路になる。
-
-**Note の編集や Actor のプロフィール更新をしても、他の `streams` ドキュメント
-(Like/Announce/Create などに埋め込まれた `object` のコピー)には反映されない。**
-([Issue #72](https://github.com/hakatashi/activitypub-firebase/issues/72))
-
 ## Mastodon API
 
 ### タイムラインが全 Note を無条件に返す

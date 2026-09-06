@@ -1,22 +1,11 @@
 import assert from 'node:assert';
 import firebase from 'firebase-admin';
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { isEqual } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
+import { buildMetaIndex } from './meta.js';
 import { UserInfos } from './schema.js';
 import { toIdArray } from './utils.js';
-
-// Check if given two sets are equal
-const setEqual = <T>(a: Set<T>, b: Set<T>) => {
-	if (a.size !== b.size) {
-		return false;
-	}
-	for (const item of a) {
-		if (!b.has(item)) {
-			return false;
-		}
-	}
-	return true;
-};
 
 export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (event) => {
 	const stream = event.data?.after?.data?.();
@@ -26,61 +15,17 @@ export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (ev
 	}
 	assert(event.data?.after?.ref !== undefined);
 
-	const batch = db.batch();
+	// `_meta.collection`(apex 所有の配列)と `actor`/`object` を、Firestore で絞り込める
+	// map 形式のインデックスに非正規化する(→ ADR-0021)。actor/object は IRI 文字列・Link・
+	// 埋め込みオブジェクトのいずれにもなりうるため、buildMetaIndex 内の toIdArray で
+	// スカラー ID に正規化される。
+	const newIndex = buildMetaIndex(stream);
 
-	const objects = stream.object ?? [];
-
-	// Denormalize objectTypes
-
-	const oldObjectTypes = new Set<string>(stream._meta?.objectTypes ?? []);
-	const newObjectTypes = new Set<string>(
-		objects
-			.map((object: any) => object.type)
-			.filter((objectType: any) => typeof objectType === 'string'),
-	);
-
-	if (!setEqual(oldObjectTypes, newObjectTypes)) {
-		batch.update(event.data.after.ref, {
-			'_meta.objectTypes': Array.from(newObjectTypes),
-		});
+	if (isEqual(stream._meta?.index, newIndex)) {
+		return;
 	}
 
-	// Denormalize objectType
-
-	const oldObjectType = stream._meta?.objectType ?? undefined;
-	const newObjectType = objects
-		.map((object: any) => object.type)
-		.find((objectType: any) => typeof objectType === 'string');
-
-	if (oldObjectType !== newObjectType) {
-		batch.update(event.data.after.ref, {
-			'_meta.objectType': newObjectType,
-		});
-	}
-
-	// actor/object は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、
-	// findActivityByCollectionAndActorId/ObjectId (→ ADR-0020) が array-contains で
-	// 引けるよう、常にスカラー ID の配列へ正規化して denormalize する。
-
-	const oldActorIds = new Set<string>(stream._meta?.actorIds ?? []);
-	const newActorIds = new Set<string>(toIdArray(stream.actor));
-
-	if (!setEqual(oldActorIds, newActorIds)) {
-		batch.update(event.data.after.ref, {
-			'_meta.actorIds': Array.from(newActorIds),
-		});
-	}
-
-	const oldObjectIds = new Set<string>(stream._meta?.objectIds ?? []);
-	const newObjectIds = new Set<string>(toIdArray(stream.object));
-
-	if (!setEqual(oldObjectIds, newObjectIds)) {
-		batch.update(event.data.after.ref, {
-			'_meta.objectIds': Array.from(newObjectIds),
-		});
-	}
-
-	await batch.commit();
+	await event.data.after.ref.update({ '_meta.index': newIndex });
 });
 
 export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (event) => {

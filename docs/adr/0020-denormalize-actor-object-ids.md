@@ -1,6 +1,6 @@
 # ADR-0020: `actor`/`object` の IRI を `_meta.actorIds`/`_meta.objectIds` に非正規化する
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0021
 - **Date:** 2026-09-06
 
 ## 背景

@@ -1,19 +1,17 @@
-import { countBy } from 'lodash-es';
+import firebase from 'firebase-admin';
+import { countBy, isEqual } from 'lodash-es';
 import { db, unescapeFirestoreKey } from '../src/firebase.js';
+import { buildMetaIndex } from '../src/meta.js';
 import { UserInfos } from '../src/schema.js';
 import { toIdArray } from '../src/utils.js';
 
-const setEqual = <T>(a: Set<T>, b: Set<T>) => {
-	if (a.size !== b.size) {
-		return false;
-	}
-	for (const item of a) {
-		if (!b.has(item)) {
-			return false;
-		}
-	}
-	return true;
-};
+// ADR-0021 より前のスキーマで書き込まれた非正規化フィールド。バックフィル時に削除する。
+const LEGACY_META_FIELDS = [
+	'_meta.actorIds',
+	'_meta.objectIds',
+	'_meta.objectType',
+	'_meta.objectTypes',
+];
 
 db.runTransaction(async (transaction) => {
 	const streams = await transaction.get(db.collection('streams'));
@@ -46,58 +44,29 @@ db.runTransaction(async (transaction) => {
 	streams.docs.forEach((streamDoc) => {
 		const stream = streamDoc.data();
 
-		const objects = stream.object ?? [];
-
-		// Denormalize objectTypes
-		const oldObjectTypes = new Set<string>(stream._meta?.objectTypes ?? []);
-		const newObjectTypes = new Set<string>(
-			objects
-				.map((object: any) => object.type)
-				.filter((objectType: any) => typeof objectType === 'string'),
-		);
-
-		if (!setEqual(oldObjectTypes, newObjectTypes)) {
-			transaction.update(streamDoc.ref, {
-				'_meta.objectTypes': Array.from(newObjectTypes),
-			});
-		}
-
-		// Denormalize objectType
-		const oldObjectType = stream._meta?.objectType ?? undefined;
-		const newObjectType = objects
-			.map((object: any) => object.type)
-			.find((objectType: any) => typeof objectType === 'string');
-
-		if (oldObjectType !== newObjectType) {
-			transaction.update(streamDoc.ref, {
-				'_meta.objectType': newObjectType,
-			});
-		}
+		const updates: Record<string, unknown> = {};
 
 		// Backfill _meta.collection: スカラーで保存されている既存ドキュメントを配列化する (→ ADR-0017)
 		if (typeof stream._meta?.collection === 'string') {
-			transaction.update(streamDoc.ref, {
-				'_meta.collection': [stream._meta.collection],
-			});
+			updates['_meta.collection'] = [stream._meta.collection];
 		}
 
-		// Backfill _meta.actorIds / _meta.objectIds (→ ADR-0020)
-		const oldActorIds = new Set<string>(stream._meta?.actorIds ?? []);
-		const newActorIds = new Set<string>(toIdArray(stream.actor));
-
-		if (!setEqual(oldActorIds, newActorIds)) {
-			transaction.update(streamDoc.ref, {
-				'_meta.actorIds': Array.from(newActorIds),
-			});
+		// Backfill _meta.index (→ ADR-0021)
+		const newIndex = buildMetaIndex(stream);
+		if (!isEqual(stream._meta?.index, newIndex)) {
+			updates['_meta.index'] = newIndex;
 		}
 
-		const oldObjectIds = new Set<string>(stream._meta?.objectIds ?? []);
-		const newObjectIds = new Set<string>(toIdArray(stream.object));
+		// ADR-0021 で廃止した _meta.actorIds / objectIds / objectType / objectTypes を削除する
+		for (const field of LEGACY_META_FIELDS) {
+			const [, key] = field.split('.');
+			if (stream._meta?.[key] !== undefined) {
+				updates[field] = firebase.firestore.FieldValue.delete();
+			}
+		}
 
-		if (!setEqual(oldObjectIds, newObjectIds)) {
-			transaction.update(streamDoc.ref, {
-				'_meta.objectIds': Array.from(newObjectIds),
-			});
+		if (Object.keys(updates).length > 0) {
+			transaction.update(streamDoc.ref, updates);
 		}
 	});
 

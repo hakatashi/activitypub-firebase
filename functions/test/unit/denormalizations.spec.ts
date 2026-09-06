@@ -36,30 +36,89 @@ describe('denormalizations', () => {
 		);
 	});
 
+	// findActivityByCollectionAndActorId/ObjectId や updateObjectCopies (→ ADR-0021) は
+	// この _meta.index.* を等価条件で引く。collection/actor/object は IRI 文字列・Link・
+	// 埋め込みオブジェクトのいずれにもなりうるため、どの表現でも同じキーに正規化されることを確認する。
 	describe('onStreamWritten', () => {
-		test('denormalizes _meta.objectTypes and _meta.objectType from the current object field', async () => {
+		test('denormalizes _meta.index from _meta.collection and bare IRI strings', async () => {
 			const ref = db.collection('streams').doc('stream-1');
 			await ref.set({
 				id: 'https://example.com/activities/1',
-				type: 'Create',
-				object: [{ type: 'Note' }],
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: { collection: ['https://example.com/activitypub/u/hakatashi/inbox'] },
 			});
 			const after = await ref.get();
 
 			await onStreamWritten.run({ data: { before: undefined, after } } as any);
 
 			const updated = await getData(ref);
-			expect(updated._meta.objectTypes).toEqual(['Note']);
-			expect(updated._meta.objectType).toBe('Note');
+			expect(updated._meta.index).toEqual({
+				collections: {
+					[escapeFirestoreKey('https://example.com/activitypub/u/hakatashi/inbox')]: true,
+				},
+				actors: { [escapeFirestoreKey('https://remote.example/u/alice')]: true },
+				objects: { [escapeFirestoreKey('https://example.com/users/hakatashi')]: true },
+			});
 		});
 
-		test('does not write when the denormalized fields are already up to date', async () => {
+		test('denormalizes _meta.index from embedded objects and Links', async () => {
+			// dev 環境で実際に観測された Undo(Follow) は object が埋め込みオブジェクトになる
+			// (Issue #49 のフォローアップ)。Link (href が配列でボックス化される) も含めて
+			// スカラーの IRI 文字列に正規化されることを確認する。
 			const ref = db.collection('streams').doc('stream-2');
 			await ref.set({
 				id: 'https://example.com/activities/2',
+				type: 'Follow',
+				actor: [{ id: 'https://remote.example/u/alice', type: 'Person' }],
+				object: [{ type: 'Link', href: ['https://example.com/users/hakatashi'] }],
+			});
+			const after = await ref.get();
+
+			await onStreamWritten.run({ data: { before: undefined, after } } as any);
+
+			const updated = await getData(ref);
+			expect(updated._meta.index.actors).toEqual({
+				[escapeFirestoreKey('https://remote.example/u/alice')]: true,
+			});
+			expect(updated._meta.index.objects).toEqual({
+				[escapeFirestoreKey('https://example.com/users/hakatashi')]: true,
+			});
+		});
+
+		// IRI はドットを含むため、エスケープせずに map のキーにすると Firestore の
+		// フィールドパスの区切りと衝突する (→ ADR-0021)。
+		test('escapes dots and slashes in the index keys', async () => {
+			const ref = db.collection('streams').doc('stream-3');
+			await ref.set({
+				id: 'https://example.com/activities/3',
 				type: 'Create',
-				object: [{ type: 'Note' }],
-				_meta: { objectTypes: ['Note'], objectType: 'Note' },
+				object: ['https://mstdn.jp/users/hakatashi/statuses/1'],
+			});
+			const after = await ref.get();
+
+			await onStreamWritten.run({ data: { before: undefined, after } } as any);
+
+			const updated = await getData(ref);
+			expect(Object.keys(updated._meta.index.objects)).toEqual([
+				'https:%2F%2Fmstdn%2Ejp%2Fusers%2Fhakatashi%2Fstatuses%2F1',
+			]);
+		});
+
+		test('does not write when the index is already up to date', async () => {
+			const ref = db.collection('streams').doc('stream-4');
+			const index = {
+				collections: {},
+				actors: { [escapeFirestoreKey('https://remote.example/u/alice')]: true },
+				objects: { [escapeFirestoreKey('https://example.com/users/hakatashi')]: true },
+			};
+			await ref.set({
+				id: 'https://example.com/activities/4',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: ['https://example.com/users/hakatashi'],
+				_meta: { index },
 			});
 			const after = await ref.get();
 
@@ -69,7 +128,7 @@ describe('denormalizations', () => {
 			).resolves.toBeUndefined();
 
 			const updated = await getData(ref);
-			expect(updated._meta).toEqual({ objectTypes: ['Note'], objectType: 'Note' });
+			expect(updated._meta).toEqual({ index });
 		});
 
 		test('does nothing when the document was deleted', async () => {
@@ -80,80 +139,15 @@ describe('denormalizations', () => {
 			).resolves.toBeUndefined();
 		});
 
-		test('treats a missing object field as an empty collection and skips the update since nothing changed', async () => {
-			const ref = db.collection('streams').doc('stream-3');
-			await ref.set({ id: 'https://example.com/activities/3', type: 'Follow' });
-			const after = await ref.get();
-
-			await onStreamWritten.run({ data: { before: undefined, after } } as any);
-
-			const updated = await getData(ref);
-			expect(updated._meta).toBeUndefined();
-		});
-
-		// findActivityByCollectionAndActorId/ObjectId (→ ADR-0020) はこの _meta.actorIds/objectIds を
-		// array-contains で引く。actor/object は IRI 文字列・Link・埋め込みオブジェクトのいずれにも
-		// なりうるため、どの表現でも同じ ID に正規化されることを確認する。
-		test('denormalizes _meta.actorIds and _meta.objectIds from bare IRI strings', async () => {
-			const ref = db.collection('streams').doc('stream-4');
-			await ref.set({
-				id: 'https://example.com/activities/4',
-				type: 'Follow',
-				actor: ['https://remote.example/u/alice'],
-				object: ['https://example.com/users/hakatashi'],
-			});
-			const after = await ref.get();
-
-			await onStreamWritten.run({ data: { before: undefined, after } } as any);
-
-			const updated = await getData(ref);
-			expect(updated._meta.actorIds).toEqual(['https://remote.example/u/alice']);
-			expect(updated._meta.objectIds).toEqual(['https://example.com/users/hakatashi']);
-		});
-
-		test('denormalizes _meta.actorIds and _meta.objectIds from embedded objects and Links', async () => {
-			// dev 環境で実際に観測された Undo(Follow) は object が埋め込みオブジェクトになる
-			// (Issue #49 のフォローアップ)。Link (href が配列でボックス化される) も含めて
-			// スカラーの IRI 文字列に正規化されることを確認する。
+		test('writes empty maps when the activity has no actor/object/collection', async () => {
 			const ref = db.collection('streams').doc('stream-5');
-			await ref.set({
-				id: 'https://example.com/activities/5',
-				type: 'Follow',
-				actor: [{ id: 'https://remote.example/u/alice', type: 'Person' }],
-				object: [{ type: 'Link', href: ['https://example.com/users/hakatashi'] }],
-			});
+			await ref.set({ id: 'https://example.com/activities/5', type: 'Follow' });
 			const after = await ref.get();
 
 			await onStreamWritten.run({ data: { before: undefined, after } } as any);
 
 			const updated = await getData(ref);
-			expect(updated._meta.actorIds).toEqual(['https://remote.example/u/alice']);
-			expect(updated._meta.objectIds).toEqual(['https://example.com/users/hakatashi']);
-		});
-
-		test('does not write _meta.actorIds/objectIds when already up to date', async () => {
-			const ref = db.collection('streams').doc('stream-6');
-			await ref.set({
-				id: 'https://example.com/activities/6',
-				type: 'Follow',
-				actor: ['https://remote.example/u/alice'],
-				object: ['https://example.com/users/hakatashi'],
-				_meta: {
-					actorIds: ['https://remote.example/u/alice'],
-					objectIds: ['https://example.com/users/hakatashi'],
-				},
-			});
-			const after = await ref.get();
-
-			await expect(
-				onStreamWritten.run({ data: { before: undefined, after } } as any),
-			).resolves.toBeUndefined();
-
-			const updated = await getData(ref);
-			expect(updated._meta).toEqual({
-				actorIds: ['https://remote.example/u/alice'],
-				objectIds: ['https://example.com/users/hakatashi'],
-			});
+			expect(updated._meta.index).toEqual({ collections: {}, actors: {}, objects: {} });
 		});
 	});
 
