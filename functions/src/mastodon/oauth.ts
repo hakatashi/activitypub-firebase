@@ -12,27 +12,27 @@ import { projectId } from '../firebase.js';
 import { redactSensitiveBody } from '../utils.js';
 import { Oauth2Model } from './oauth2Model.js';
 
-const firebaseWebappsResponseSchema = z.object({
+export const firebaseWebappsResponseSchema = z.object({
 	apps: z
 		.array(z.object({ appId: z.string() }))
 		.optional()
 		.default([]),
 });
 
-const firebaseWebappConfigSchema = z.record(z.string(), z.unknown());
+export const firebaseWebappConfigSchema = z.record(z.string(), z.unknown());
 
-const oauthAuthorizeQuerySchema = z.object({
+export const oauthAuthorizeQuerySchema = z.object({
 	client_id: z.string().min(1),
 	redirect_uri: z.string().min(1),
 	response_type: z.string().min(1),
 	scope: z.string().default('scope'),
 });
 
-const oauthAuthorizeBodySchema = z.object({
+export const oauthAuthorizeBodySchema = z.object({
 	idToken: z.string().min(1),
 });
 
-const oauthTokenBodySchema = z
+export const oauthTokenBodySchema = z
 	.object({
 		grant_type: z.string().min(1),
 	})

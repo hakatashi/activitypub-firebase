@@ -5,7 +5,7 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { z } from 'zod';
 import { apex } from './apex.js';
 
-const pingTaskPayloadSchema = z.object({
+export const pingTaskPayloadSchema = z.object({
 	message: z.string(),
 });
 
@@ -29,13 +29,13 @@ export const enqueuePingTask = async (message: string) => {
 	await getFunctions().taskQueue('pingTask').enqueue({ message });
 };
 
-const deliveryTaskPayloadSchema = z.object({
+export const deliveryTaskPayloadSchema = z.object({
 	actorId: z.string().min(1),
 	body: z.string().min(1),
 	address: z.string().min(1),
 });
 
-const activityBodySchema = z.object({
+export const activityBodySchema = z.object({
 	id: z.string().min(1),
 });
 

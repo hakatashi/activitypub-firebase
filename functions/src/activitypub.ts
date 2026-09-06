@@ -65,19 +65,19 @@ app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
 
 app.get(routes.actor, apex.net.actor.get);
 
-const actorParamsSchema = z.object({
+export const actorParamsSchema = z.object({
 	actor: z.string().min(1),
 });
 
-const createPostBodySchema = z.object({
+export const createPostBodySchema = z.object({
 	text: z.string().min(1),
 });
 
-const pingTaskQueueQuerySchema = z.object({
+export const pingTaskQueueQuerySchema = z.object({
 	message: z.string().default('ping'),
 });
 
-const resendDeliveryBodySchema = z.object({
+export const resendDeliveryBodySchema = z.object({
 	activityId: z.string().min(1),
 	inbox: z.string().min(1),
 });
