@@ -80,7 +80,10 @@ export const actorObjectToAccount = async (
 	actorObject: APActor,
 	userInfo: UserInfo = externalUserInfo,
 ): Promise<CamelToSnake<mastodon.v1.Account>> => {
-	const actor = await apex.toJSONLD(actorObject);
+	// activitypub-types の APActor は icon/image を IconField|ImageField の union として定義するなど
+	// ここでの緩いプロパティアクセスと厳密には一致しない。この不整合の解消は ADR-0022 の対象外
+	// (apex 自体の型付けのみが対象) なので、ここでは toJSONLD 呼び出し以前と同じ緩さを維持する。
+	const actor: any = await apex.toJSONLD(actorObject);
 	const username = actor?.preferredUsername ?? last(actor?.id?.split('/'));
 	const actorDomain = new URL(actor.id).host;
 
@@ -104,7 +107,7 @@ const actorUsernameToAccount = async (
 ): Promise<CamelToSnake<mastodon.v1.Account> | undefined> => {
 	const actorId = `https://${domain}/activitypub/u/${username}`;
 	const [object, userInfoDoc] = await Promise.all([
-		apex.store.getObject(actorId) as Promise<APActor>,
+		apex.store.getObject(actorId) as unknown as Promise<APActor>,
 		UserInfos.doc(escapeFirestoreKey(actorId)).get(),
 	]);
 	if (object === undefined || !userInfoDoc.exists) {
@@ -187,7 +190,7 @@ const userIdsToAcconts = async (
 	}
 
 	const [actorObjects, userInfoDocsChunks] = await Promise.all([
-		apex.store.getObjects(userIds) as Promise<APActor[]>,
+		apex.store.getObjects(userIds) as unknown as Promise<APActor[]>,
 		Promise.all(
 			chunk(userIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
 				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),

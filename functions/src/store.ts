@@ -1,7 +1,6 @@
 import assert from 'node:assert';
 import type { Firestore } from '@google-cloud/firestore';
-// @ts-expect-error: Not typed
-import IApexStore from 'activitypub-express/store/interface.js';
+import type { APObject, ApexStore, DeliveryQueueRecord, DeliveryRecord } from 'activitypub-express';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
@@ -15,35 +14,16 @@ import { toIdArray } from './utils.js';
 // Firestore の `in` フィルタは1クエリにつき最大30件までしか指定できない。
 export const FIRESTORE_IN_QUERY_LIMIT = 30;
 
-// Implements IApexStore:
+// Implements ApexStore (functions/types/activitypub-express.d.ts):
 // https://github.com/immers-space/activitypub-express/blob/master/store/interface.js
-
-interface ObjectWithId {
-	id: string;
-	[key: string]: any;
-}
-
-type DeliveryStatus = 'permanent_failure' | 'retrying' | 'success';
-
-interface DeliveryResult {
-	activityId: string;
-	actorId: string;
-	address: string;
-	body: string;
-	attempts: number;
-	status: DeliveryStatus;
-	statusCode?: number;
-	error?: string;
-}
-export default class Store extends IApexStore {
+export default class Store implements ApexStore {
 	db: Firestore;
 
 	constructor() {
-		super();
 		this.db = db;
 	}
 
-	async setup(initialUser?: any) {
+	async setup(initialUser?: APObject) {
 		logger.info('setup');
 		if (initialUser !== undefined) {
 			await this.saveObject(initialUser);
@@ -66,7 +46,7 @@ export default class Store extends IApexStore {
 			return undefined;
 		}
 
-		const object = objectDoc.data();
+		const object = objectDoc.data() as APObject | undefined;
 		assert(object !== undefined, 'object is undefined');
 
 		if (includeMeta !== true) {
@@ -77,7 +57,7 @@ export default class Store extends IApexStore {
 	}
 
 	// Extended by us
-	async getObjects(ids: string[], includeMeta = false) {
+	async getObjects(ids: string[], includeMeta = false): Promise<APObject[]> {
 		logger.info({
 			type: 'getObjects',
 			ids,
@@ -100,7 +80,7 @@ export default class Store extends IApexStore {
 
 		return objectDocsChunks.flatMap((objectDocs) =>
 			objectDocs.docs.map((doc) => {
-				const object = doc.data();
+				const object = doc.data() as APObject;
 				if (includeMeta !== true) {
 					delete object._meta;
 				}
@@ -110,7 +90,11 @@ export default class Store extends IApexStore {
 	}
 
 	// Extended by us
-	async getObjectsByFieldValue(field: string, value: any, includeMeta = false) {
+	async getObjectsByFieldValue(
+		field: string,
+		value: unknown,
+		includeMeta = false,
+	): Promise<APObject[]> {
 		logger.info({
 			type: 'getObjects',
 			field,
@@ -123,7 +107,7 @@ export default class Store extends IApexStore {
 			.get();
 
 		return objectDocs.docs.map((doc) => {
-			const object = doc.data();
+			const object = doc.data() as APObject;
 			if (includeMeta !== true) {
 				delete object._meta;
 			}
@@ -131,7 +115,7 @@ export default class Store extends IApexStore {
 		});
 	}
 
-	async getObjectsCount(field: string, value: any) {
+	async getObjectsCount(field: string, value: unknown) {
 		logger.info({
 			type: 'countObjects',
 			field,
@@ -142,7 +126,7 @@ export default class Store extends IApexStore {
 		return objectDocs.data().count;
 	}
 
-	async saveObject(object: any) {
+	async saveObject(object: APObject) {
 		await this.db.collection('objects').doc(escapeFirestoreKey(object.id)).set(object);
 		return true;
 	}
@@ -160,9 +144,9 @@ export default class Store extends IApexStore {
 	async getStream(
 		collectionId: string,
 		limit: number | null,
-		after: string | null,
+		after?: string | null,
 		blockList?: string[],
-		additionalQuery?: any[],
+		additionalQuery?: Record<string, unknown>[],
 	) {
 		logger.info({
 			type: 'getStream',
@@ -211,7 +195,7 @@ export default class Store extends IApexStore {
 		// activitypub-express's buildCollectionPage uses `_id` (a MongoDB
 		// convention) as the cursor for the next page, so we surface the
 		// Firestore document ID under that key.
-		return streams.docs.map((doc) => ({ ...doc.data(), _id: doc.id }));
+		return streams.docs.map((doc) => ({ ...(doc.data() as APObject), _id: doc.id }));
 	}
 
 	async getStreamCount(collectionId: string) {
@@ -233,7 +217,7 @@ export default class Store extends IApexStore {
 		return count.data().count;
 	}
 
-	async updateObject(obj: ObjectWithId, actorId: string, fullReplace: boolean) {
+	async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
 		const objectDoc = this.db.collection('objects').doc(escapeFirestoreKey(obj.id));
 		if (fullReplace) {
 			await objectDoc.set(obj);
@@ -243,7 +227,7 @@ export default class Store extends IApexStore {
 		await objectDoc.update(this.objectToUpdateDoc(obj));
 		await this.updateObjectCopies(obj);
 		return objectDoc.get().then((doc) => {
-			const data = doc.data();
+			const data = doc.data() as APObject | undefined;
 			assert(data !== undefined, 'data is undefined');
 			return data;
 		});
@@ -290,7 +274,7 @@ export default class Store extends IApexStore {
 			.limit(1)
 			.get();
 
-		const activity = streamDocs.docs[0]?.data();
+		const activity = streamDocs.docs[0]?.data() as APObject | undefined;
 		if (activity === undefined) {
 			return undefined;
 		}
@@ -308,7 +292,7 @@ export default class Store extends IApexStore {
 			return undefined;
 		}
 
-		const activity = activityDoc.data();
+		const activity = activityDoc.data() as APObject | undefined;
 		assert(activity !== undefined, 'activity is undefined');
 
 		if (includeMeta !== true) {
@@ -318,7 +302,7 @@ export default class Store extends IApexStore {
 		return activity;
 	}
 
-	async saveActivity(activity: ObjectWithId) {
+	async saveActivity(activity: APObject) {
 		logger.info({ type: 'saveActivity', activity });
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		let inserted: undefined | true = undefined;
@@ -337,7 +321,7 @@ export default class Store extends IApexStore {
 	// ドキュメント ID がアクティビティの IRI そのものなので id での検索はクエリを要さず、
 	// actor の照合も取得済みドキュメントに対する判定なので生の `actor` を toIdArray で解決する
 	// (非正規化インデックスの遅延に依存させない → ADR-0021)。
-	async removeActivity(activity: ObjectWithId, actorId: string) {
+	async removeActivity(activity: APObject, actorId: string) {
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		await this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
@@ -351,7 +335,7 @@ export default class Store extends IApexStore {
 		});
 	}
 
-	async updateActivity(activity: ObjectWithId, fullReplace: boolean) {
+	async updateActivity(activity: APObject, fullReplace: boolean) {
 		const activityRef = this.db.collection('streams').doc(escapeFirestoreKey(activity.id));
 		if (fullReplace) {
 			await activityRef.set(activity);
@@ -361,7 +345,7 @@ export default class Store extends IApexStore {
 		await activityRef.update(this.objectToUpdateDoc(activity));
 		await this.updateObjectCopies(activity);
 		return activityRef.get().then((doc) => {
-			const data = doc.data();
+			const data = doc.data() as APObject | undefined;
 			assert(data !== undefined, 'data is undefined');
 			return data;
 		});
@@ -373,7 +357,7 @@ export default class Store extends IApexStore {
 	// なお、シグネチャとしては任意の key を受け取れるようになっているが、apex 本体の実装を含め
 	// 実際には key === 'collection' (_meta.collection) 専用としてのみ呼び出されている。
 	// eslint-disable-next-line max-params
-	updateActivityMeta(activity: ObjectWithId, key: string, value: any, remove: boolean) {
+	updateActivityMeta(activity: APObject, key: string, value: unknown, remove: boolean) {
 		if (key.includes('.')) {
 			throw new Error('updateActivityMeta: key must not include "."');
 		}
@@ -383,17 +367,18 @@ export default class Store extends IApexStore {
 			if (!activityDoc.exists) {
 				throw new Error('Error updating activity meta: not found');
 			}
-			const activityData = activityDoc.data();
+			const activityData = activityDoc.data() as APObject | undefined;
 			assert(activityData !== undefined, 'activityData is undefined');
-			activityData._meta ??= {};
-			const current: any[] = Array.isArray(activityData._meta[key]) ? activityData._meta[key] : [];
+			const meta = (activityData._meta as Record<string, unknown[]> | undefined) ?? {};
+			const current = Array.isArray(meta[key]) ? meta[key] : [];
 			let updated = current;
 			if (remove) {
 				updated = current.filter((item) => item !== value);
 			} else if (!current.includes(value)) {
 				updated = [...current, value];
 			}
-			activityData._meta[key] = updated;
+			meta[key] = updated;
+			activityData._meta = meta;
 			transaction.update(activityRef, { [`_meta.${key}`]: updated });
 			return activityData;
 		});
@@ -402,9 +387,9 @@ export default class Store extends IApexStore {
 	// eslint-disable-next-line max-params
 	async deliveryEnqueue(
 		actorId: string,
-		body: any,
+		body: string,
 		addresses: string | string[],
-		_signingKey: string,
+		_signingKey: string | undefined,
 	) {
 		if (!addresses || !addresses.length) {
 			return false;
@@ -449,7 +434,7 @@ export default class Store extends IApexStore {
 		status,
 		statusCode,
 		error,
-	}: DeliveryResult) {
+	}: Parameters<ApexStore['recordDeliveryResult']>[0]) {
 		logger.info({
 			type: 'recordDeliveryResult',
 			activityId,
@@ -483,7 +468,7 @@ export default class Store extends IApexStore {
 			.where('status', 'in', ['permanent_failure', 'retrying'])
 			.get();
 
-		return snapshot.docs.map((doc) => doc.data());
+		return snapshot.docs.map((doc) => doc.data() as DeliveryRecord);
 	}
 
 	// Extended by us (ADR-0012)
@@ -492,7 +477,7 @@ export default class Store extends IApexStore {
 			.collection('deliveries')
 			.doc(this.deliveryDocId(activityId, address))
 			.get();
-		return doc.exists ? doc.data() : undefined;
+		return doc.exists ? (doc.data() as DeliveryRecord) : undefined;
 	}
 
 	async getContext(documentUrl: string) {
@@ -503,10 +488,11 @@ export default class Store extends IApexStore {
 			.doc(escapeFirestoreKey(documentUrl))
 			.get();
 		if (contextDoc.exists) {
-			const contextData = contextDoc.data();
+			const contextData = contextDoc.data() as
+				| { contextUrl: string | null; documentUrl: string; document: string }
+				| undefined;
 			assert(contextData !== undefined, 'contextData is undefined');
-			contextData.document = JSON.parse(contextData.document);
-			return contextData;
+			return { ...contextData, document: JSON.parse(contextData.document) as unknown };
 		}
 
 		return undefined;
@@ -516,11 +502,7 @@ export default class Store extends IApexStore {
 		contextUrl,
 		documentUrl,
 		document,
-	}: {
-		contextUrl: string;
-		documentUrl: string;
-		document: any;
-	}) {
+	}: Parameters<ApexStore['saveContext']>[0]) {
 		logger.info({ type: 'saveContext', contextUrl, documentUrl, document });
 
 		await this.db
@@ -536,7 +518,7 @@ export default class Store extends IApexStore {
 			);
 	}
 
-	private objectToUpdateDoc(object: ObjectWithId) {
+	private objectToUpdateDoc(object: APObject) {
 		return mapValues(object, (value) => {
 			if (value === null) {
 				return firebase.firestore.FieldValue.delete();
@@ -552,9 +534,13 @@ export default class Store extends IApexStore {
 	// 置き換えるのは MongoDB 実装の arrayFilters(`{ 'element.id': object.id }`)と同じく
 	// `id` が一致する埋め込みオブジェクトの要素だけで、IRI 文字列の要素はそのまま残す。
 	// MongoDB 実装は配送キューの署名鍵も更新するが、こちらは配送時に actor を読み直すため不要。
-	private async updateObjectCopies(object: ObjectWithId) {
-		const replaceCopy = (value: any) => {
-			if (typeof value === 'object' && value !== null && value.id === object.id) {
+	private async updateObjectCopies(object: APObject) {
+		const replaceCopy = (value: unknown) => {
+			if (
+				typeof value === 'object' &&
+				value !== null &&
+				(value as { id?: unknown }).id === object.id
+			) {
 				return object;
 			}
 			return value;
@@ -565,7 +551,7 @@ export default class Store extends IApexStore {
 				this.db.collection('streams').where(metaIndexPath('objects', object.id), '==', true),
 			);
 			matchedDocs.forEach((doc) => {
-				const rawObject = doc.get('object');
+				const rawObject = doc.get('object') as unknown;
 				// 配列を配列のまま保つ(lodash の mapValues は配列を数値キーのマップに壊す)。
 				const newObject = Array.isArray(rawObject)
 					? rawObject.map(replaceCopy)
@@ -578,5 +564,17 @@ export default class Store extends IApexStore {
 				transaction.update(doc.ref, { object: newObject });
 			});
 		});
+	}
+
+	// apex 組み込みの配送キュー用メソッド。このプロジェクトでは配送を Cloud Tasks 経由で行い
+	// (deliveryEnqueue 参照)、apex.offlineMode = true により apex 自身の配送ループ
+	// (pub/federation.js runDelivery)が動かないため呼ばれることはない。
+	// → Issue #84 で未実装のまま残っていることを追跡する。
+	deliveryDequeue(): never {
+		throw new Error('Not implemented: delivery is handled via Cloud Tasks (ADR-0003)');
+	}
+
+	deliveryRequeue(_delivery: DeliveryQueueRecord): never {
+		throw new Error('Not implemented: delivery is handled via Cloud Tasks (ADR-0003)');
 	}
 }
