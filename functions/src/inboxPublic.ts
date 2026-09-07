@@ -1,6 +1,6 @@
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { parseApexLocals } from './utils.js';
+import type { ApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -57,9 +57,9 @@ export const normalizeInboxPublic: RequestHandler = (
 	if (req.body) {
 		normalizePublicAddresses(req.body);
 	}
-	const resLocal = parseApexLocals(res.locals.apex);
-	if (resLocal.object) {
-		normalizePublicAddresses(resLocal.object);
+	const apexLocals = res.locals.apex as ApexLocals | undefined;
+	if (apexLocals?.object) {
+		normalizePublicAddresses(apexLocals.object);
 	}
 	next();
 };
