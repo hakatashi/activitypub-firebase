@@ -89,6 +89,8 @@ declare module 'activitypub-express' {
 	// net/index.js のルートグループのうち、functions/src が参照しているもののみ
 	export interface ApexNet {
 		inbox: { get: RequestHandler[]; post: RequestHandler[] };
+		// inbox.post 配列内の要素を参照で特定するために必要(→ ADR-0030)。
+		activity: { save: RequestHandler };
 		outbox: { get: RequestHandler[]; post: RequestHandler[] };
 		actor: { get: RequestHandler[] };
 		followers: { get: RequestHandler[] };
