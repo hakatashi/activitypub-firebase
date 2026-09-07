@@ -389,24 +389,54 @@ describe('Store', () => {
 			expect(stream).toHaveLength(3);
 		});
 
-		test('passing a non-empty blockList currently makes the query fail', async () => {
-			// Firestore は not-in フィルタを使う場合、最初の orderBy をそのフィールドに
-			// することを要求する。getStream は orderBy を常に documentId() のみにしているため、
-			// blockList を渡すと "order by clause cannot contain more fields after the key" で
-			// クエリ自体が失敗する。つまり blockList 引数は現状まったく機能しない。
-			// docs/known-issues.md の「blockList を渡すと getStream が例外を投げる」参照。
+		test('excludes activities whose actor is in the blockList', async () => {
 			await store.saveActivity({
 				id: 'https://example.com/activities/from-someone',
 				type: 'Create',
 				actor: 'https://example.com/users/someone',
 				_meta: { collection: ['https://example.com/inbox'] },
 			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-blocked',
+				type: 'Create',
+				actor: 'https://example.com/users/blocked',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
 
-			await expect(
-				store.getStream('https://example.com/inbox', null, null, [
-					'https://example.com/users/blocked',
-				]),
-			).rejects.toThrow('order by clause cannot contain more fields after the key');
+			const stream = await store.getStream('https://example.com/inbox', null, null, [
+				'https://example.com/users/blocked',
+			]);
+
+			expect(stream).toHaveLength(1);
+			expect(stream[0].id).toBe('https://example.com/activities/from-someone');
+		});
+
+		test('excludes activities whose actor (as an array) is in the blockList', async () => {
+			// actor は AS2 の正規化により配列や埋め込みオブジェクトにもなりうる(→ ADR-0025)。
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-blocked-array',
+				type: 'Create',
+				actor: [{ id: 'https://example.com/users/blocked', type: 'Person' }],
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+
+			const stream = await store.getStream('https://example.com/inbox', null, null, [
+				'https://example.com/users/blocked',
+			]);
+
+			expect(stream).toHaveLength(0);
+		});
+
+		test('an empty blockList does not filter anything', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/from-anyone',
+				type: 'Create',
+				actor: 'https://example.com/users/someone',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+
+			const stream = await store.getStream('https://example.com/inbox', null, null, []);
+			expect(stream).toHaveLength(1);
 		});
 	});
 
