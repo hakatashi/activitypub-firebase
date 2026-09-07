@@ -26,11 +26,7 @@ const summarizeApexLocals = (apexLocal: ApexLocals) => ({
 // 実行済みの postWork / eventName は落としておき、apex 側の onFinishedHandler で
 // 二重に実行されないようにする。
 const runPostWork = async (res: express.Response) => {
-	const parsedLocals = safeParseApexLocals(res.locals.apex);
-	if (!parsedLocals.success) {
-		return;
-	}
-	const apexLocal = parsedLocals.data;
+	const apexLocal = safeParseApexLocals(res.locals.apex);
 
 	const startedAt = Date.now();
 
@@ -81,14 +77,14 @@ export const runPostWorkBeforeSend: express.RequestHandler = (req, res, next) =>
 
 	res.send = (body) => {
 		(async () => {
-			const parsedLocals = safeParseApexLocals(res.locals.apex);
-			if (parsedLocals.success) {
+			if (res.locals.apex !== undefined && res.locals.apex !== null) {
+				const apexLocal = safeParseApexLocals(res.locals.apex);
 				logger.info({
 					type: 'response',
 					status: res.statusCode,
 					headers: res.getHeaders(),
 					body,
-					apex: summarizeApexLocals(parsedLocals.data),
+					apex: summarizeApexLocals(apexLocal),
 				});
 
 				try {

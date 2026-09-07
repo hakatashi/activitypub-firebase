@@ -16,8 +16,8 @@ export const markRedundantInboxDelivery: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const parsedLocals = safeParseApexLocals(res.locals.apex);
-	if (!parsedLocals.success || !parsedLocals.data.activity || !parsedLocals.data.target) {
+	const resLocal = safeParseApexLocals(res.locals.apex);
+	if (!resLocal.activity || !resLocal.target) {
 		next();
 		return;
 	}
@@ -41,12 +41,8 @@ export const markRedundantInboxDelivery: RequestHandler = (
 // apex.net.inbox.post の activity.save の直後に挿入する。markRedundantInboxDelivery で
 // 記録した判定を使って isNewActivity を補正する(→ ADR-0030)。
 export const correctIsNewActivity: RequestHandler = (req, res, next) => {
-	const parsedLocals = safeParseApexLocals(res.locals.apex);
-	if (
-		parsedLocals.success &&
-		parsedLocals.data.isRedundantDelivery &&
-		parsedLocals.data.isNewActivity === 'new collection'
-	) {
+	const resLocal = safeParseApexLocals(res.locals.apex);
+	if (resLocal.isRedundantDelivery && resLocal.isNewActivity === 'new collection') {
 		(res.locals.apex as Record<string, unknown>).isNewActivity = false;
 	}
 	next();

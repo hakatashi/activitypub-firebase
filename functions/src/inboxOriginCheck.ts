@@ -32,21 +32,15 @@ export const verifySameOriginForUpdateDelete: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const parsedLocals = safeParseApexLocals(res.locals.apex);
+	const resLocal = safeParseApexLocals(res.locals.apex);
 	const activity = req.body;
 	const type = typeof activity.type === 'string' ? activity.type.toLowerCase() : undefined;
-	if (
-		!parsedLocals.success ||
-		!parsedLocals.data.actor ||
-		type === undefined ||
-		!requiresSameOrigin.has(type)
-	) {
+	if (!resLocal.actor || type === undefined || !requiresSameOrigin.has(type)) {
 		next();
 		return;
 	}
-	const actorId =
-		typeof parsedLocals.data.actor.id === 'string' ? parsedLocals.data.actor.id : undefined;
-	const object = parsedLocals.data.object;
+	const actorId = typeof resLocal.actor.id === 'string' ? resLocal.actor.id : undefined;
+	const object = resLocal.object;
 	const objectId = typeof object?.id === 'string' ? object.id : undefined;
 	if (actorId === undefined || objectId === undefined) {
 		next();

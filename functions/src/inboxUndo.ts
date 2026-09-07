@@ -15,14 +15,14 @@ export const denormalizeUndoObject: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const parsedLocals = safeParseApexLocals(res.locals.apex);
-	if (!parsedLocals.success || !parsedLocals.data.activity || !parsedLocals.data.object) {
+	const resLocal = safeParseApexLocals(res.locals.apex);
+	if (!resLocal.activity || !resLocal.object) {
 		next();
 		return;
 	}
 	const activity = req.body;
 	if (isAPUndo(activity)) {
-		activity.object = [parsedLocals.data.object];
+		activity.object = [resLocal.object];
 	}
 	next();
 };
