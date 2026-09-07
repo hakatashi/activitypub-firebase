@@ -43,6 +43,11 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを await している
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
   `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
+- inbox への配送処理は、apex 本体のミドルウェア配列を変更せず、前後の薄いミドルウェアを
+  順序通りフラットに並べて実行している(→ ADR-0030, ADR-0031, ADR-0033, ADR-0034)。
+  宛先の `as:Public` 正規化(`inboxPublic.ts`)、Update/Delete の同一オリジン検証(`inboxOriginCheck.ts`)、
+  重複配送検出(`inboxDedup.ts`)、Undo の object 埋め込み(`inboxUndo.ts`)を行い、
+  スレッド解決(`resolveThread`)を経て自分の投稿への外部リプライがフォロワーへ転送される(Inbox Forwarding, W3C AP 7.1.2)。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
   `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`)は
   `X-Hakatashi-Token` ヘッダで認証する。
