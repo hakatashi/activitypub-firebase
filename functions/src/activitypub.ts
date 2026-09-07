@@ -230,7 +230,9 @@ app.post(
 );
 
 onApexOutbox(app, (message) => {
-	logger.info({ type: 'outbox', message });
+	// message.actor は自分自身の actor で _meta.privateKey (RSA 秘密鍵 PEM) を持つため、
+	// そのままログに出すと鍵が漏洩する。redactSensitiveBody でマスクしてから出力する。
+	logger.info({ type: 'outbox', message: redactSensitiveBody(message) });
 
 	if (message.activity.type === 'Create') {
 		logger.info(`New ${message.object?.type} from ${message.actor}`);
@@ -238,7 +240,9 @@ onApexOutbox(app, (message) => {
 });
 
 onApexInbox(app, async (message) => {
-	logger.info({ type: 'inbox', message });
+	// message.recipient は受信者(自分自身)の actor で _meta.privateKey (RSA 秘密鍵 PEM) を
+	// 持つため、そのままログに出すと鍵が漏洩する。redactSensitiveBody でマスクしてから出力する。
+	logger.info({ type: 'inbox', message: redactSensitiveBody(message) });
 
 	// Auto-accept follow
 	if (message.activity.type === 'Follow') {

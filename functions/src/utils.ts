@@ -69,6 +69,7 @@ const SENSITIVE_BODY_FIELDS = [
 	'code',
 	'idToken',
 	'password',
+	'privateKey',
 	'refreshToken',
 	'refresh_token',
 ];
