@@ -32,9 +32,17 @@ const resolveAddresses = async (rawHostname: string): Promise<string[]> => {
 export const isLocalDevelopment = (): boolean =>
 	process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test';
 
+export interface SafeUrl {
+	url: URL;
+	// assertSafeUrl が検証済みの IP アドレス群。DNS rebinding (検証時と実際の接続時で
+	// 別の IP を返す攻撃者制御の DNS サーバー) を防ぐため、fetch 側はこの検証済みアドレスに
+	// 接続を固定し、ホスト名を再解決してはならない (→ ADR-0032, Issue #52)。
+	addresses: string[];
+}
+
 // fetch 前に呼び出し、安全でなければ UnsafeUrlError を投げる。リダイレクト追跡時にも
 // ホップごとに呼び出すことで、検証をバイパスするリダイレクトを防ぐ。
-export const assertSafeUrl = async (urlString: string): Promise<URL> => {
+export const assertSafeUrl = async (urlString: string): Promise<SafeUrl> => {
 	let url: URL;
 	try {
 		url = new URL(urlString);
@@ -66,5 +74,5 @@ export const assertSafeUrl = async (urlString: string): Promise<URL> => {
 		}
 	}
 
-	return url;
+	return { url, addresses };
 };

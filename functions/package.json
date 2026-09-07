@@ -29,6 +29,7 @@
 		"ipaddr.js": "^1.9.1",
 		"lodash-es": "^4.18.1",
 		"node-fetch": "^3.3.2",
+		"undici": "^6.28.1",
 		"zod": "^4.5.4"
 	},
 	"devDependencies": {

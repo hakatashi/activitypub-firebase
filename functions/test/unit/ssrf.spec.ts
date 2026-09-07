@@ -4,13 +4,20 @@ import { assertSafeUrl, UnsafeUrlError } from '../../src/security/ssrf.js';
 describe('assertSafeUrl', () => {
 	describe('in local development (NODE_ENV=test)', () => {
 		test('allows a public https URL', async () => {
-			const url = await assertSafeUrl('https://8.8.8.8/foo');
+			const { url, addresses } = await assertSafeUrl('https://8.8.8.8/foo');
 			expect(url.toString()).toBe('https://8.8.8.8/foo');
+			expect(addresses).toEqual(['8.8.8.8']);
 		});
 
 		test('allows http and loopback for emulator/test convenience', async () => {
-			await expect(assertSafeUrl('http://127.0.0.1:5001/foo')).resolves.toBeInstanceOf(URL);
-			await expect(assertSafeUrl('http://localhost:5001/foo')).resolves.toBeInstanceOf(URL);
+			await expect(assertSafeUrl('http://127.0.0.1:5001/foo')).resolves.toHaveProperty(
+				'url',
+				expect.any(URL),
+			);
+			await expect(assertSafeUrl('http://localhost:5001/foo')).resolves.toHaveProperty(
+				'url',
+				expect.any(URL),
+			);
 		});
 
 		test('still rejects private and link-local ranges', async () => {
@@ -47,7 +54,10 @@ describe('assertSafeUrl', () => {
 		});
 
 		test('allows a public https URL', async () => {
-			await expect(assertSafeUrl('https://8.8.8.8/foo')).resolves.toBeInstanceOf(URL);
+			await expect(assertSafeUrl('https://8.8.8.8/foo')).resolves.toHaveProperty(
+				'url',
+				expect.any(URL),
+			);
 		});
 
 		test('rejects http even to a public address', async () => {
