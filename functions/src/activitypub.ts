@@ -7,6 +7,7 @@ import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { buildDedupedInboxPost } from './inboxDedup.js';
 import { insertSameOriginCheckForUpdateDelete } from './inboxOriginCheck.js';
+import { insertUndoDenormalization } from './inboxUndo.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
@@ -64,12 +65,12 @@ app.use(
 
 // inbox の重複配送で side effect (Follow 自動承認を含む) が再実行されないよう、
 // apex.net.inbox.post の activity.save 前後に判定ミドルウェアを挟む (→ ADR-0030, Issue #50)。
-// さらに Update / Delete の同一オリジン検証を validators.inboxActivity の直後に挟む
-// (→ ADR-0031, Issue #51)。
+// さらに Update / Delete の同一オリジン検証を validators.inboxActivity の直後に挟み (→ ADR-0031, Issue #51)、
+// Undo の object 非正規化を activity.save の直前に挟む (→ ADR-0033, Issue #53)。
 app
 	.route(routes.inbox)
 	.get(apex.net.inbox.get)
-	.post(insertSameOriginCheckForUpdateDelete(buildDedupedInboxPost()));
+	.post(insertSameOriginCheckForUpdateDelete(insertUndoDenormalization(buildDedupedInboxPost())));
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
 
 app.get(routes.actor, apex.net.actor.get);
