@@ -8,7 +8,6 @@ import { logger } from 'firebase-functions/v2';
 import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { metaIndexPath } from './meta.js';
-import type { ObjectMeta } from './meta.js';
 import { Contexts, Deliveries, Objects, Streams } from './schema.js';
 import { toIdArray } from './utils.js';
 
@@ -371,16 +370,15 @@ export default class Store extends IApexStore implements ApexStore {
 			}
 			const activityData = activityDoc.data();
 			assert(activityData !== undefined, 'activityData is undefined');
-			const meta = (activityData._meta as Record<string, unknown[]> | undefined) ?? {};
-			const current = Array.isArray(meta[key]) ? meta[key] : [];
+			const currentRaw = activityData._meta?.[key];
+			const current = Array.isArray(currentRaw) ? currentRaw : [];
 			let updated = current;
 			if (remove) {
 				updated = current.filter((item) => item !== value);
 			} else if (!current.includes(value)) {
 				updated = [...current, value];
 			}
-			meta[key] = updated;
-			activityData._meta = meta as ObjectMeta;
+			activityData._meta = { ...activityData._meta, [key]: updated };
 			transaction.update(activityRef, { [`_meta.${key}`]: updated });
 			return activityData;
 		});
@@ -483,7 +481,8 @@ export default class Store extends IApexStore implements ApexStore {
 		if (contextDoc.exists) {
 			const contextData = contextDoc.data();
 			assert(contextData !== undefined, 'contextData is undefined');
-			return { ...contextData, document: JSON.parse(contextData.document) as unknown };
+			const parsedDocument: unknown = JSON.parse(contextData.document);
+			return { ...contextData, document: parsedDocument };
 		}
 
 		return undefined;
@@ -500,7 +499,7 @@ export default class Store extends IApexStore implements ApexStore {
 			{
 				contextUrl,
 				documentUrl,
-				document: typeof document === 'object' ? JSON.stringify(document) : (document as string),
+				document: typeof document === 'string' ? document : JSON.stringify(document),
 			},
 			{ merge: true },
 		);
@@ -524,11 +523,7 @@ export default class Store extends IApexStore implements ApexStore {
 	// MongoDB 実装は配送キューの署名鍵も更新するが、こちらは配送時に actor を読み直すため不要。
 	private async updateObjectCopies(object: APObject) {
 		const replaceCopy = (value: unknown) => {
-			if (
-				typeof value === 'object' &&
-				value !== null &&
-				(value as { id?: unknown }).id === object.id
-			) {
+			if (typeof value === 'object' && value !== null && 'id' in value && value.id === object.id) {
 				return object;
 			}
 			return value;
@@ -539,7 +534,7 @@ export default class Store extends IApexStore implements ApexStore {
 				Streams.where(metaIndexPath('objects', escapeFirestoreKey(object.id)), '==', true),
 			);
 			matchedDocs.forEach((doc) => {
-				const rawObject = doc.get('object') as unknown;
+				const rawObject: unknown = doc.get('object');
 				// 配列を配列のまま保つ(lodash の mapValues は配列を数値キーのマップに壊す)。
 				const newObject = Array.isArray(rawObject)
 					? rawObject.map(replaceCopy)

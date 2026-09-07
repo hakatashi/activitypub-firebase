@@ -1,4 +1,5 @@
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import Store from '../../src/store.js';
 
@@ -11,7 +12,9 @@ describe('Store', () => {
 	// _meta.index は denormalizations.ts のトリガーが書き込むが、ユニットテストでは
 	// トリガーが動かないため、トリガーが計算するはずの値をここで組み立てて保存する
 	// (→ ADR-0021)。
-	const saveActivityWithIndex = (activity: Record<string, any>) =>
+	const saveActivityWithIndex = (
+		activity: Record<string, unknown> & { id: string; type: string; _meta?: ObjectMeta },
+	) =>
 		store.saveActivity({
 			...activity,
 			_meta: { ...activity._meta, index: buildMetaIndex(activity) },
@@ -350,12 +353,12 @@ describe('Store', () => {
 			const collected: string[] = [];
 			let after: string | null = null;
 			for (let i = 0; i < 10; i++) {
-				const page: any[] = await store.getStream('https://example.com/inbox', 2, after);
+				const page = await store.getStream('https://example.com/inbox', 2, after);
 				if (page.length === 0) {
 					break;
 				}
 				collected.push(...page.map((activity) => activity.id));
-				after = page.at(-1)._id;
+				after = page.at(-1)?._id ?? null;
 			}
 
 			expect(collected).toHaveLength(5);
@@ -458,6 +461,26 @@ describe('Store', () => {
 
 			const fetched = await store.getActivity(activity.id, true);
 			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
+		});
+
+		// acceptFollow (activitypub-express/pub/activity.js) は inbox 受信時に保存された、
+		// まだ _meta を持たない Follow アクティビティに対してこれを呼び出す。
+		test('adds a value to _meta.collection when the activity has no _meta yet', async () => {
+			const activity = {
+				id: 'https://example.com/activities/no-meta',
+				type: 'Follow',
+			};
+			await store.saveActivity(activity);
+
+			await store.updateActivityMeta(
+				activity,
+				'collection',
+				'https://example.com/followers',
+				false,
+			);
+
+			const fetched = await store.getActivity(activity.id, true);
+			expect(fetched?._meta.collection).toEqual(['https://example.com/followers']);
 		});
 
 		test('throws when the activity does not exist', async () => {

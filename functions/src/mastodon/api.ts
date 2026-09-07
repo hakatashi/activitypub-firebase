@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { Request as OauthRequest, Response as OauthResponse } from '@node-oauth/oauth2-server';
-import type { APObject as ApexObject } from 'activitypub-express';
+import type { APObject as ApexObject, JsonLdActor } from 'activitypub-express';
 import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
@@ -21,7 +21,7 @@ import { metaIndexPath } from '../meta.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
-import { isAPActor, isAPNote, toIdArray, toStringValue } from '../utils.js';
+import { isAPActor, isAPFollow, isAPNote, isAPUndo, toIdArray, toStringValue } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
 
@@ -91,22 +91,22 @@ export const actorObjectToAccount = async (
 	// activitypub-types の APActor は icon/image を IconField|ImageField の union として定義するなど
 	// ここでの緩いプロパティアクセスと厳密には一致しない。この不整合の解消は ADR-0022 の対象外
 	// (apex 自体の型付けのみが対象) なので、ここでは toJSONLD 呼び出し以前と同じ緩さを維持する。
-	const actor: any = await apex.toJSONLD(actorObject);
-	const username = actor?.preferredUsername ?? last(actor?.id?.split('/'));
+	const actor = await apex.toJSONLD<JsonLdActor>(actorObject);
+	const username = actor.preferredUsername ?? last(actor.id.split('/')) ?? '';
 	const actorDomain = new URL(actor.id).host;
 
 	return {
 		...userInfo,
-		username: actor.preferredUsername,
+		username,
 		acct: `${username}@${actorDomain}`,
-		display_name: actor.name,
+		display_name: actor.name ?? '',
 		url: `https://elk.zone/${mastodonDomain}/@${username}@${domain}`,
-		avatar: actor?.icon?.url,
-		avatar_static: actor?.icon?.url,
-		header: actor?.image?.url,
-		header_static: actor?.image?.url,
-		note: actor.summary,
-		discoverable: actor.discoverable,
+		avatar: actor.icon?.url ?? '',
+		avatar_static: actor.icon?.url ?? '',
+		header: actor.image?.url ?? '',
+		header_static: actor.image?.url ?? '',
+		note: actor.summary ?? '',
+		discoverable: actor.discoverable ?? false,
 	};
 };
 
@@ -267,14 +267,20 @@ export const getFollowers = async (actor: APActor) => {
 		.get();
 
 	const undoneFollowIds = new Set(
-		unfollowStreams.docs.flatMap((unfollowStream) => toIdArray(unfollowStream.data().object)),
+		unfollowStreams.docs.flatMap((unfollowStream) => {
+			const unfollow = unfollowStream.data();
+			if (!isAPUndo(unfollow)) {
+				return [];
+			}
+			return toIdArray(unfollow.object);
+		}),
 	);
 
 	const followerIds = new Set<string>();
 
 	for (const followStream of followStreams.docs) {
 		const follow = followStream.data();
-		if (undoneFollowIds.has(follow.id)) {
+		if (undoneFollowIds.has(follow.id) || !isAPFollow(follow)) {
 			continue;
 		}
 		const followActor = toIdArray(follow.actor)[0];
@@ -303,6 +309,7 @@ const authRequired = async (
 	assert(userInfoDocs.size === 1);
 
 	const userInfoDoc = userInfoDocs.docs[0];
+	assert(userInfoDoc !== undefined);
 
 	// eslint-disable-next-line require-atomic-updates
 	res.locals.auth = userInfoDoc.data();
@@ -312,6 +319,10 @@ const authRequired = async (
 
 const getAccount = (acct: string) => {
 	const [username, lookupDomain = domain] = acct.split('@');
+
+	if (username === undefined) {
+		return undefined;
+	}
 
 	if (lookupDomain !== domain) {
 		throw new Error('Not implemented');
@@ -337,6 +348,10 @@ router.get('/v1/instance', (req, res) => {
 
 router.get('/v2/instance', (req, res) => {
 	res.json(instanceV2);
+});
+
+router.get('/v1/custom_emojis', (req, res) => {
+	res.json([]);
 });
 
 export const accountLookupQuerySchema = z.object({
@@ -410,7 +425,10 @@ router.get('/v1/accounts/:id/followers', async (req, res) => {
 		return;
 	}
 
-	const userId = unescapeFirestoreKey(toFirestoreKey(userInfo.docs[0].id));
+	const userInfoDoc = userInfo.docs[0];
+	assert(userInfoDoc !== undefined);
+
+	const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
 	const actorObject = await apex.store.getObject(userId);
 
 	if (actorObject === undefined) {

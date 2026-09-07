@@ -40,11 +40,13 @@ export const metaIndexPath = (field: MetaIndexField, key: FirestoreKey) =>
 	new firebase.firestore.FieldPath('_meta', 'index', field, key);
 
 // stream ドキュメントの現在の内容から、あるべき `_meta.index` を計算する。
-export const buildMetaIndex = (stream: Record<string, any>): MetaIndex => {
-	const collection = stream._meta?.collection;
-	return {
-		collections: toIdIndex(Array.isArray(collection) ? collection : toIdArray(collection)),
-		actors: toIdIndex(toIdArray(stream.actor)),
-		objects: toIdIndex(toIdArray(stream.object)),
-	};
-};
+export const buildMetaIndex = (stream: {
+	_meta?: { collection?: unknown } | undefined;
+	actor?: unknown;
+	object?: unknown;
+	[key: string]: unknown;
+}): MetaIndex => ({
+	collections: toIdIndex(toIdArray(stream._meta?.collection)),
+	actors: toIdIndex(toIdArray(stream.actor)),
+	objects: toIdIndex(toIdArray(stream.object)),
+});

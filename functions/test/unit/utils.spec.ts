@@ -9,6 +9,7 @@ import {
 	pickSafeHeaders,
 	redactSensitiveBody,
 	toIdArray,
+	toError,
 	toStringValue,
 	toTypeArray,
 	objectToTypeArray,
@@ -331,5 +332,24 @@ describe('isAPUndo', () => {
 	test('returns false for other types or non-objects', () => {
 		expect(isAPUndo({ id: 'https://example.com/a/1', type: 'Follow' })).toBe(false);
 		expect(isAPUndo(null)).toBe(false);
+	});
+});
+
+describe('toError', () => {
+	test('returns the error instance if already an Error', () => {
+		const err = new Error('original');
+		expect(toError(err)).toBe(err);
+	});
+
+	test('wraps a string in an Error', () => {
+		const err = toError('something failed');
+		expect(err).toBeInstanceOf(Error);
+		expect(err.message).toBe('something failed');
+	});
+
+	test('wraps other primitives and objects in an Error', () => {
+		expect(toError(123).message).toBe('123');
+		expect(toError(null).message).toBe('null');
+		expect(toError(undefined).message).toBe('undefined');
 	});
 });

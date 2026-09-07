@@ -76,14 +76,21 @@ const SENSITIVE_BODY_FIELDS = [
 export const ACTOR_TYPES = ['Person', 'Application', 'Group', 'Organization', 'Service'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
 
+// AS2 のプロパティ値はスカラーまたは配列のいずれでも届きうる(activitypub-express は
+// compactArrays: false で JSON-LD を正規化するため通常は配列になるが、スカラーのまま
+// 保存された既存データも扱う必要がある)。どちらの表現でも同じように扱えるよう配列に正規化する。
+export const toArray = <T>(value: T | T[] | null | undefined): T[] => {
+	if (value === undefined || value === null) {
+		return [];
+	}
+	return Array.isArray(value) ? value : [value];
+};
+
 // AS2 の type は単一の文字列または文字列の配列になりうる(activitypub-express は
 // compactArrays: false で JSON-LD を正規化するため常に配列になる)。
 // どの表現でも同じように判定できるよう、常に文字列の配列に正規化する。
 export const toTypeArray = (value: unknown): string[] => {
-	if (value === undefined || value === null) {
-		return [];
-	}
-	const values = Array.isArray(value) ? value : [value];
+	const values = toArray(value);
 	return values.flatMap((entry): string[] => {
 		if (typeof entry === 'string') {
 			return [entry];
@@ -125,13 +132,15 @@ export const firstOf = <T>(value: T | T[] | undefined | null): T | undefined => 
 	return value;
 };
 
+const ACTOR_TYPE_SET = new Set<string>(ACTOR_TYPES);
+
 // 型ガード関数: AS2 の type が配列で届く場合でも正しく絞り込めるようにする (→ ADR-0025)
 export const isAPActor = <T>(object: T): object is T & APActor => {
 	if (typeof object !== 'object' || object === null) {
 		return false;
 	}
 	const types = objectToTypeArray(object);
-	return types.some((type) => ACTOR_TYPES.includes(type as ActorType));
+	return types.some((type) => ACTOR_TYPE_SET.has(type));
 };
 
 export const isAPNote = <T>(object: T): object is T & APNote => {
@@ -161,10 +170,7 @@ export const isAPUndo = <T>(object: T): object is T & APUndo => {
 // (activitypub-express/pub/utils.js の actorIdFromActivity / objectIdFromActivity と同じ判定)。
 // どの表現でも同じ IRI として比較できるよう、常にスカラーの ID 文字列の配列に正規化する。
 export const toIdArray = (value: unknown): string[] => {
-	if (value === undefined || value === null) {
-		return [];
-	}
-	const values = Array.isArray(value) ? value : [value];
+	const values = toArray(value);
 	return values.flatMap((entry): string[] => {
 		if (typeof entry === 'string') {
 			return [entry];
@@ -173,10 +179,10 @@ export const toIdArray = (value: unknown): string[] => {
 			return [];
 		}
 		if (objectToTypeArray(entry).includes('Link')) {
-			const href = toStringValue((entry as { href?: unknown }).href);
+			const href = 'href' in entry ? toStringValue(entry.href) : undefined;
 			return href === undefined ? [] : [href];
 		}
-		const id = toStringValue((entry as { id?: unknown }).id);
+		const id = 'id' in entry ? toStringValue(entry.id) : undefined;
 		return id === undefined ? [] : [id];
 	});
 };
@@ -187,7 +193,7 @@ export const redactSensitiveBody = (body: unknown): unknown => {
 	}
 	if (body !== null && typeof body === 'object') {
 		return Object.fromEntries(
-			Object.entries(body as Record<string, unknown>).map(([key, value]) =>
+			Object.entries(body).map(([key, value]) =>
 				SENSITIVE_BODY_FIELDS.includes(key)
 					? [key, '[REDACTED]']
 					: [key, redactSensitiveBody(value)],
@@ -195,4 +201,11 @@ export const redactSensitiveBody = (body: unknown): unknown => {
 		);
 	}
 	return body;
+};
+
+export const toError = (value: unknown): Error => {
+	if (value instanceof Error) {
+		return value;
+	}
+	return new Error(typeof value === 'string' ? value : String(value));
 };

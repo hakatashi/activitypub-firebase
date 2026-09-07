@@ -1,7 +1,9 @@
 import type { APActor, APNote } from 'activitypub-types';
+import type { mastodon } from 'masto';
 import { describe, expect, test } from 'vitest';
 import { actorObjectToAccount, noteObjectToStatus } from '../../src/mastodon/api.js';
 import type { UserInfo } from '../../src/schema.js';
+import type { CamelToSnake } from '../../src/utils.js';
 
 const userInfo: UserInfo = {
 	id: '123',
@@ -57,6 +59,26 @@ describe('actorObjectToAccount', () => {
 
 		expect(account.acct).toBe('anonymous@example.com');
 	});
+
+	// mastodon.v1.Account の avatar/header/note/discoverable は non-optional なので、
+	// icon/image/summary/discoverable を持たない actor でも空文字列/false で埋める必要がある
+	test('fills icon/image/summary/discoverable fields with empty defaults when absent', async () => {
+		const actor = {
+			id: 'https://example.com/activitypub/u/noicon',
+			type: 'Person',
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(actor, userInfo);
+
+		expect(account).toMatchObject({
+			avatar: '',
+			avatar_static: '',
+			header: '',
+			header_static: '',
+			note: '',
+			discoverable: false,
+		});
+	});
 });
 
 describe('noteObjectToStatus', () => {
@@ -87,7 +109,7 @@ describe('noteObjectToStatus', () => {
 	});
 
 	test('takes the first element when content is an array', () => {
-		const account = { username: 'hakatashi' } as any;
+		const account = { username: 'hakatashi' } as unknown as CamelToSnake<mastodon.v1.Account>;
 		const note = {
 			id: 'https://example.com/activitypub/o/multi',
 			published: '2023-06-01T00:00:00.000Z',

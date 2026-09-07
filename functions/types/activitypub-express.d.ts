@@ -8,9 +8,7 @@
 declare module 'activitypub-express' {
 	import type { NextFunction, Request, RequestHandler, Response } from 'express';
 	import type IApexStore from 'activitypub-express/store/interface.js';
-	// `deliveries` コレクションのドキュメント形状は Firestore スキーマの一部であり、
-	// functions/src/schema.ts に集約する (→ ADR-0023)。
-	import type { DeliveryRecord } from '../src/schema.js';
+	import type { APObject as OriginalAPObject, APActor, APActivity } from 'activitypub-types';
 
 	// apex は jsonld.compact(compactArrays: false) を通した「部分展開」形式でオブジェクトを
 	// 扱うため、ほとんどのプロパティは単一要素配列に boxing される
@@ -19,17 +17,31 @@ declare module 'activitypub-express' {
 	// (net/activity.js:93 `activity.type.toLowerCase()`)。
 	// プロパティごとに boxing の有無が異なり静的に表現しきれないため、
 	// `id` / `type` 以外は index signature で受ける。
-	export interface APObject {
+	//
+	// `_meta` が持つ既知のキーの集合は functions/src/meta.ts の ObjectMeta に集約する
+	// (二重定義による乖離を避けるため)。アンビエントモジュール宣言の内側では相対パスの
+	// `import` 宣言が使えない (TS2439) ため、インライン `import()` 型で参照する。
+	// `skipLibCheck: true` はこのファイルの意味検査自体をスキップするため、
+	// 通常の `import` で書くと型解決の失敗が黙って `any` にフォールバックし、
+	// ADR-0026 の any 禁止が骨抜きになる。
+	export interface APObject extends OriginalAPObject {
 		id: string;
 		type: string;
-		[key: string]: unknown;
+		_meta?: import('../src/meta.js').ObjectMeta;
 	}
 
-	// pub/actor.js createActor が返す actor には _meta.privateKey が必ず入る
-	export interface APActorWithMeta extends APObject {
-		_meta: {
-			privateKey: string;
-		};
+	// toJSONLD が返す jsonld.compact 後の actor 形状(mastodon/api.ts の actorObjectToAccount
+	// が使う最小限のプロパティのみ)。activitypub-types の APActor は icon/image を
+	// IconField|ImageField の union として定義するなど、jsonld.compact 後の緩いプロパティ
+	// アクセスと厳密には一致しないため、この専用の型を toJSONLD の呼び出し元と共有する。
+	export interface JsonLdActor {
+		id: string;
+		preferredUsername?: string;
+		name?: string;
+		summary?: string;
+		discoverable?: boolean;
+		icon?: { url?: string };
+		image?: { url?: string };
 	}
 
 	// store/index.js (参考実装) の deliveryQueue ドキュメント形状。
@@ -46,6 +58,11 @@ declare module 'activitypub-express' {
 
 	// store/interface.js が定義する契約(20メソッド、IApexStore として別途宣言)に、
 	// このプロジェクトの Store (functions/src/store.ts) が独自に拡張しているメソッドを加えたもの。
+	// `deliveries` コレクションのドキュメント形状は Firestore スキーマの一部であり、
+	// functions/src/schema.ts に集約する (→ ADR-0023)。上記 `_meta` と同様の理由で
+	// インライン `import()` 型で参照する。
+	type DeliveryRecord = import('../src/schema.js').DeliveryRecord;
+
 	export interface ApexStore extends IApexStore {
 		// 以下、Store 独自の拡張 (functions/src/store.ts のコメント参照)
 		getObjects(ids: string[], includeMeta?: boolean): Promise<APObject[]>;
@@ -141,14 +158,14 @@ declare module 'activitypub-express' {
 			summary: string,
 			icon: string | undefined,
 			type?: string,
-		): Promise<APActorWithMeta>;
+		): Promise<APObject & APActor>;
 		// pub/activity.js
 		buildActivity(
 			type: string,
 			actorId: string,
 			to: string | string[],
 			etc?: Record<string, unknown>,
-		): Promise<APObject>;
+		): Promise<APObject & APActivity>;
 		addToOutbox(actor: APObject, activity: APObject): Promise<unknown>;
 		acceptFollow(
 			actor: APObject,

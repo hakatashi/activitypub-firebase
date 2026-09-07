@@ -9,7 +9,10 @@
 		"strict": true,
 		"target": "ESNext",
 		"esModuleInterop": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"noImplicitOverride": true
 	},
 	"ts-node": {
 		"esm": true,

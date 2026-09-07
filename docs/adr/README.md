@@ -53,3 +53,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0025](0025-normalize-ap-objects-instead-of-casting.md) | AP オブジェクトは正規化ヘルパーと型ガードで扱い、`as` で絞り込まない | Accepted |
 | [0026](0026-ban-any-and-confine-casts-to-boundaries.md) | `any` を禁止し、型キャストを境界ファイルに閉じ込める | Accepted |
 | [0027](0027-branded-firestore-key.md) | エスケープ済み Firestore キーをブランド型で区別する | Accepted |
+| [0028](0028-allow-as-casts-in-test-files.md) | 型アサーションの配置ルールにテストファイルの例外を加える | Accepted |

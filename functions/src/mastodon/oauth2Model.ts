@@ -13,13 +13,22 @@ import { AccessTokens, AuthorizationCodes, Clients, RefreshTokens, Users } from 
 
 export type { MastodonClient } from '../schema.js';
 
+// クエリを実行し、最初の1件(なければ undefined)を返す。
+// 各メソッドがそれぞれ独自に `results.docs[0]` を取り出して乖離するのを避ける。
+const getFirstDoc = async <T extends FirebaseFirestore.DocumentData>(
+	query: FirebaseFirestore.Query<T>,
+): Promise<FirebaseFirestore.QueryDocumentSnapshot<T> | undefined> => {
+	const results = await query.get();
+	return results.docs[0];
+};
+
 export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, ClientCredentialsModel {
 	async getAccessToken(accessToken: string): Promise<Token | false> {
-		const results = await AccessTokens.where('accessToken', '==', accessToken).get();
-		if (results.empty) {
+		const doc = await getFirstDoc(AccessTokens.where('accessToken', '==', accessToken));
+		if (!doc) {
 			return false;
 		}
-		const accessTokenData = results.docs[0].data();
+		const accessTokenData = doc.data();
 		return {
 			...accessTokenData,
 			// @ts-expect-error: Return type is different from the interface
@@ -30,15 +39,13 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | false> {
-		const results = await AuthorizationCodes.where(
-			'authorizationCode',
-			'==',
-			authorizationCode,
-		).get();
-		if (results.empty) {
+		const doc = await getFirstDoc(
+			AuthorizationCodes.where('authorizationCode', '==', authorizationCode),
+		);
+		if (!doc) {
 			return false;
 		}
-		const authorizationCodeData = results.docs[0].data();
+		const authorizationCodeData = doc.data();
 		return {
 			...authorizationCodeData,
 			// @ts-expect-error: Return type is different from the interface
@@ -73,10 +80,11 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 			const results = await transaction.get(
 				AuthorizationCodes.where('authorizationCode', '==', code.authorizationCode),
 			);
-			if (results.empty) {
+			const doc = results.docs[0];
+			if (!doc) {
 				return false;
 			}
-			transaction.delete(results.docs[0].ref);
+			transaction.delete(doc.ref);
 			return true;
 		});
 	}
@@ -87,12 +95,12 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 			query = query.where('clientSecret', '==', clientSecret);
 		}
 
-		const results = await query.get();
-		if (results.empty) {
+		const doc = await getFirstDoc(query);
+		if (!doc) {
 			return false;
 		}
 
-		return results.docs[0].data();
+		return doc.data();
 	}
 
 	async saveToken(token: Token, client: Client, user: User): Promise<Token | false> {
@@ -106,11 +114,13 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		if (token.refreshToken !== undefined) {
 			const refreshToken = {
 				refreshToken: token.refreshToken,
-				refreshTokenExpiresAt: token.refreshTokenExpiresAt,
+				...(token.refreshTokenExpiresAt === undefined
+					? {}
+					: { refreshTokenExpiresAt: token.refreshTokenExpiresAt }),
 				client,
 				user,
-				scope: token.scope,
-			} as RefreshToken;
+				...(token.scope === undefined ? {} : { scope: token.scope }),
+			} satisfies RefreshToken;
 			await RefreshTokens.add(refreshToken);
 		}
 
@@ -118,21 +128,24 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 	}
 
 	async getUserFromClient(client: Client): Promise<User | false> {
-		const results = await Users.where('id', '==', client.userId).get();
-		if (results.empty) {
+		if (!client.userId) {
 			return false;
 		}
-		return results.docs[0].data();
+		const doc = await getFirstDoc(Users.where('id', '==', client.userId));
+		if (!doc) {
+			return false;
+		}
+		return doc.data();
 	}
 
 	async getUser(username: string, password: string): Promise<User | false> {
-		const results = await Users.where('username', '==', username)
-			.where('password', '==', password)
-			.get();
-		if (results.empty) {
+		const doc = await getFirstDoc(
+			Users.where('username', '==', username).where('password', '==', password),
+		);
+		if (!doc) {
 			return false;
 		}
-		return results.docs[0].data();
+		return doc.data();
 	}
 
 	verifyScope(token: Token, scope: string | string[]): Promise<boolean> {

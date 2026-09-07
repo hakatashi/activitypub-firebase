@@ -113,9 +113,9 @@ describe('oauth', () => {
 			const { default: firebase } = await import('firebase-admin');
 			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as any);
+			} as unknown as firebase.credential.Credential);
 
-			const { default: fetch } = await import('node-fetch');
+			const { default: fetch, Response } = await import('node-fetch');
 			const fetchMock = vi.mocked(fetch);
 			fetchMock
 				.mockResolvedValueOnce({
@@ -123,13 +123,13 @@ describe('oauth', () => {
 					status: 200,
 					statusText: 'OK',
 					json: () => Promise.resolve({ apps: [{ appId: 'test-app-id' }] }),
-				} as any)
+				} as unknown as typeof Response.prototype)
 				.mockResolvedValueOnce({
 					ok: true,
 					status: 200,
 					statusText: 'OK',
 					json: () => Promise.resolve({ apiKey: 'fake-api-key', appId: 'test-app-id' }),
-				} as any);
+				} as unknown as typeof Response.prototype);
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -149,7 +149,7 @@ describe('oauth', () => {
 			const { default: firebase } = await import('firebase-admin');
 			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.reject(new Error('ADC failure')),
-			} as any);
+			} as unknown as firebase.credential.Credential);
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -168,15 +168,15 @@ describe('oauth', () => {
 			const { default: firebase } = await import('firebase-admin');
 			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as any);
+			} as unknown as firebase.credential.Credential);
 
-			const { default: fetch } = await import('node-fetch');
+			const { default: fetch, Response } = await import('node-fetch');
 			const fetchMock = vi.mocked(fetch);
 			fetchMock.mockResolvedValueOnce({
 				ok: false,
 				status: 403,
 				statusText: 'Forbidden',
-			} as any);
+			} as unknown as typeof Response.prototype);
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -195,16 +195,16 @@ describe('oauth', () => {
 			const { default: firebase } = await import('firebase-admin');
 			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as any);
+			} as unknown as firebase.credential.Credential);
 
-			const { default: fetch } = await import('node-fetch');
+			const { default: fetch, Response } = await import('node-fetch');
 			const fetchMock = vi.mocked(fetch);
 			fetchMock.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
 				statusText: 'OK',
 				json: () => Promise.resolve({ apps: 'invalid-apps-format' }),
-			} as any);
+			} as unknown as typeof Response.prototype);
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({

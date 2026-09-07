@@ -1,5 +1,6 @@
 import type express from 'express';
 import { logger } from 'firebase-functions/v2';
+import { toError } from './utils.js';
 
 // apex がリクエストごとに `res.locals.apex` へ積む値のうち、ここで扱うもの。
 interface ApexLocals {
@@ -9,8 +10,14 @@ interface ApexLocals {
 	[key: string]: unknown;
 }
 
+// ApexLocals は全フィールドが optional かつ index signature 付きなので、"object であること"
+// 以上の形状チェックはできない。ここでは apex が res.locals.apex に何か積んだかどうかを
+// 区別できれば十分(未設定/undefined と区別する)。
+const isApexLocalsSet = (value: unknown): value is ApexLocals =>
+	typeof value === 'object' && value !== null;
+
 const idOf = (value: unknown) =>
-	typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
+	typeof value === 'object' && value !== null && 'id' in value ? value.id : undefined;
 
 // `res.locals.apex.target` には apex の targetActorWithMeta が入れた `_meta.privateKey` が
 // 含まれうるため、locals をそのままログに出さず安全なフィールドだけを抜き出す (ADR-0013)。
@@ -32,7 +39,7 @@ const summarizeApexLocals = (apexLocal: ApexLocals) => ({
 // 実行済みの postWork / eventName は落としておき、apex 側の onFinishedHandler で
 // 二重に実行されないようにする。
 const runPostWork = async (res: express.Response) => {
-	const apexLocal = res.locals.apex as ApexLocals;
+	const apexLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : {};
 
 	const startedAt = Date.now();
 
@@ -83,7 +90,7 @@ export const runPostWorkBeforeSend: express.RequestHandler = (req, res, next) =>
 
 	res.send = (body) => {
 		(async () => {
-			const apexLocal = res.locals.apex as ApexLocals | undefined;
+			const apexLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
 			if (apexLocal) {
 				logger.info({
 					type: 'response',
@@ -95,16 +102,18 @@ export const runPostWorkBeforeSend: express.RequestHandler = (req, res, next) =>
 
 				try {
 					await runPostWork(res);
-				} catch (err: any) {
-					logger.error('post-response error:', err.message);
-					logger.error(err);
+				} catch (err: unknown) {
+					const error = toError(err);
+					logger.error('post-response error:', error.message);
+					logger.error(error);
 				}
 			}
 
 			originalSend(body);
-		})().catch((err: any) => {
-			logger.error('response send error:', err.message);
-			logger.error(err);
+		})().catch((err: unknown) => {
+			const error = toError(err);
+			logger.error('response send error:', error.message);
+			logger.error(error);
 		});
 
 		return res;

@@ -31,10 +31,10 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			.mockResolvedValue({ postTask, updated: true });
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
 
-		const listeners = app.listeners('apex-inbox') as ((message: any) => Promise<void>)[];
+		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
 
-		await listeners[0]({ activity, actor, recipient });
+		await listeners[0]?.({ activity, actor, recipient });
 
 		expect(buildActivitySpy).toHaveBeenCalledWith('Accept', recipient.id, actor.id, {
 			object: { id: activity.id, type: 'Follow', actor: actor.id, object: recipient.id },
@@ -51,9 +51,10 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			.mockResolvedValue({ postTask: vi.fn(), updated: true });
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
 
-		const listeners = app.listeners('apex-inbox') as ((message: any) => Promise<void>)[];
+		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
+		expect(listeners).toHaveLength(1);
 
-		await listeners[0]({
+		await listeners[0]?.({
 			activity: { id: 'https://remote.example/activities/create-1', type: 'Create' },
 			actor: { id: 'https://remote.example/u/alice' },
 			recipient: { id: 'https://example.com/activitypub/u/hakatashi' },
@@ -99,9 +100,9 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 
 	test('dispatches apexLocal.eventMessage to listeners of apexLocal.eventName on the owning app', async () => {
 		const testApp = express();
-		const received: any[] = [];
+		const received: unknown[] = [];
 		testApp.use(runPostWorkBeforeSend);
-		testApp.on('custom-apex-event', (message: any) => {
+		testApp.on('custom-apex-event', (message: unknown) => {
 			received.push(message);
 		});
 		testApp.get('/test', (req, res) => {
@@ -122,10 +123,10 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 	test('drains postWork and eventName so that apex onFinished does not run them twice', async () => {
 		const task = vi.fn();
 		const testApp = express();
-		const received: any[] = [];
-		let apexLocal: any;
+		const received: unknown[] = [];
+		let apexLocal: Record<string, unknown> | undefined;
 		testApp.use(runPostWorkBeforeSend);
-		testApp.on('custom-apex-event', (message: any) => {
+		testApp.on('custom-apex-event', (message: unknown) => {
 			received.push(message);
 		});
 		testApp.get('/test', (req, res) => {

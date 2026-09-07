@@ -10,6 +10,12 @@ const address = 'https://remote.example/u/alice/inbox';
 const activityId = 'https://example.com/activitypub/activities/1';
 const body = `{"id":"${activityId}","type":"Create"}`;
 
+const makeDeliveryTaskRequest = (data: unknown) =>
+	data as unknown as Parameters<typeof deliveryTask.run>[0];
+
+const makePingTaskRequest = (data: unknown) =>
+	data as unknown as Parameters<typeof pingTask.run>[0];
+
 describe('deliveryTask', () => {
 	beforeEach(async () => {
 		if (firestoreHost === undefined || projectId === undefined) {
@@ -37,7 +43,7 @@ describe('deliveryTask', () => {
 		const deliverSpy = vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 202 });
 
 		await expect(
-			deliveryTask.run({ data: { actorId, body, address } } as any),
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
 		).resolves.toBeUndefined();
 
 		expect(deliverSpy).toHaveBeenCalledWith(
@@ -58,7 +64,7 @@ describe('deliveryTask', () => {
 		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 410 });
 
 		await expect(
-			deliveryTask.run({ data: { actorId, body, address } } as any),
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
 		).resolves.toBeUndefined();
 
 		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
@@ -71,7 +77,9 @@ describe('deliveryTask', () => {
 	test('throws to trigger a retry on a 5xx response', async () => {
 		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 503 });
 
-		await expect(deliveryTask.run({ data: { actorId, body, address } } as any)).rejects.toThrow();
+		await expect(
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
+		).rejects.toThrow();
 
 		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
 			status: 'retrying',
@@ -83,9 +91,9 @@ describe('deliveryTask', () => {
 	test('propagates a network error so Cloud Tasks retries', async () => {
 		vi.spyOn(apex, 'deliver').mockRejectedValue(new Error('ETIMEDOUT'));
 
-		await expect(deliveryTask.run({ data: { actorId, body, address } } as any)).rejects.toThrow(
-			'ETIMEDOUT',
-		);
+		await expect(
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
+		).rejects.toThrow('ETIMEDOUT');
 
 		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
 			status: 'retrying',
@@ -99,7 +107,9 @@ describe('deliveryTask', () => {
 		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 503 });
 
 		await expect(
-			deliveryTask.run({ data: { actorId, body, address }, retryCount: 2 } as any),
+			deliveryTask.run(
+				makeDeliveryTaskRequest({ data: { actorId, body, address }, retryCount: 2 }),
+			),
 		).rejects.toThrow();
 
 		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({ attempts: 3 });
@@ -109,7 +119,7 @@ describe('deliveryTask', () => {
 		vi.spyOn(apex, 'deliver').mockResolvedValue(null);
 
 		await expect(
-			deliveryTask.run({ data: { actorId, body, address } } as any),
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
 		).resolves.toBeUndefined();
 
 		expect(await apex.store.getDelivery(activityId, address)).toBeUndefined();
@@ -119,9 +129,11 @@ describe('deliveryTask', () => {
 		const deliverSpy = vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 202 });
 
 		await expect(
-			deliveryTask.run({
-				data: { actorId: 'https://example.com/activitypub/u/unknown', body, address },
-			} as any),
+			deliveryTask.run(
+				makeDeliveryTaskRequest({
+					data: { actorId: 'https://example.com/activitypub/u/unknown', body, address },
+				}),
+			),
 		).resolves.toBeUndefined();
 
 		expect(deliverSpy).not.toHaveBeenCalled();
@@ -132,9 +144,13 @@ describe('deliveryTask', () => {
 		const deliverSpy = vi.spyOn(apex, 'deliver');
 
 		// Missing actorId / body / address
-		await expect(deliveryTask.run({ data: { actorId } } as any)).resolves.toBeUndefined();
+		await expect(
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId } })),
+		).resolves.toBeUndefined();
 
-		await expect(deliveryTask.run({ data: null } as any)).resolves.toBeUndefined();
+		await expect(
+			deliveryTask.run(makeDeliveryTaskRequest({ data: null })),
+		).resolves.toBeUndefined();
 
 		expect(deliverSpy).not.toHaveBeenCalled();
 	});
@@ -144,12 +160,14 @@ describe('deliveryTask', () => {
 
 		// Malformed JSON
 		await expect(
-			deliveryTask.run({ data: { actorId, body: '{malformed', address } } as any),
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body: '{malformed', address } })),
 		).resolves.toBeUndefined();
 
 		// JSON without id
 		await expect(
-			deliveryTask.run({ data: { actorId, body: '{"type":"Create"}', address } } as any),
+			deliveryTask.run(
+				makeDeliveryTaskRequest({ data: { actorId, body: '{"type":"Create"}', address } }),
+			),
 		).resolves.toBeUndefined();
 
 		expect(deliverSpy).not.toHaveBeenCalled();
@@ -158,11 +176,11 @@ describe('deliveryTask', () => {
 
 describe('pingTask', () => {
 	test('handles valid payload without error', () => {
-		expect(() => pingTask.run({ data: { message: 'hello' } } as any)).not.toThrow();
+		expect(() => pingTask.run(makePingTaskRequest({ data: { message: 'hello' } }))).not.toThrow();
 	});
 
 	test('handles invalid payload without throwing', () => {
-		expect(() => pingTask.run({ data: { message: 123 } } as any)).not.toThrow();
-		expect(() => pingTask.run({ data: null } as any)).not.toThrow();
+		expect(() => pingTask.run(makePingTaskRequest({ data: { message: 123 } }))).not.toThrow();
+		expect(() => pingTask.run(makePingTaskRequest({ data: null }))).not.toThrow();
 	});
 });
