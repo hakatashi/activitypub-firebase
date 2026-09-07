@@ -31,7 +31,7 @@ const runPostWork = async (res: express.Response) => {
 	const startedAt = Date.now();
 
 	const originalPostWork = apexLocal.postWork ?? [];
-	(res.locals.apex as Record<string, unknown>).postWork = [];
+	(res.locals.apex as ApexLocals).postWork = [];
 
 	// execute postWork tasks in sequence (not parallel)
 	await originalPostWork.reduce(
@@ -46,7 +46,7 @@ const runPostWork = async (res: express.Response) => {
 
 	const { eventName } = apexLocal;
 	if (eventName) {
-		(res.locals.apex as Record<string, unknown>).eventName = null;
+		(res.locals.apex as ApexLocals).eventName = null;
 		await Promise.all(
 			res.app
 				.listeners(eventName)

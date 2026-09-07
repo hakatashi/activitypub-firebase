@@ -2,6 +2,7 @@ import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { apex } from './apex.js';
 
+import type { ApexLocals } from './utils.js';
 import { parseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
@@ -30,7 +31,7 @@ export const markRedundantInboxDelivery: RequestHandler = (
 	apex.store
 		.getActivity(activity.id, true)
 		.then((existing) => {
-			(res.locals.apex as Record<string, unknown>).isRedundantDelivery = (
+			(res.locals.apex as ApexLocals).isRedundantDelivery = (
 				existing?._meta?.collection ?? []
 			).includes(newTarget);
 			next();
@@ -43,7 +44,7 @@ export const markRedundantInboxDelivery: RequestHandler = (
 export const correctIsNewActivity: RequestHandler = (req, res, next) => {
 	const resLocal = parseApexLocals(res.locals.apex);
 	if (resLocal.isRedundantDelivery && resLocal.isNewActivity === 'new collection') {
-		(res.locals.apex as Record<string, unknown>).isNewActivity = false;
+		(res.locals.apex as ApexLocals).isNewActivity = false;
 	}
 	next();
 };

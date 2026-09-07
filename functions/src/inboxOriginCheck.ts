@@ -1,6 +1,7 @@
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
+import type { ApexLocals } from './utils.js';
 import { parseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
@@ -47,7 +48,7 @@ export const verifySameOriginForUpdateDelete: RequestHandler = (
 		return;
 	}
 	if (!isSameOrigin(actorId, objectId)) {
-		const apexLocals = res.locals.apex as Record<string, unknown>;
+		const apexLocals = res.locals.apex as ApexLocals;
 		apexLocals.activity = false;
 		apexLocals.status = 403;
 		apexLocals.statusMessage = `${activity.type} actor origin does not match object origin`;
