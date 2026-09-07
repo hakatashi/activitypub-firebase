@@ -50,22 +50,16 @@ const readBodyWithLimit = async (response: Response, maxBytes: number): Promise<
 	if (response.body === null) {
 		return '';
 	}
-	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let totalBytes = 0;
-	for (;;) {
-		// oxlint-disable-next-line no-await-in-loop
-		const { done, value } = await reader.read();
-		if (done) {
-			break;
-		}
-		totalBytes += value.byteLength;
+	// ループ内で throw すると for await...of のイテレータが自動的に
+	// response.body を cancel() するため、手動での reader 管理は不要。
+	for await (const chunk of response.body) {
+		totalBytes += chunk.byteLength;
 		if (totalBytes > maxBytes) {
-			// oxlint-disable-next-line no-await-in-loop
-			await reader.cancel();
 			throw new Error(`Response exceeded ${maxBytes} bytes`);
 		}
-		chunks.push(value);
+		chunks.push(chunk);
 	}
 	return Buffer.concat(chunks).toString('utf-8');
 };
