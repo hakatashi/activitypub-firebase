@@ -30,9 +30,10 @@ apex の `activity.save` は `['create', 'announce', 'like', 'add', 'reject']` �
 
 ## 結果
 
-- 新規ファイル `functions/src/inboxUndo.ts` にミドルウェアと挿入関数を実装する。
-- `activitypub.ts` の inbox post チェーンに本ミドルウェアを追加する。
+- 新規ファイル `functions/src/inboxUndo.ts` にミドルウェアを実装する。
+- `functions/src/inboxPost.ts` に inbox post のミドルウェアパイプラインを統合し、`activitypub.ts` でフラットに実行する。
 - 文字列 IRI の `Undo(Follow)` を受信しても `followers_count` が正しく減算される。
+
 
 ## 参照
 

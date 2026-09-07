@@ -1,4 +1,3 @@
-import assert from 'node:assert';
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { apex } from './apex.js';
@@ -56,20 +55,4 @@ export const correctIsNewActivity: RequestHandler = (req, res, next) => {
 		resLocal.isNewActivity = false;
 	}
 	next();
-};
-
-// apex.net.inbox.post の activity.save 前後にこのモジュールのミドルウェアを挿入した配列を返す。
-// apex 本体のミドルウェア自体は変更しない(→ ADR-0030)。
-export const buildDedupedInboxPost = (): RequestHandler[] => {
-	const original = apex.net.inbox.post;
-	const saveIndex = original.indexOf(apex.net.activity.save);
-	const saveMiddleware = original[saveIndex];
-	assert(saveMiddleware !== undefined, 'apex.net.activity.save not found in apex.net.inbox.post');
-	return [
-		...original.slice(0, saveIndex),
-		markRedundantInboxDelivery,
-		saveMiddleware,
-		correctIsNewActivity,
-		...original.slice(saveIndex + 1),
-	];
 };

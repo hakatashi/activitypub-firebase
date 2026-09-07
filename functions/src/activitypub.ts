@@ -5,9 +5,10 @@ import { https, logger, params } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
-import { buildDedupedInboxPost } from './inboxDedup.js';
-import { insertSameOriginCheckForUpdateDelete } from './inboxOriginCheck.js';
-import { insertUndoDenormalization } from './inboxUndo.js';
+import { correctIsNewActivity, markRedundantInboxDelivery } from './inboxDedup.js';
+import { verifySameOriginForUpdateDelete } from './inboxOriginCheck.js';
+import { inboxExecutionMiddlewares, inboxValidationMiddlewares } from './inboxPost.js';
+import { denormalizeUndoObject } from './inboxUndo.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
@@ -63,14 +64,25 @@ app.use(
 	apex,
 );
 
-// inbox の重複配送で side effect (Follow 自動承認を含む) が再実行されないよう、
-// apex.net.inbox.post の activity.save 前後に判定ミドルウェアを挟む (→ ADR-0030, Issue #50)。
-// さらに Update / Delete の同一オリジン検証を validators.inboxActivity の直後に挟み (→ ADR-0031, Issue #51)、
-// Undo の object 非正規化を activity.save の直前に挟む (→ ADR-0033, Issue #53)。
-app
-	.route(routes.inbox)
-	.get(apex.net.inbox.get)
-	.post(insertSameOriginCheckForUpdateDelete(insertUndoDenormalization(buildDedupedInboxPost())));
+// inbox への配送処理パイプライン。apex 本体のミドルウェア配列を変更せず、
+// 各検証・補正ミドルウェアを順序通りフラットに並べて実行する
+// (→ ADR-0030, ADR-0031, ADR-0033)。
+app.route(routes.inbox).get(apex.net.inbox.get).post(
+	// 1. リクエスト検証・署名検証・アクター/オブジェクト解決 (apex)
+	inboxValidationMiddlewares,
+	// 2. Update / Delete の同一オリジン検証 (ADR-0031)
+	verifySameOriginForUpdateDelete,
+	// 3. 重複配送検出 (ADR-0030)
+	markRedundantInboxDelivery,
+	// 4. Undo のオブジェクト解決埋め込み (ADR-0033)
+	denormalizeUndoObject,
+	// 5. アクティビティ保存 (apex)
+	apex.net.activity.save,
+	// 6. 重複配送時のフラグ補正 (ADR-0030)
+	correctIsNewActivity,
+	// 7. スレッド解決・Side effects・配送・レスポンス (apex)
+	inboxExecutionMiddlewares,
+);
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
 
 app.get(routes.actor, apex.net.actor.get);

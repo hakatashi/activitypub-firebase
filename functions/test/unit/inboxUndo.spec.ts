@@ -1,7 +1,6 @@
 import type { Request, Response } from 'express';
 import { describe, expect, test } from 'vitest';
-import { apex } from '../../src/apex.js';
-import { denormalizeUndoObject, insertUndoDenormalization } from '../../src/inboxUndo.js';
+import { denormalizeUndoObject } from '../../src/inboxUndo.js';
 
 const makeReq = (body: unknown) => ({ body }) as unknown as Request;
 const makeRes = (locals: Record<string, unknown>) =>
@@ -129,14 +128,5 @@ describe('denormalizeUndoObject', () => {
 		await runMiddleware(denormalizeUndoObject, req, res);
 
 		expect(req.body.object).toBe('https://remote.example/activities/follow-1');
-	});
-});
-
-describe('insertUndoDenormalization', () => {
-	test('inserts denormalizeUndoObject immediately before apex.net.activity.save', () => {
-		const chain = insertUndoDenormalization(apex.net.inbox.post);
-		const saveIndex = chain.indexOf(apex.net.activity.save);
-		expect(saveIndex).toBeGreaterThan(0);
-		expect(chain[saveIndex - 1]).toBe(denormalizeUndoObject);
 	});
 });

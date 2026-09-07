@@ -1,7 +1,5 @@
-import assert from 'node:assert';
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { apex } from './apex.js';
 import { isAPUndo } from './utils.js';
 
 // apex がリクエストごとに res.locals.apex へ積む値のうち、ここで扱うもの
@@ -38,13 +36,4 @@ export const denormalizeUndoObject: RequestHandler = (
 		activity.object = [resLocal.object];
 	}
 	next();
-};
-
-// apex.net.inbox.post 相当の配列(または既に他のミドルウェアが挿入済みの配列)に、
-// activity.save の直前に Undo の非正規化ミドルウェアを挿入したものを返す。
-// apex 本体のミドルウェア自体は変更しない (→ ADR-0033)。
-export const insertUndoDenormalization = (original: RequestHandler[]): RequestHandler[] => {
-	const saveIndex = original.indexOf(apex.net.activity.save);
-	assert(saveIndex !== -1, 'apex.net.activity.save not found in inbox post middleware chain');
-	return [...original.slice(0, saveIndex), denormalizeUndoObject, ...original.slice(saveIndex)];
 };

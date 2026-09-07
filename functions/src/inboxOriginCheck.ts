@@ -1,7 +1,5 @@
-import assert from 'node:assert';
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { apex } from './apex.js';
 
 // apex がリクエストごとに res.locals.apex へ積む値のうち、ここで扱うもの
 // (inboxDedup.ts の ApexLocals と同様のパターン)。
@@ -64,22 +62,4 @@ export const verifySameOriginForUpdateDelete: RequestHandler = (
 		resLocal.statusMessage = `${activity.type} actor origin does not match object origin`;
 	}
 	next();
-};
-
-// apex.net.inbox.post 相当の配列(または既に他のミドルウェアが挿入済みの配列)に、
-// validators.inboxActivity の参照を目印として同一オリジン検証ミドルウェアを挿入したものを返す。
-// apex 本体のミドルウェア自体は変更しない(→ ADR-0031)。
-export const insertSameOriginCheckForUpdateDelete = (
-	original: RequestHandler[],
-): RequestHandler[] => {
-	const inboxActivityIndex = original.indexOf(apex.net.validators.inboxActivity);
-	assert(
-		inboxActivityIndex !== -1,
-		'apex.net.validators.inboxActivity not found in inbox post middleware chain',
-	);
-	return [
-		...original.slice(0, inboxActivityIndex + 1),
-		verifySameOriginForUpdateDelete,
-		...original.slice(inboxActivityIndex + 1),
-	];
 };
