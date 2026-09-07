@@ -1,4 +1,7 @@
+import type { APObject } from 'activitypub-express';
 import type { APActor, APFollow, APNote, APUndo } from 'activitypub-types';
+import type express from 'express';
+import { z } from 'zod';
 
 type CamelToSnakeCase<S extends string> = S extends `${infer T}${infer U}`
 	? `${T extends Capitalize<T> ? (T extends Lowercase<T> ? '' : '_') : ''}${Lowercase<T>}${CamelToSnakeCase<U>}`
@@ -210,3 +213,31 @@ export const toError = (value: unknown): Error => {
 	}
 	return new Error(typeof value === 'string' ? value : String(value));
 };
+
+export const apexLocalsSchema = z
+	.object({
+		activity: z
+			.union([z.boolean(), z.custom<APObject>((val) => typeof val === 'object' && val !== null)])
+			.optional(),
+		actor: z.custom<APObject>((val) => typeof val === 'object' && val !== null).optional(),
+		object: z.custom<APObject>((val) => typeof val === 'object' && val !== null).optional(),
+		target: z.custom<APObject>((val) => typeof val === 'object' && val !== null).optional(),
+		sender: z.custom<APObject>((val) => typeof val === 'object' && val !== null).optional(),
+		status: z.number().optional(),
+		statusMessage: z.string().optional(),
+		responseType: z.string().optional(),
+		createdLocation: z.string().optional(),
+		eventName: z.string().nullable().optional(),
+		eventMessage: z.unknown().optional(),
+		isNewActivity: z.union([z.boolean(), z.string()]).optional(),
+		isRedundantDelivery: z.boolean().optional(),
+		postWork: z
+			.array(z.custom<(res: express.Response) => unknown>((fn) => typeof fn === 'function'))
+			.optional(),
+		authorized: z.boolean().optional(),
+	})
+	.passthrough();
+
+export type ApexLocals = z.infer<typeof apexLocalsSchema>;
+
+export const safeParseApexLocals = (value: unknown) => apexLocalsSchema.safeParse(value);

@@ -1,19 +1,7 @@
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
-// apex がリクエストごとに res.locals.apex へ積む値のうち、ここで扱うもの
-// (inboxDedup.ts の ApexLocals と同様のパターン)。
-interface ApexLocals {
-	activity?: boolean;
-	actor?: APObject;
-	object?: APObject;
-	status?: number;
-	statusMessage?: string;
-	[key: string]: unknown;
-}
-
-const isApexLocalsSet = (value: unknown): value is ApexLocals =>
-	typeof value === 'object' && value !== null;
+import { safeParseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -44,22 +32,31 @@ export const verifySameOriginForUpdateDelete: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const resLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
+	const parsedLocals = safeParseApexLocals(res.locals.apex);
 	const activity = req.body;
 	const type = typeof activity.type === 'string' ? activity.type.toLowerCase() : undefined;
-	if (!resLocal?.actor || type === undefined || !requiresSameOrigin.has(type)) {
+	if (
+		!parsedLocals.success ||
+		!parsedLocals.data.actor ||
+		type === undefined ||
+		!requiresSameOrigin.has(type)
+	) {
 		next();
 		return;
 	}
-	const object = resLocal.object;
-	if (object?.id === undefined) {
+	const actorId =
+		typeof parsedLocals.data.actor.id === 'string' ? parsedLocals.data.actor.id : undefined;
+	const object = parsedLocals.data.object;
+	const objectId = typeof object?.id === 'string' ? object.id : undefined;
+	if (actorId === undefined || objectId === undefined) {
 		next();
 		return;
 	}
-	if (!isSameOrigin(resLocal.actor.id, object.id)) {
-		resLocal.activity = false;
-		resLocal.status = 403;
-		resLocal.statusMessage = `${activity.type} actor origin does not match object origin`;
+	if (!isSameOrigin(actorId, objectId)) {
+		const apexLocals = res.locals.apex as Record<string, unknown>;
+		apexLocals.activity = false;
+		apexLocals.status = 403;
+		apexLocals.statusMessage = `${activity.type} actor origin does not match object origin`;
 	}
 	next();
 };

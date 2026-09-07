@@ -13,6 +13,7 @@ import {
 	toStringValue,
 	toTypeArray,
 	objectToTypeArray,
+	safeParseApexLocals,
 } from '../../src/utils.js';
 
 describe('Counter', () => {
@@ -367,5 +368,57 @@ describe('toError', () => {
 		expect(toError(123).message).toBe('123');
 		expect(toError(null).message).toBe('null');
 		expect(toError(undefined).message).toBe('undefined');
+	});
+});
+
+describe('safeParseApexLocals', () => {
+	test('returns success: false for non-objects, null, and undefined', () => {
+		expect(safeParseApexLocals(undefined).success).toBe(false);
+		expect(safeParseApexLocals(null).success).toBe(false);
+		expect(safeParseApexLocals('string').success).toBe(false);
+		expect(safeParseApexLocals(123).success).toBe(false);
+	});
+
+	test('returns success: true for empty object', () => {
+		const result = safeParseApexLocals({});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data).toEqual({});
+		}
+	});
+
+	test('parses and preserves known ApexLocals fields and passthrough extra fields', () => {
+		const postWorkFn = () => undefined;
+		const input = {
+			activity: true,
+			actor: { id: 'https://remote.example/u/alice' },
+			object: { id: 'https://example.com/o/1', type: 'Note' },
+			target: { id: 'https://example.com/activitypub/u/hakatashi' },
+			sender: { id: 'https://remote.example/u/alice' },
+			status: 200,
+			statusMessage: 'OK',
+			responseType: 'application/activity+json',
+			createdLocation: 'https://example.com/o/1',
+			eventName: 'apex-inbox',
+			eventMessage: { foo: 'bar' },
+			isNewActivity: 'new collection',
+			isRedundantDelivery: true,
+			postWork: [postWorkFn],
+			authorized: true,
+			customExtraField: 'preserved',
+		};
+
+		const result = safeParseApexLocals(input);
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.activity).toBe(true);
+			expect(result.data.actor).toEqual({ id: 'https://remote.example/u/alice' });
+			expect(result.data.object).toEqual({ id: 'https://example.com/o/1', type: 'Note' });
+			expect(result.data.status).toBe(200);
+			expect(result.data.isNewActivity).toBe('new collection');
+			expect(result.data.isRedundantDelivery).toBe(true);
+			expect(result.data.postWork).toEqual([postWorkFn]);
+			expect(result.data.customExtraField).toBe('preserved');
+		}
 	});
 });

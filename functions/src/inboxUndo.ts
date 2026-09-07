@@ -1,17 +1,6 @@
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { isAPUndo } from './utils.js';
-
-// apex がリクエストごとに res.locals.apex へ積む値のうち、ここで扱うもの
-// (inboxDedup.ts の ApexLocals と同様のパターン)。
-interface ApexLocals {
-	activity?: boolean;
-	object?: APObject;
-	[key: string]: unknown;
-}
-
-const isApexLocalsSet = (value: unknown): value is ApexLocals =>
-	typeof value === 'object' && value !== null;
+import { isAPUndo, safeParseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -26,14 +15,14 @@ export const denormalizeUndoObject: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const resLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
-	if (!resLocal?.activity || !resLocal.object) {
+	const parsedLocals = safeParseApexLocals(res.locals.apex);
+	if (!parsedLocals.success || !parsedLocals.data.activity || !parsedLocals.data.object) {
 		next();
 		return;
 	}
 	const activity = req.body;
 	if (isAPUndo(activity)) {
-		activity.object = [resLocal.object];
+		activity.object = [parsedLocals.data.object];
 	}
 	next();
 };

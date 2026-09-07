@@ -2,18 +2,7 @@ import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { apex } from './apex.js';
 
-// apex がリクエストごとに res.locals.apex へ積む値のうち、ここで扱うもの
-// (postWork.ts の ApexLocals と同様のパターン)。
-interface ApexLocals {
-	activity?: boolean;
-	target?: unknown;
-	isNewActivity?: boolean | 'new collection';
-	isRedundantDelivery?: boolean;
-	[key: string]: unknown;
-}
-
-const isApexLocalsSet = (value: unknown): value is ApexLocals =>
-	typeof value === 'object' && value !== null;
+import { safeParseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -27,8 +16,8 @@ export const markRedundantInboxDelivery: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const resLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
-	if (!resLocal?.activity || !resLocal.target) {
+	const parsedLocals = safeParseApexLocals(res.locals.apex);
+	if (!parsedLocals.success || !parsedLocals.data.activity || !parsedLocals.data.target) {
 		next();
 		return;
 	}
@@ -41,7 +30,9 @@ export const markRedundantInboxDelivery: RequestHandler = (
 	apex.store
 		.getActivity(activity.id, true)
 		.then((existing) => {
-			resLocal.isRedundantDelivery = (existing?._meta?.collection ?? []).includes(newTarget);
+			(res.locals.apex as Record<string, unknown>).isRedundantDelivery = (
+				existing?._meta?.collection ?? []
+			).includes(newTarget);
 			next();
 		})
 		.catch(next);
@@ -50,9 +41,13 @@ export const markRedundantInboxDelivery: RequestHandler = (
 // apex.net.inbox.post の activity.save の直後に挿入する。markRedundantInboxDelivery で
 // 記録した判定を使って isNewActivity を補正する(→ ADR-0030)。
 export const correctIsNewActivity: RequestHandler = (req, res, next) => {
-	const resLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
-	if (resLocal?.isRedundantDelivery && resLocal.isNewActivity === 'new collection') {
-		resLocal.isNewActivity = false;
+	const parsedLocals = safeParseApexLocals(res.locals.apex);
+	if (
+		parsedLocals.success &&
+		parsedLocals.data.isRedundantDelivery &&
+		parsedLocals.data.isNewActivity === 'new collection'
+	) {
+		(res.locals.apex as Record<string, unknown>).isNewActivity = false;
 	}
 	next();
 };
