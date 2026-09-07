@@ -240,7 +240,7 @@ export const apexLocalsSchema = z
 
 export type ApexLocals = z.infer<typeof apexLocalsSchema>;
 
-export const safeParseApexLocals = (value: unknown): ApexLocals => {
+export const parseApexLocals = (value: unknown) => {
 	const result = apexLocalsSchema.safeParse(value);
-	return result.success ? result.data : {};
+	return result.success ? result.data : ({} satisfies ApexLocals);
 };

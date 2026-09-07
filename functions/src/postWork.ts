@@ -1,7 +1,7 @@
 import type express from 'express';
 import { logger } from 'firebase-functions/v2';
 import type { ApexLocals } from './utils.js';
-import { safeParseApexLocals, toError } from './utils.js';
+import { parseApexLocals, toError } from './utils.js';
 
 const idOf = (value: unknown) =>
 	typeof value === 'object' && value !== null && 'id' in value ? value.id : undefined;
@@ -26,7 +26,7 @@ const summarizeApexLocals = (apexLocal: ApexLocals) => ({
 // 実行済みの postWork / eventName は落としておき、apex 側の onFinishedHandler で
 // 二重に実行されないようにする。
 const runPostWork = async (res: express.Response) => {
-	const apexLocal = safeParseApexLocals(res.locals.apex);
+	const apexLocal = parseApexLocals(res.locals.apex);
 
 	const startedAt = Date.now();
 
@@ -78,7 +78,7 @@ export const runPostWorkBeforeSend: express.RequestHandler = (req, res, next) =>
 	res.send = (body) => {
 		(async () => {
 			if (res.locals.apex !== undefined && res.locals.apex !== null) {
-				const apexLocal = safeParseApexLocals(res.locals.apex);
+				const apexLocal = parseApexLocals(res.locals.apex);
 				logger.info({
 					type: 'response',
 					status: res.statusCode,

@@ -13,7 +13,7 @@ import {
 	toStringValue,
 	toTypeArray,
 	objectToTypeArray,
-	safeParseApexLocals,
+	parseApexLocals,
 } from '../../src/utils.js';
 
 describe('Counter', () => {
@@ -371,16 +371,16 @@ describe('toError', () => {
 	});
 });
 
-describe('safeParseApexLocals', () => {
+describe('parseApexLocals', () => {
 	test('returns empty object for non-objects, null, and undefined', () => {
-		expect(safeParseApexLocals(undefined)).toEqual({});
-		expect(safeParseApexLocals(null)).toEqual({});
-		expect(safeParseApexLocals('string')).toEqual({});
-		expect(safeParseApexLocals(123)).toEqual({});
+		expect(parseApexLocals(undefined)).toEqual({});
+		expect(parseApexLocals(null)).toEqual({});
+		expect(parseApexLocals('string')).toEqual({});
+		expect(parseApexLocals(123)).toEqual({});
 	});
 
 	test('returns empty object for empty object input', () => {
-		expect(safeParseApexLocals({})).toEqual({});
+		expect(parseApexLocals({})).toEqual({});
 	});
 
 	test('parses and preserves known ApexLocals fields and passthrough extra fields', () => {
@@ -404,7 +404,7 @@ describe('safeParseApexLocals', () => {
 			customExtraField: 'preserved',
 		};
 
-		const result = safeParseApexLocals(input);
+		const result = parseApexLocals(input);
 		expect(result.activity).toBe(true);
 		expect(result.actor).toEqual({ id: 'https://remote.example/u/alice' });
 		expect(result.object).toEqual({ id: 'https://example.com/o/1', type: 'Note' });

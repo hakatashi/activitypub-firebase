@@ -2,7 +2,7 @@ import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { apex } from './apex.js';
 
-import { safeParseApexLocals } from './utils.js';
+import { parseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -16,7 +16,7 @@ export const markRedundantInboxDelivery: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const resLocal = safeParseApexLocals(res.locals.apex);
+	const resLocal = parseApexLocals(res.locals.apex);
 	if (!resLocal.activity || !resLocal.target) {
 		next();
 		return;
@@ -41,7 +41,7 @@ export const markRedundantInboxDelivery: RequestHandler = (
 // apex.net.inbox.post の activity.save の直後に挿入する。markRedundantInboxDelivery で
 // 記録した判定を使って isNewActivity を補正する(→ ADR-0030)。
 export const correctIsNewActivity: RequestHandler = (req, res, next) => {
-	const resLocal = safeParseApexLocals(res.locals.apex);
+	const resLocal = parseApexLocals(res.locals.apex);
 	if (resLocal.isRedundantDelivery && resLocal.isNewActivity === 'new collection') {
 		(res.locals.apex as Record<string, unknown>).isNewActivity = false;
 	}

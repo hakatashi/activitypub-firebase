@@ -1,7 +1,7 @@
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
-import { safeParseApexLocals } from './utils.js';
+import { parseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -32,7 +32,7 @@ export const verifySameOriginForUpdateDelete: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const resLocal = safeParseApexLocals(res.locals.apex);
+	const resLocal = parseApexLocals(res.locals.apex);
 	const activity = req.body;
 	const type = typeof activity.type === 'string' ? activity.type.toLowerCase() : undefined;
 	if (!resLocal.actor || type === undefined || !requiresSameOrigin.has(type)) {

@@ -1,6 +1,6 @@
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { isAPUndo, safeParseApexLocals } from './utils.js';
+import { isAPUndo, parseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -15,7 +15,7 @@ export const denormalizeUndoObject: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const resLocal = safeParseApexLocals(res.locals.apex);
+	const resLocal = parseApexLocals(res.locals.apex);
 	if (!resLocal.activity || !resLocal.object) {
 		next();
 		return;
