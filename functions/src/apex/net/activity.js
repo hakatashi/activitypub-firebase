@@ -6,7 +6,7 @@ const denormalizeObject = [
   // object objects
   'create',
   // activity objects
-  'announce', 'like', 'add', 'reject'
+  'announce', 'like', 'add', 'reject', 'undo'
 ]
 
 module.exports = {
@@ -17,7 +17,7 @@ module.exports = {
     const apex = req.app.locals.apex
     const resLocal = res.locals.apex
     let activity = req.body
-    if (denormalizeObject.includes(activity.type.toLowerCase())) {
+    if (denormalizeObject.includes(activity.type.toLowerCase()) && resLocal.object) {
       // save with resolved object for ease of rendering
       activity = [{}, activity, { object: [resLocal.object] }]
         .reduce(apex.mergeJSONLD)

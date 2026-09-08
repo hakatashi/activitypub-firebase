@@ -7,7 +7,6 @@ import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { correctIsNewActivity, markRedundantInboxDelivery } from './inboxDedup.js';
 import { inboxExecutionMiddlewares, inboxValidationMiddlewares } from './inboxPost.js';
-import { denormalizeUndoObject } from './inboxUndo.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
@@ -65,19 +64,17 @@ app.use(
 
 // inbox への配送処理パイプライン。apex 本体のミドルウェア配列を変更せず、
 // 各検証・補正ミドルウェアを順序通りフラットに並べて実行する
-// (→ ADR-0030, ADR-0033)。
+// (→ ADR-0030)。
 app.route(routes.inbox).get(apex.net.inbox.get).post(
 	// 1. リクエスト検証・署名検証・アクター/オブジェクト解決・アクティビティ検証 (apex)
 	inboxValidationMiddlewares,
 	// 2. 重複配送検出 (ADR-0030)
 	markRedundantInboxDelivery,
-	// 3. Undo のオブジェクト解決埋め込み (ADR-0033)
-	denormalizeUndoObject,
-	// 4. アクティビティ保存 (apex)
+	// 3. アクティビティ保存 (apex)
 	apex.net.activity.save,
-	// 5. 重複配送時のフラグ補正 (ADR-0030)
+	// 4. 重複配送時のフラグ補正 (ADR-0030)
 	correctIsNewActivity,
-	// 6. スレッド解決・Side effects・配送・レスポンス (apex)
+	// 5. スレッド解決・Side effects・配送・レスポンス (apex)
 	inboxExecutionMiddlewares,
 );
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);

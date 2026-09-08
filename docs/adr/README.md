@@ -58,7 +58,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0030](0030-inbox-redundant-delivery-detection.md) | inbox の重複配送検出を、apex 本体を変更せず前後の薄いミドルウェアで行う | Accepted |
 | [0031](0031-update-delete-same-origin-check.md) | Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う | Superseded by ADR-0046 |
 | [0032](0032-ssrf-safe-remote-object-fetch.md) | リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える | Accepted |
-| [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Accepted |
+| [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Superseded by ADR-0048 |
 | [0034](0034-normalize-public-address-on-inbox.md) | inbox で受信したアクティビティの as:Public 宛先表現を正規化する | Superseded by ADR-0045 |
 | [0035](0035-mark-accepted-follow-as-public.md) | 承認した Follow に `_meta.isPublic` を付与し followers を匿名公開する | Accepted |
 | [0036](0036-reject-unsupported-http-signature-format-early.md) | draft-cavage 以外の署名形式を事前に 403 で弾く | Superseded by ADR-0044 |
@@ -73,3 +73,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0045](0045-normalize-public-address-in-apex-jsonld.md) | apex フォークの JSON-LD 処理層で as:Public 宛先表現を正規化する | Accepted |
 | [0046](0046-validate-owner-same-origin-in-apex.md) | Update / Delete の同一オリジン検証を apex フォークの validateOwner に組み込む | Accepted |
 | [0047](0047-resolve-like-announce-object-in-apex.md) | Like / Announce の object 解決を apex フォークの validators で通常オブジェクトに対応させる | Accepted |
+| [0048](0048-denormalize-undo-object-in-apex.md) | Undo の object を apex フォークの activity.save で denormalizeObject 対象に含める | Accepted |

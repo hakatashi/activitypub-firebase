@@ -1,6 +1,6 @@
 # ADR-0033: inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0048
 - **Date:** 2026-09-08
 
 ## 背景
