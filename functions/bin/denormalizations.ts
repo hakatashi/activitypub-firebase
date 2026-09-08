@@ -1,9 +1,12 @@
 import firebase from 'firebase-admin';
 import { countBy, isEqual } from 'lodash-es';
-import { db, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
+import { db, domain, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
 import { buildMetaIndex } from '../src/meta.js';
 import { Streams, UserInfos } from '../src/schema.js';
 import { isAPFollow, isAPNote, toArray, toIdArray } from '../src/utils.js';
+
+// 単一ユーザー運用 (AGENTS.md) の前提で決め打ち。ADR-0035 のバックフィル専用。
+const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
 
 // ADR-0021 より前のスキーマで書き込まれた非正規化フィールド。バックフィル時に削除する。
 const LEGACY_META_FIELDS = [
@@ -61,6 +64,17 @@ db.runTransaction(async (transaction) => {
 			if (stream._meta?.[key] !== undefined) {
 				updates[field] = firebase.firestore.FieldValue.delete();
 			}
+		}
+
+		// Backfill _meta.isPublic: 承認済み (followers コレクション所属) の Follow は
+		// isPublic() が true を返すようにする (→ ADR-0035)。この修正より前に承認された
+		// Follow は _meta.isPublic を持たないため、匿名の /followers から漏れ続けていた。
+		if (
+			stream.type === 'Follow' &&
+			toIdArray(stream._meta?.collection).includes(followersId) &&
+			stream._meta?.isPublic !== true
+		) {
+			updates['_meta.isPublic'] = true;
 		}
 
 		if (Object.keys(updates).length > 0) {

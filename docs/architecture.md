@@ -44,10 +44,18 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
   `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - inbox への配送処理は、apex 本体のミドルウェア配列を変更せず、前後の薄いミドルウェアを
-  順序通りフラットに並べて実行している(→ ADR-0030, ADR-0031, ADR-0033, ADR-0034)。
+  順序通りフラットに並べて実行している
+  (→ ADR-0030, ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0038)。
+  draft-cavage 以外の署名形式(RFC 9421 等)の事前拒否(`inboxSignature.ts`)、
+  Like/Announce の object を通常オブジェクトとしても解決する変換(`inboxLikeAnnounceObject.ts`)、
   宛先の `as:Public` 正規化(`inboxPublic.ts`)、Update/Delete の同一オリジン検証(`inboxOriginCheck.ts`)、
   重複配送検出(`inboxDedup.ts`)、Undo の object 埋め込み(`inboxUndo.ts`)を行い、
   スレッド解決(`resolveThread`)を経て自分の投稿への外部リプライがフォロワーへ転送される(Inbox Forwarding, W3C AP 7.1.2)。
+- 承認した `Follow` には `_meta.isPublic` を付与し、匿名の `/followers` コレクションに
+  表示されるようにしている(Follow は `to`/`cc` を持たないため → ADR-0035)。
+- `Like` / `Announce` の受信カウントは apex 本体のコレクション機構(activity 専用)を使わず、
+  `onStreamCreated` トリガーで対象オブジェクトの `_meta.likesCount` / `sharesCount` を
+  直接インクリメント/デクリメントする(→ ADR-0037, ADR-0039)。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
   `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`)は
   `X-Hakatashi-Token` ヘッダで認証する。
@@ -98,7 +106,8 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 |---|---|---|---|
 | `_meta.collection` | `streams` | `string[]` | アクティビティが所属するコレクション（`inbox`, `outbox`, `followers`, `following`, `liked`, `blocked`, `rejected`, `rejections`, `shares`, `likes` 等）の IRI 配列。受信時 (`net/validators.js`) と送信時 (`net/validators.js` / `pub/activity.js`) に apex が `addMeta` で積み、フォロー承認/いいね/ブースト/ブロック/拒絶等の副作用処理では `updateActivityMeta` が追加・削除する。apex の `hasMeta`/`removeMeta` が `Array.isArray` を要求するため、Firestore 上でも配列のまま保存する (→ [ADR-0017](adr/0017-meta-collection-as-array.md))。 |
 | `_meta.privateKey` | `objects` | `string` | ローカルアクターの HTTP 署名用 RSA 秘密鍵 (PEM)。アクター作成時 (`createActor`) に生成・保存され、連合配信時の署名およびローカルユーザー判定 (`getUserCount`) に使用される。 |
-| `_meta.isPublic` | `objects` / `streams` | `boolean` | apex の `isPublic()` (`pub/utils.js`) が宛先判定のショートカットとして読むだけのフィールドで、**apex 自身もこのプロジェクトも書き込んでいない**(常に `undefined`)。公開判定は実際には `to`/`cc` 等の `as:Public` で行われている。 |
+| `_meta.isPublic` | `streams` | `boolean` | apex の `isPublic()` (`pub/utils.js`) が `to`/`cc` の `as:Public` と並んで読む宛先判定のショートカット。`Follow` は `to`/`cc` を持たないため、承認時に `Store#markActivityPublic` (`activitypub.ts` の Follow 自動承認処理) が明示的に `true` を書き込み、匿名の `/followers` コレクションに表示されるようにする (→ [ADR-0035](adr/0035-mark-accepted-follow-as-public.md))。 |
+| `_meta.likesCount` / `_meta.sharesCount` | `objects` | `number` | `Like` / `Announce` の受信カウント。apex 本体の likes/shares コレクション機構は activity (streams) 専用で Note のような object を対象にすると機能しないため使わず、`onStreamCreated` トリガーが対象オブジェクトへ直接インクリメント/デクリメントする (→ [ADR-0037](adr/0037-denormalize-like-announce-counts.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
 

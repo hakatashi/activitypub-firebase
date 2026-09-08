@@ -4,8 +4,8 @@ import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/fire
 import { isEqual } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { buildMetaIndex } from './meta.js';
-import { UserInfos } from './schema.js';
-import { isAPFollow, isAPNote, toIdArray, toTypeArray } from './utils.js';
+import { Objects, UserInfos } from './schema.js';
+import { isAPAnnounce, isAPFollow, isAPLike, isAPNote, toIdArray, toTypeArray } from './utils.js';
 
 export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (event) => {
 	const stream = event.data?.after?.data?.();
@@ -46,7 +46,13 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 	const actorId = toIdArray(stream.actor)[0];
 
 	// Denormalize userInfos.statuses_count
-	const isNote = objects.some(isAPNote);
+	// stream.type が Create であることも確認する。apex 本体の activity.save は
+	// Like/Announce にも解決済みの object を埋め込んで保存するため、embed された object の
+	// 型だけで判定すると、投稿への Like/Announce のたびに「いいねした側」の
+	// statuses_count を誤って増やそうとしてしまう (存在しない UserInfos への
+	// batch.update() は例外になり、同じ batch の他の更新も巻き添えで失われる → ADR-0039)。
+	const isCreate = toTypeArray(stream.type).includes('Create');
+	const isNote = isCreate && objects.some(isAPNote);
 	if (isNote && actorId !== undefined) {
 		batch.update(UserInfos.doc(escapeFirestoreKey(actorId)), {
 			statuses_count: firebase.firestore.FieldValue.increment(1),
@@ -62,12 +68,46 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 		}
 	}
 
+	// Denormalize objects._meta.likesCount / sharesCount (→ ADR-0037)。apex 本体の
+	// likes/shares コレクション機構は activity (streams) 専用で Note のような object を
+	// 対象にすると壊れるため使わず、followers_count と同じ非正規化カウンタのパターンを
+	// _meta に対して適用する。
+	if (toTypeArray(stream.type).includes('Like')) {
+		for (const objectId of toIdArray(stream.object)) {
+			batch.update(Objects.doc(escapeFirestoreKey(objectId)), {
+				'_meta.likesCount': firebase.firestore.FieldValue.increment(1),
+			});
+		}
+	}
+
+	if (toTypeArray(stream.type).includes('Announce')) {
+		for (const objectId of toIdArray(stream.object)) {
+			batch.update(Objects.doc(escapeFirestoreKey(objectId)), {
+				'_meta.sharesCount': firebase.firestore.FieldValue.increment(1),
+			});
+		}
+	}
+
 	if (toTypeArray(stream.type).includes('Undo')) {
 		for (const object of objects) {
 			if (isAPFollow(object)) {
 				for (const followObjectId of toIdArray(object.object)) {
 					batch.update(UserInfos.doc(escapeFirestoreKey(followObjectId)), {
 						followers_count: firebase.firestore.FieldValue.increment(-1),
+					});
+				}
+			}
+			if (isAPLike(object)) {
+				for (const likedObjectId of toIdArray(object.object)) {
+					batch.update(Objects.doc(escapeFirestoreKey(likedObjectId)), {
+						'_meta.likesCount': firebase.firestore.FieldValue.increment(-1),
+					});
+				}
+			}
+			if (isAPAnnounce(object)) {
+				for (const sharedObjectId of toIdArray(object.object)) {
+					batch.update(Objects.doc(escapeFirestoreKey(sharedObjectId)), {
+						'_meta.sharesCount': firebase.firestore.FieldValue.increment(-1),
 					});
 				}
 			}

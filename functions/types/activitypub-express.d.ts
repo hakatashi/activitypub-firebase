@@ -84,6 +84,7 @@ declare module 'activitypub-express' {
 		}): Promise<void>;
 		getFailedDeliveries(): Promise<DeliveryRecord[]>;
 		getDelivery(activityId: string, address: string): Promise<DeliveryRecord | undefined>;
+		markActivityPublic(activity: APObject): Promise<void>;
 	}
 
 	// net/index.js のルートグループのうち、functions/src が参照しているもののみ
@@ -92,7 +93,8 @@ declare module 'activitypub-express' {
 		// inbox.post 配列内の要素を参照で特定するために必要(→ ADR-0030)。
 		activity: { save: RequestHandler };
 		// 同上、同一オリジン検証の挿入位置を特定するために必要(→ ADR-0031)。
-		validators: { inboxActivity: RequestHandler };
+		// activityObject は ADR-0038 で inboxActivity との分割点を特定するために必要。
+		validators: { inboxActivity: RequestHandler; activityObject: RequestHandler };
 		outbox: { get: RequestHandler[]; post: RequestHandler[] };
 		actor: { get: RequestHandler[] };
 		followers: { get: RequestHandler[] };
@@ -176,6 +178,15 @@ declare module 'activitypub-express' {
 			targetActivity: APObject,
 		): Promise<{ postTask: () => Promise<unknown>; updated: unknown }>;
 		publishUpdate(actor: APObject, object: APObject, cc?: string): Promise<unknown>;
+		// pub/object.js。includeMeta=true 固定、refresh/localOnly は未使用のため省略 (→ ADR-0038)。
+		resolveObject(id: string, includeMeta?: boolean): Promise<APObject>;
+		// pub/activity.js。needsResolveActivity (Accept/Add/Announce/Like/Reject/Remove) が使う。
+		// テストで「streams に無く、HTTP 再取得でも activity として検証できない」状態
+		// (validateActivity が false になる Note などが対象の場合)を再現するためにモックする
+		// (→ ADR-0038)。
+		resolveActivity(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
+		// pub/utils.js の validateActivity。id/type に加えて actor 配列が空でないことを要求する。
+		validateActivity(object: unknown): boolean;
 		// pub/utils.js
 		// mastodon/api.ts など、apex 内部の APObject 表現を持たない値(activitypub-types の
 		// APActor 等)からも呼ばれるため、引数は index signature を要求しない `object` で受ける。

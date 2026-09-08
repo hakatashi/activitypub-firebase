@@ -6,9 +6,15 @@ import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { correctIsNewActivity, markRedundantInboxDelivery } from './inboxDedup.js';
+import { resolveLikeAnnounceObjectAsPlainObject } from './inboxLikeAnnounceObject.js';
 import { verifySameOriginForUpdateDelete } from './inboxOriginCheck.js';
-import { inboxExecutionMiddlewares, inboxValidationMiddlewares } from './inboxPost.js';
+import {
+	inboxActivityValidator,
+	inboxExecutionMiddlewares,
+	inboxValidationMiddlewares,
+} from './inboxPost.js';
 import { normalizeInboxPublic } from './inboxPublic.js';
+import { rejectUnsupportedSignatureFormat } from './inboxSignature.js';
 import { denormalizeUndoObject } from './inboxUndo.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
@@ -67,23 +73,29 @@ app.use(
 
 // inbox への配送処理パイプライン。apex 本体のミドルウェア配列を変更せず、
 // 各検証・補正ミドルウェアを順序通りフラットに並べて実行する
-// (→ ADR-0030, ADR-0031, ADR-0033, ADR-0034)。
+// (→ ADR-0030, ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0038)。
 app.route(routes.inbox).get(apex.net.inbox.get).post(
-	// 1. リクエスト検証・署名検証・アクター/オブジェクト解決 (apex)
+	// 1. draft-cavage 以外の署名形式を事前に 403 で弾く (ADR-0036)
+	rejectUnsupportedSignatureFormat,
+	// 2. リクエスト検証・署名検証・アクター/オブジェクト解決 (apex)
 	inboxValidationMiddlewares,
-	// 2. Public アドレス表現の正規化 (ADR-0034)
+	// 3. Like/Announce の object を通常オブジェクトとしても解決する (ADR-0038)
+	resolveLikeAnnounceObjectAsPlainObject,
+	// 4. アクティビティ種別ごとの追加検証 (apex)
+	inboxActivityValidator,
+	// 5. Public アドレス表現の正規化 (ADR-0034)
 	normalizeInboxPublic,
-	// 3. Update / Delete の同一オリジン検証 (ADR-0031)
+	// 6. Update / Delete の同一オリジン検証 (ADR-0031)
 	verifySameOriginForUpdateDelete,
-	// 4. 重複配送検出 (ADR-0030)
+	// 7. 重複配送検出 (ADR-0030)
 	markRedundantInboxDelivery,
-	// 5. Undo のオブジェクト解決埋め込み (ADR-0033)
+	// 8. Undo のオブジェクト解決埋め込み (ADR-0033)
 	denormalizeUndoObject,
-	// 6. アクティビティ保存 (apex)
+	// 9. アクティビティ保存 (apex)
 	apex.net.activity.save,
-	// 7. 重複配送時のフラグ補正 (ADR-0030)
+	// 10. 重複配送時のフラグ補正 (ADR-0030)
 	correctIsNewActivity,
-	// 8. スレッド解決・Side effects・配送・レスポンス (apex)
+	// 11. スレッド解決・Side effects・配送・レスポンス (apex)
 	inboxExecutionMiddlewares,
 );
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
@@ -274,6 +286,9 @@ onApexInbox(app, async (message) => {
 			message.recipient,
 			message.activity,
 		);
+		// Follow は to/cc を持たないため、明示的に isPublic を立てないと匿名の
+		// followers コレクションから除外されてしまう (→ ADR-0035)。
+		await apex.store.markActivityPublic(message.activity);
 
 		logger.info(`Accepting follow request from ${message.actor.id}`);
 		await apex.addToOutbox(message.recipient, accept);

@@ -14,8 +14,13 @@ assert(
 	'unexpected middleware between inboxActivity and save in apex.net.inbox.post',
 );
 
-// apex.net.inbox.post の前半部分: validators.jsonld 〜 validators.inboxActivity
-export const inboxValidationMiddlewares = originalInboxPost.slice(0, inboxActivityIndex + 1);
+// apex.net.inbox.post の前半部分: validators.jsonld 〜 validators.activityObject
+// (validators.inboxActivity は含まない。ADR-0038 で resolveLikeAnnounceObjectAsPlainObject を
+// その直前に挿す必要があるため)
+export const inboxValidationMiddlewares = originalInboxPost.slice(0, inboxActivityIndex);
+
+// validators.inboxActivity 単体
+export const inboxActivityValidator = apex.net.validators.inboxActivity;
 
 // apex.net.inbox.post の後半部分: activity.resolveThread 〜 responders.status
 export const inboxExecutionMiddlewares = originalInboxPost.slice(saveIndex + 1);

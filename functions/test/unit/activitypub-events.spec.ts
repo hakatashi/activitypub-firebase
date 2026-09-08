@@ -30,6 +30,9 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			.spyOn(apex, 'acceptFollow')
 			.mockResolvedValue({ postTask, updated: true });
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
+		const markActivityPublicSpy = vi
+			.spyOn(apex.store, 'markActivityPublic')
+			.mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
@@ -40,6 +43,7 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			object: { id: activity.id, type: 'Follow', actor: actor.id, object: recipient.id },
 		});
 		expect(acceptFollowSpy).toHaveBeenCalledWith(recipient, activity);
+		expect(markActivityPublicSpy).toHaveBeenCalledWith(activity);
 		expect(addToOutboxSpy).toHaveBeenCalledWith(recipient, acceptActivity);
 		expect(postTask).toHaveBeenCalledTimes(1);
 	});
