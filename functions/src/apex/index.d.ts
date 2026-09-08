@@ -159,6 +159,7 @@ declare namespace ActivitypubExpress {
 		validateActivity(object: unknown): boolean;
 		toJSONLD<T = Record<string, unknown>>(obj: object): Promise<T>;
 		fromJSONLD(obj: unknown): Promise<APObject>;
+		normalizePublicAddresses(target: unknown): unknown;
 		deliver(
 			actorId: string,
 			activity: string,

@@ -1,6 +1,6 @@
 # ADR-0034: inbox で受信したアクティビティの as:Public 宛先表現を正規化する
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0045
 - **Date:** 2026-09-08
 
 ## 背景
