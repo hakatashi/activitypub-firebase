@@ -27,7 +27,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | # | タイトル | Status |
 |---|---|---|
 | [0001](0001-use-lightweight-adrs.md) | 軽量 ADR で設計判断を記録する | Accepted |
-| [0002](0002-keep-activitypub-express.md) | activitypub-express を継続利用し、配送層のみ差し替える | Accepted |
+| [0002](0002-keep-activitypub-express.md) | activitypub-express を継続利用し、配送層のみ差し替える | Superseded by ADR-0040 |
 | [0003](0003-delivery-via-cloud-tasks.md) | 配送は Cloud Tasks で行う | Accepted |
 | [0004](0004-no-custom-ui-use-elk.md) | 自前 Web UI を作らず Mastodon 互換 API + Elk を使う | Accepted |
 | [0005](0005-single-user-multi-ready-data-model.md) | 運用はシングルユーザー、データモデルはマルチユーザー対応を保つ | Accepted |
@@ -35,7 +35,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0007](0007-no-streaming-api.md) | ストリーミング API は実装しない | Accepted |
 | [0008](0008-two-domain-split.md) | ActivityPub と Mastodon API を2つのドメインに分ける | Accepted |
 | [0009](0009-rotate-actor-key-now.md) | actor の秘密鍵を Phase 0 のうちにローテーションする | Accepted |
-| [0010](0010-pin-activitypub-express-4.4.1.md) | activitypub-express を 4.4.1 に固定する | Accepted |
+| [0010](0010-pin-activitypub-express-4.4.1.md) | activitypub-express を 4.4.1 に固定する | Superseded by ADR-0040 |
 | [0011](0011-vitest-over-jest.md) | テストランナーを Jest から Vitest に置き換える | Accepted |
 | [0012](0012-delivery-results-in-firestore.md) | 配送結果を `deliveries` コレクションに記録する | Accepted |
 | [0013](0013-scoped-postwork-middleware.md) | `postWork` はレスポンス前に実行し続け、パッチをリクエストスコープに閉じる | Accepted |
@@ -47,7 +47,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0019](0019-find-activity-by-collection-object-actor.md) | `findActivityByCollectionAndObjectId`/`ActorId` は片方だけを Firestore に絞り込ませる | Superseded by ADR-0020 |
 | [0020](0020-denormalize-actor-object-ids.md) | `actor`/`object` の IRI を `_meta.actorIds`/`_meta.objectIds` に非正規化する | Superseded by ADR-0021 |
 | [0021](0021-meta-index-as-maps.md) | `_meta` の非正規化インデックスを map 型の `_meta.index.*` に統一する | Accepted |
-| [0022](0022-type-definitions-for-activitypub-express.md) | activitypub-express の型定義を自前で持ち、Store は `implements` で検証する | Accepted |
+| [0022](0022-type-definitions-for-activitypub-express.md) | activitypub-express の型定義を自前で持ち、Store は `implements` で検証する | Superseded by ADR-0040 |
 | [0023](0023-firestore-schema-as-types.md) | Firestore のコレクションは TypeScript 型で守り、読み出し時に検証しない | Accepted |
 | [0024](0024-validate-external-input-with-zod.md) | 外部から来る入力は zod で検証する | Accepted |
 | [0025](0025-normalize-ap-objects-instead-of-casting.md) | AP オブジェクトは正規化ヘルパーと型ガードで扱い、`as` で絞り込まない | Accepted |
@@ -65,3 +65,6 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0037](0037-denormalize-like-announce-counts.md) | Like/Announce のカウントを `_meta` の非正規化カウンタとして持つ | Accepted |
 | [0038](0038-resolve-like-announce-object-as-plain-object.md) | Like/Announce の object を Note などの通常オブジェクトとしても解決する | Accepted |
 | [0039](0039-scope-statuses-count-to-create.md) | `statuses_count` の非正規化を `Create` ストリームだけに限定する | Accepted |
+| [0040](0040-fork-activitypub-express.md) | activitypub-express をフォークし、このリポジトリで保守する | Accepted |
+| [0041](0041-vendor-fork-in-tree.md) | apex のフォークは in-tree に置き、モノレポ化しない | Accepted |
+| [0042](0042-apex-fork-responsibility-boundary.md) | apex フォークと本体コードの責務境界 | Accepted |

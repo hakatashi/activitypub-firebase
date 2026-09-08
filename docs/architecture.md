@@ -28,7 +28,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 ## ActivityPub 層
 
 プロトコル実装は `activitypub-express`(apex)に委譲している
-(→ [ADR-0002](adr/0002-keep-activitypub-express.md))。apex が署名検証・JSON-LD 処理・
+(→ [ADR-0040](adr/0040-fork-activitypub-express.md))。apex が署名検証・JSON-LD 処理・
 webfinger/nodeinfo・コレクションページングを提供する。
 
 apex インスタンスの生成は `functions/src/apex.ts` にある(`functions/src/tasks.ts` からも
