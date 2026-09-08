@@ -5,5 +5,5 @@
 	"semi": true,
 	"trailingComma": "all",
 	"quoteProps": "as-needed",
-	"ignorePatterns": ["src/apex/**/*"]
+	"ignorePatterns": ["lib/**/*", "src/apex/**/*"]
 }

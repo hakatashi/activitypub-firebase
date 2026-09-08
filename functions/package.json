@@ -7,7 +7,7 @@
 		"lint": "oxlint .",
 		"format": "oxfmt --write .",
 		"format:check": "oxfmt --check .",
-		"build": "tsc",
+		"build": "tsc && cp -r src/apex/package.json src/apex/vocab lib/apex/",
 		"build:watch": "tsc --watch",
 		"serve": "npm run build && firebase emulators:start --only functions",
 		"shell": "npm run build && firebase functions:shell",
