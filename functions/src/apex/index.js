@@ -2,7 +2,6 @@
 const onFinished = require('on-finished')
 const pub = require('./pub')
 const net = require('./net')
-const ApexStore = require('./store')
 
 module.exports = function (settings) {
   const apex = function (req, res, next) {
@@ -37,7 +36,10 @@ module.exports = function (settings) {
     ? pub.consts.ASContext.concat(settings.context)
     : pub.consts.ASContext
   apex.net = net
-  apex.store = settings.store || new ApexStore()
+  if (!settings.store) {
+    throw new Error('Store is required')
+  }
+  apex.store = settings.store
   apex.actorParam = settings.actorParam
   apex.objectParam = settings.objectParam
   apex.activityParam = settings.activityParam || settings.objectParam

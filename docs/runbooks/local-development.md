@@ -50,6 +50,7 @@ npm --prefix functions run test:watch
 
 - `test/unit/` — 外部 I/O のない純粋関数、または Firestore エミュレータのみに依存するテスト
   (`store.ts` の各メソッドなど)。ネットワークや実際の ActivityPub 連合には依存しない。
+  - `test/unit/apex/` — apex フォークライブラリ単体のテスト。Firebase / Firestore に依存せず、ライブラリの純粋な機能や通信処理をテストする。
 - `test/integration/` — Express アプリ(`activitypub` / `mastodonApi`)に対して
   `supertest` でリクエストを送るテスト。
 

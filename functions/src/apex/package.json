@@ -34,12 +34,9 @@
     "express": "^4.18.0",
     "http-signature": "git+https://git@github.com/wmurphyrd/node-http-signature.git#9c02eeb",
     "jsonld": "^8.1.0",
-    "mongo-escape": "^2.0.6",
-    "mongodb": "^4.5.0",
     "on-finished": "^2.4.1",
     "overlaps": "^1.0.0",
-    "request": "^2.88.2",
-    "request-promise-native": "^1.0.9"
+    "undici": "^6.28.1"
   },
   "devDependencies": {
     "jasmine": "^4.5.0",
