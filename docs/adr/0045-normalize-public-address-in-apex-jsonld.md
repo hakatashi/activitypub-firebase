@@ -11,7 +11,7 @@ apex は `publicAddress: 'as:Public'` のみを期待しており、素の `"Pub
 
 ## 決定
 
-**apex の `fromJSONLD` 処理内で、オブジェクトツリーの audience フィールド (`to`, `bto`, `cc`, `bcc`, `audience`) に含まれる `"Public"` および `"https://www.w3.org/ns/activitystreams#Public"` を `"as:Public"` に正規化する。**
+**apex の `fromJSONLD` 処理内で、オブジェクトツリーの audience フィールド (`to`, `bto`, `cc`, `bcc`, `audience`) に含まれる `"Public"` を `"as:Public"` に正規化する (`"https://www.w3.org/ns/activitystreams#Public"` は前段の `jsonld.compact` が自動的に `"as:Public"` に正規化する)。**
 本体側の回避ミドルウェア `functions/src/inboxPublic.ts` を削除し、[ADR-0034](0034-normalize-public-address-on-inbox.md) を supersede する。
 
 ## 理由

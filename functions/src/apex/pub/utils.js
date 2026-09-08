@@ -156,8 +156,9 @@ function objectIdFromValue (object) {
   return object?.id
 }
 
+// compact leaves bare 'Public' untouched, so normalize it to 'as:Public'
 function normalizePublicAddressValue (val) {
-  if (val === 'Public' || val === 'https://www.w3.org/ns/activitystreams#Public') {
+  if (val === 'Public') {
     return 'as:Public'
   }
   return val
