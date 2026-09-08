@@ -2,8 +2,8 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import ActivitypubExpress from '../../src/apex/index.js';
-import type IApexStore from '../../src/apex/store/interface.js';
+import ActivitypubExpress from '../../../src/apex/index.js';
+import type IApexStore from '../../../src/apex/store/interface.js';
 
 describe('apex federation (undici)', () => {
 	const { publicKey, privateKey } = generateKeyPairSync('rsa', {
