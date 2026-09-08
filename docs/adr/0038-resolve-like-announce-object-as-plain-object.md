@@ -1,6 +1,6 @@
 # ADR-0038: Like/Announce の object を Note などの通常オブジェクトとしても解決する
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0047
 - **Date:** 2026-09-08
 
 ## 背景

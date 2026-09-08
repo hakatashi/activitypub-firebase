@@ -15,16 +15,16 @@ module.exports = {
   targetProxied
 }
 
-const needsResolveObject = ['block', 'create', 'follow']
-const needsResolveActivity = ['accept', 'add', 'announce', 'like', 'reject', 'remove']
+const needsResolveObject = ['announce', 'block', 'create', 'follow', 'like']
+const needsResolveActivity = ['accept', 'add', 'reject', 'remove']
 const needsLocalActivity = ['undo']
 const needsLocalObject = ['delete']
 const obxNeedsLocalObject = ['delete', 'update']
 const needsInlineObject = ['update']
 const obxNeedsInlineObject = ['create']
-const requiresObject = ['create', 'delete', 'follow', 'update']
-const requiresActivityObject = ['add', 'accept', 'announce', 'like', 'reject', 'remove']
-const obxRequiresActivityObject = ['add', 'accept', 'announce', 'like', 'reject', 'remove', 'undo']
+const requiresObject = ['announce', 'create', 'delete', 'follow', 'like', 'update']
+const requiresActivityObject = ['accept', 'add', 'reject', 'remove']
+const obxRequiresActivityObject = ['accept', 'add', 'reject', 'remove', 'undo']
 const requiresObjectOwnership = ['delete', 'undo', 'update']
 const requiresTarget = ['add', 'remove']
 

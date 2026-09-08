@@ -6,12 +6,7 @@ import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { correctIsNewActivity, markRedundantInboxDelivery } from './inboxDedup.js';
-import { resolveLikeAnnounceObjectAsPlainObject } from './inboxLikeAnnounceObject.js';
-import {
-	inboxActivityValidator,
-	inboxExecutionMiddlewares,
-	inboxValidationMiddlewares,
-} from './inboxPost.js';
+import { inboxExecutionMiddlewares, inboxValidationMiddlewares } from './inboxPost.js';
 import { denormalizeUndoObject } from './inboxUndo.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
@@ -70,23 +65,19 @@ app.use(
 
 // inbox への配送処理パイプライン。apex 本体のミドルウェア配列を変更せず、
 // 各検証・補正ミドルウェアを順序通りフラットに並べて実行する
-// (→ ADR-0030, ADR-0033, ADR-0038)。
+// (→ ADR-0030, ADR-0033)。
 app.route(routes.inbox).get(apex.net.inbox.get).post(
-	// 1. リクエスト検証・署名検証・アクター/オブジェクト解決 (apex)
+	// 1. リクエスト検証・署名検証・アクター/オブジェクト解決・アクティビティ検証 (apex)
 	inboxValidationMiddlewares,
-	// 2. Like/Announce の object を通常オブジェクトとしても解決する (ADR-0038)
-	resolveLikeAnnounceObjectAsPlainObject,
-	// 3. アクティビティ種別ごとの追加検証 (apex)
-	inboxActivityValidator,
-	// 4. 重複配送検出 (ADR-0030)
+	// 2. 重複配送検出 (ADR-0030)
 	markRedundantInboxDelivery,
-	// 5. Undo のオブジェクト解決埋め込み (ADR-0033)
+	// 3. Undo のオブジェクト解決埋め込み (ADR-0033)
 	denormalizeUndoObject,
-	// 6. アクティビティ保存 (apex)
+	// 4. アクティビティ保存 (apex)
 	apex.net.activity.save,
-	// 7. 重複配送時のフラグ補正 (ADR-0030)
+	// 5. 重複配送時のフラグ補正 (ADR-0030)
 	correctIsNewActivity,
-	// 8. スレッド解決・Side effects・配送・レスポンス (apex)
+	// 6. スレッド解決・Side effects・配送・レスポンス (apex)
 	inboxExecutionMiddlewares,
 );
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
