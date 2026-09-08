@@ -91,6 +91,8 @@ declare module 'activitypub-express' {
 		inbox: { get: RequestHandler[]; post: RequestHandler[] };
 		// inbox.post 配列内の要素を参照で特定するために必要(→ ADR-0030)。
 		activity: { save: RequestHandler };
+		// 同上、同一オリジン検証の挿入位置を特定するために必要(→ ADR-0031)。
+		validators: { inboxActivity: RequestHandler };
 		outbox: { get: RequestHandler[]; post: RequestHandler[] };
 		actor: { get: RequestHandler[] };
 		followers: { get: RequestHandler[] };
