@@ -13,6 +13,7 @@ import {
 	toStringValue,
 	toTypeArray,
 	objectToTypeArray,
+	parseApexLocals,
 } from '../../src/utils.js';
 
 describe('Counter', () => {
@@ -367,5 +368,50 @@ describe('toError', () => {
 		expect(toError(123).message).toBe('123');
 		expect(toError(null).message).toBe('null');
 		expect(toError(undefined).message).toBe('undefined');
+	});
+});
+
+describe('parseApexLocals', () => {
+	test('returns empty object for non-objects, null, and undefined', () => {
+		expect(parseApexLocals(undefined)).toEqual({});
+		expect(parseApexLocals(null)).toEqual({});
+		expect(parseApexLocals('string')).toEqual({});
+		expect(parseApexLocals(123)).toEqual({});
+	});
+
+	test('returns empty object for empty object input', () => {
+		expect(parseApexLocals({})).toEqual({});
+	});
+
+	test('parses and preserves known ApexLocals fields and passthrough extra fields', () => {
+		const postWorkFn = () => undefined;
+		const input = {
+			activity: true,
+			actor: { id: 'https://remote.example/u/alice' },
+			object: { id: 'https://example.com/o/1', type: 'Note' },
+			target: { id: 'https://example.com/activitypub/u/hakatashi' },
+			sender: { id: 'https://remote.example/u/alice' },
+			status: 200,
+			statusMessage: 'OK',
+			responseType: 'application/activity+json',
+			createdLocation: 'https://example.com/o/1',
+			eventName: 'apex-inbox',
+			eventMessage: { foo: 'bar' },
+			isNewActivity: 'new collection',
+			isRedundantDelivery: true,
+			postWork: [postWorkFn],
+			authorized: true,
+			customExtraField: 'preserved',
+		};
+
+		const result = parseApexLocals(input);
+		expect(result.activity).toBe(true);
+		expect(result.actor).toEqual({ id: 'https://remote.example/u/alice' });
+		expect(result.object).toEqual({ id: 'https://example.com/o/1', type: 'Note' });
+		expect(result.status).toBe(200);
+		expect(result.isNewActivity).toBe('new collection');
+		expect(result.isRedundantDelivery).toBe(true);
+		expect(result.postWork).toEqual([postWorkFn]);
+		expect(result.customExtraField).toBe('preserved');
 	});
 });

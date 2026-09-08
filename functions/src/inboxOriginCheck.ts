@@ -1,21 +1,8 @@
-import assert from 'node:assert';
 import type { APObject } from 'activitypub-express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { apex } from './apex.js';
 
-// apex がリクエストごとに res.locals.apex へ積む値のうち、ここで扱うもの
-// (inboxDedup.ts の ApexLocals と同様のパターン)。
-interface ApexLocals {
-	activity?: boolean;
-	actor?: APObject;
-	object?: APObject;
-	status?: number;
-	statusMessage?: string;
-	[key: string]: unknown;
-}
-
-const isApexLocalsSet = (value: unknown): value is ApexLocals =>
-	typeof value === 'object' && value !== null;
+import type { ApexLocals } from './utils.js';
+import { parseApexLocals } from './utils.js';
 
 type InboxRequest = Request<Record<string, string>, unknown, APObject>;
 
@@ -46,40 +33,25 @@ export const verifySameOriginForUpdateDelete: RequestHandler = (
 	res: Response,
 	next: NextFunction,
 ) => {
-	const resLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
+	const resLocal = parseApexLocals(res.locals.apex);
 	const activity = req.body;
 	const type = typeof activity.type === 'string' ? activity.type.toLowerCase() : undefined;
-	if (!resLocal?.actor || type === undefined || !requiresSameOrigin.has(type)) {
+	if (!resLocal.actor || type === undefined || !requiresSameOrigin.has(type)) {
 		next();
 		return;
 	}
+	const actorId = typeof resLocal.actor.id === 'string' ? resLocal.actor.id : undefined;
 	const object = resLocal.object;
-	if (object?.id === undefined) {
+	const objectId = typeof object?.id === 'string' ? object.id : undefined;
+	if (actorId === undefined || objectId === undefined) {
 		next();
 		return;
 	}
-	if (!isSameOrigin(resLocal.actor.id, object.id)) {
-		resLocal.activity = false;
-		resLocal.status = 403;
-		resLocal.statusMessage = `${activity.type} actor origin does not match object origin`;
+	if (!isSameOrigin(actorId, objectId)) {
+		const apexLocals = res.locals.apex as ApexLocals;
+		apexLocals.activity = false;
+		apexLocals.status = 403;
+		apexLocals.statusMessage = `${activity.type} actor origin does not match object origin`;
 	}
 	next();
-};
-
-// apex.net.inbox.post 相当の配列(または既に他のミドルウェアが挿入済みの配列)に、
-// validators.inboxActivity の参照を目印として同一オリジン検証ミドルウェアを挿入したものを返す。
-// apex 本体のミドルウェア自体は変更しない(→ ADR-0031)。
-export const insertSameOriginCheckForUpdateDelete = (
-	original: RequestHandler[],
-): RequestHandler[] => {
-	const inboxActivityIndex = original.indexOf(apex.net.validators.inboxActivity);
-	assert(
-		inboxActivityIndex !== -1,
-		'apex.net.validators.inboxActivity not found in inbox post middleware chain',
-	);
-	return [
-		...original.slice(0, inboxActivityIndex + 1),
-		verifySameOriginForUpdateDelete,
-		...original.slice(inboxActivityIndex + 1),
-	];
 };

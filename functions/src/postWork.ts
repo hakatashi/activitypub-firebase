@@ -1,20 +1,7 @@
 import type express from 'express';
 import { logger } from 'firebase-functions/v2';
-import { toError } from './utils.js';
-
-// apex がリクエストごとに `res.locals.apex` へ積む値のうち、ここで扱うもの。
-interface ApexLocals {
-	postWork?: ((res: express.Response) => unknown)[];
-	eventName?: string | null;
-	eventMessage?: unknown;
-	[key: string]: unknown;
-}
-
-// ApexLocals は全フィールドが optional かつ index signature 付きなので、"object であること"
-// 以上の形状チェックはできない。ここでは apex が res.locals.apex に何か積んだかどうかを
-// 区別できれば十分(未設定/undefined と区別する)。
-const isApexLocalsSet = (value: unknown): value is ApexLocals =>
-	typeof value === 'object' && value !== null;
+import type { ApexLocals } from './utils.js';
+import { parseApexLocals, toError } from './utils.js';
 
 const idOf = (value: unknown) =>
 	typeof value === 'object' && value !== null && 'id' in value ? value.id : undefined;
@@ -39,12 +26,12 @@ const summarizeApexLocals = (apexLocal: ApexLocals) => ({
 // 実行済みの postWork / eventName は落としておき、apex 側の onFinishedHandler で
 // 二重に実行されないようにする。
 const runPostWork = async (res: express.Response) => {
-	const apexLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : {};
+	const apexLocal = parseApexLocals(res.locals.apex);
 
 	const startedAt = Date.now();
 
 	const originalPostWork = apexLocal.postWork ?? [];
-	apexLocal.postWork = [];
+	(res.locals.apex as ApexLocals).postWork = [];
 
 	// execute postWork tasks in sequence (not parallel)
 	await originalPostWork.reduce(
@@ -59,7 +46,7 @@ const runPostWork = async (res: express.Response) => {
 
 	const { eventName } = apexLocal;
 	if (eventName) {
-		apexLocal.eventName = null;
+		(res.locals.apex as ApexLocals).eventName = null;
 		await Promise.all(
 			res.app
 				.listeners(eventName)
@@ -90,8 +77,8 @@ export const runPostWorkBeforeSend: express.RequestHandler = (req, res, next) =>
 
 	res.send = (body) => {
 		(async () => {
-			const apexLocal = isApexLocalsSet(res.locals.apex) ? res.locals.apex : undefined;
-			if (apexLocal) {
+			if (res.locals.apex !== undefined && res.locals.apex !== null) {
+				const apexLocal = parseApexLocals(res.locals.apex);
 				logger.info({
 					type: 'response',
 					status: res.statusCode,
