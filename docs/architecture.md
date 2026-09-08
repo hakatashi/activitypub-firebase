@@ -48,12 +48,12 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - inbox への配送処理は、apex 本体のミドルウェア配列を変更せず、前後の薄いミドルウェアを
   順序通りフラットに並べて実行している
-  (→ ADR-0030, ADR-0031, ADR-0033, ADR-0038)。
+  (→ ADR-0030, ADR-0033, ADR-0038)。
   Like/Announce の object を通常オブジェクトとしても解決する変換(`inboxLikeAnnounceObject.ts`)、
-  Update/Delete の同一オリジン検証(`inboxOriginCheck.ts`)、
   重複配送検出(`inboxDedup.ts`)、Undo の object 埋め込み(`inboxUndo.ts`)を行い、
   スレッド解決(`resolveThread`)を経て自分の投稿への外部リプライがフォロワーへ転送される(Inbox Forwarding, W3C AP 7.1.2)。
-  (なお、宛先の `as:Public` 正規化は apex フォークの JSON-LD 処理層で行われる → [ADR-0045](adr/0045-normalize-public-address-in-apex-jsonld.md))。
+  (なお、宛先の `as:Public` 正規化は apex フォークの JSON-LD 処理層で行われ [ADR-0045](adr/0045-normalize-public-address-in-apex-jsonld.md)、
+  Update/Delete の同一オリジン検証は apex フォークの `validateOwner` で行われる → [ADR-0046](adr/0046-validate-owner-same-origin-in-apex.md))。
 - 承認した `Follow` には `_meta.isPublic` を付与し、匿名の `/followers` コレクションに
   表示されるようにしている(Follow は `to`/`cc` を持たないため → ADR-0035)。
 - `Like` / `Announce` の受信カウントは apex 本体のコレクション機構(activity 専用)を使わず、

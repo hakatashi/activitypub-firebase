@@ -56,7 +56,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0028](0028-allow-as-casts-in-test-files.md) | 型アサーションの配置ルールにテストファイルの例外を加える | Accepted |
 | [0029](0029-blocklist-filter-in-application.md) | `getStream` の `blockList` フィルタはアプリケーション側で行う | Accepted |
 | [0030](0030-inbox-redundant-delivery-detection.md) | inbox の重複配送検出を、apex 本体を変更せず前後の薄いミドルウェアで行う | Accepted |
-| [0031](0031-update-delete-same-origin-check.md) | Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う | Accepted |
+| [0031](0031-update-delete-same-origin-check.md) | Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う | Superseded by ADR-0046 |
 | [0032](0032-ssrf-safe-remote-object-fetch.md) | リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える | Accepted |
 | [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Accepted |
 | [0034](0034-normalize-public-address-on-inbox.md) | inbox で受信したアクティビティの as:Public 宛先表現を正規化する | Superseded by ADR-0045 |
@@ -71,3 +71,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0043](0043-smoke-test-dev-with-activitypub-testing.md) | activitypub-testing による dev 環境デプロイ後スモークテストの導入 | Accepted |
 | [0044](0044-self-implemented-http-signature-in-apex-fork.md) | HTTP 署名検証・生成を apex フォーク内に自前実装しエラーを分類する | Accepted |
 | [0045](0045-normalize-public-address-in-apex-jsonld.md) | apex フォークの JSON-LD 処理層で as:Public 宛先表現を正規化する | Accepted |
+| [0046](0046-validate-owner-same-origin-in-apex.md) | Update / Delete の同一オリジン検証を apex フォークの validateOwner に組み込む | Accepted |

@@ -157,6 +157,9 @@ declare namespace ActivitypubExpress {
 		resolveObject(id: string, includeMeta?: boolean): Promise<APObject>;
 		resolveActivity(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
 		validateActivity(object: unknown): boolean;
+		validateOwner(object: unknown, actor: unknown): boolean;
+		isSameOrigin(id1: unknown, id2: unknown): boolean;
+		originOf(id: unknown): string | undefined;
 		toJSONLD<T = Record<string, unknown>>(obj: object): Promise<T>;
 		fromJSONLD(obj: unknown): Promise<APObject>;
 		normalizePublicAddresses(target: unknown): unknown;

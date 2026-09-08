@@ -21,10 +21,12 @@ module.exports = {
   isLocalhostIRI,
   isProductionEnv,
   isPublic,
+  isSameOrigin,
   isString,
   mergeJSONLD,
   nameToActorStreamsFactory,
   normalizePublicAddresses,
+  originOf,
   removeMeta,
   toJSONLD,
   fromJSONLD,
@@ -281,6 +283,21 @@ function isString (obj) {
   return (Object.prototype.toString.call(obj) === '[object String]')
 }
 
+function originOf (id) {
+  if (typeof id !== 'string') return undefined
+  try {
+    return new URL(id).origin
+  } catch {
+    return undefined
+  }
+}
+
+function isSameOrigin (id1, id2) {
+  const origin1 = originOf(id1)
+  const origin2 = originOf(id2)
+  return origin1 !== undefined && origin1 === origin2
+}
+
 /* just checking a subset of cases becuase others (like no protocol)
  * would error anyway during request and we don't have to bog down
  * federation with additional regex or url parsing
@@ -359,7 +376,11 @@ function validateOwner (object, actor) {
   if (Array.isArray(object)) {
     object = object[0]
   }
-  if (!validateObject(object)) return false
+  if (Array.isArray(actor)) {
+    actor = actor[0]
+  }
+  if (!validateObject(object) || !actor?.id) return false
+  if (!isSameOrigin(object.id, actor.id)) return false
   if (object.id === actor.id) return true
   if (Array.isArray(object.actor) && object.actor[0] === actor.id) return true
   if (Array.isArray(object.attributedTo) && object.attributedTo[0] === actor.id) {
