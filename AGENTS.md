@@ -67,6 +67,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
   本体のモジュールを import しない。** フォークと本体の責務境界は
   [ADR-0042](docs/adr/0042-apex-fork-responsibility-boundary.md) が定める。
   境界をまたぎたくなったら、それは「その処理は本体側の責務だ」というシグナル。
+  apex ライブラリ自体の単体テストは `functions/test/unit/apex/` に配置する。
 
 ## よく使うコマンド
 
