@@ -63,7 +63,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0035](0035-mark-accepted-follow-as-public.md) | 承認した Follow に `_meta.isPublic` を付与し followers を匿名公開する | Accepted |
 | [0036](0036-reject-unsupported-http-signature-format-early.md) | draft-cavage 以外の署名形式を事前に 403 で弾く | Superseded by ADR-0044 |
 | [0037](0037-denormalize-like-announce-counts.md) | Like/Announce のカウントを `_meta` の非正規化カウンタとして持つ | Accepted |
-| [0038](0038-resolve-like-announce-object-as-plain-object.md) | Like/Announce の object を Note などの通常オブジェクトとしても解決する | Accepted |
+| [0038](0038-resolve-like-announce-object-as-plain-object.md) | Like/Announce の object を Note などの通常オブジェクトとしても解決する | Superseded by ADR-0047 |
 | [0039](0039-scope-statuses-count-to-create.md) | `statuses_count` の非正規化を `Create` ストリームだけに限定する | Accepted |
 | [0040](0040-fork-activitypub-express.md) | activitypub-express をフォークし、このリポジトリで保守する | Accepted |
 | [0041](0041-vendor-fork-in-tree.md) | apex のフォークは in-tree に置き、モノレポ化しない | Accepted |
@@ -72,3 +72,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0044](0044-self-implemented-http-signature-in-apex-fork.md) | HTTP 署名検証・生成を apex フォーク内に自前実装しエラーを分類する | Accepted |
 | [0045](0045-normalize-public-address-in-apex-jsonld.md) | apex フォークの JSON-LD 処理層で as:Public 宛先表現を正規化する | Accepted |
 | [0046](0046-validate-owner-same-origin-in-apex.md) | Update / Delete の同一オリジン検証を apex フォークの validateOwner に組み込む | Accepted |
+| [0047](0047-resolve-like-announce-object-in-apex.md) | Like / Announce の object 解決を apex フォークの validators で通常オブジェクトに対応させる | Accepted |
