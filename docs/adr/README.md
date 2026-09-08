@@ -68,3 +68,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0040](0040-fork-activitypub-express.md) | activitypub-express をフォークし、このリポジトリで保守する | Accepted |
 | [0041](0041-vendor-fork-in-tree.md) | apex のフォークは in-tree に置き、モノレポ化しない | Accepted |
 | [0042](0042-apex-fork-responsibility-boundary.md) | apex フォークと本体コードの責務境界 | Accepted |
+| [0043](0043-smoke-test-dev-with-activitypub-testing.md) | activitypub-testing による dev 環境デプロイ後スモークテストの導入 | Accepted |

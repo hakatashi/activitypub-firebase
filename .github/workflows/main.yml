@@ -88,3 +88,27 @@ jobs:
         env:
           GCP_SA_KEY: '${{secrets[matrix.project.key]}}'
           PROJECT_ID: '${{matrix.project.id}}'
+  smoke-test-dev:
+    name: Smoke test (dev)
+    needs: [deploy-hosting, deploy-firebase]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+      - name: Warm up dev actor endpoint
+        run: |
+          for i in {1..5}; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" -H "Accept: application/activity+json" https://activitypub-dev.hakatashi.com/activitypub/u/hakatashi)
+            if [ "$status" = "200" ]; then
+              echo "Dev actor endpoint is up (HTTP 200)"
+              exit 0
+            fi
+            echo "Waiting for dev actor endpoint (HTTP $status)..."
+            sleep 5
+          done
+          echo "Dev actor endpoint failed to respond with HTTP 200"
+          exit 1
+      - name: Run activitypub-testing smoke test
+        run: npx activitypub-testing test actor https://activitypub-dev.hakatashi.com/activitypub/u/hakatashi
