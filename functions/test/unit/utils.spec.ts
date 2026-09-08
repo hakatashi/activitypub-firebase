@@ -164,6 +164,22 @@ describe('redactSensitiveBody', () => {
 		]);
 	});
 
+	test('redacts _meta.privateKey on apex actor objects (onApexInbox/onApexOutbox log payloads)', () => {
+		expect(
+			redactSensitiveBody({
+				recipient: {
+					id: 'https://hakatashi.com/activitypub/u/hakatashi',
+					_meta: { privateKey: '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----' },
+				},
+			}),
+		).toEqual({
+			recipient: {
+				id: 'https://hakatashi.com/activitypub/u/hakatashi',
+				_meta: { privateKey: '[REDACTED]' },
+			},
+		});
+	});
+
 	test('leaves non-object values untouched', () => {
 		expect(redactSensitiveBody('plain string')).toBe('plain string');
 		expect(redactSensitiveBody(null)).toBe(null);
