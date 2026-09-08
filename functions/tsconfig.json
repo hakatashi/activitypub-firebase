@@ -13,7 +13,8 @@
 		"skipLibCheck": true,
 		"noUncheckedIndexedAccess": true,
 		"exactOptionalPropertyTypes": true,
-		"noImplicitOverride": true
+		"noImplicitOverride": true,
+		"allowJs": true
 	},
 	"ts-node": {
 		"esm": true,

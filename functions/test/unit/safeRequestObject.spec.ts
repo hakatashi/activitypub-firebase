@@ -1,4 +1,4 @@
-import type { Apex, APObject } from 'activitypub-express';
+import type { Apex, APObject } from '../../src/apex/index.js';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { safeRequestObject } from '../../src/security/safeRequestObject.js';
 import { UnsafeUrlError } from '../../src/security/ssrf.js';

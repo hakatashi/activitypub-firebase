@@ -4,5 +4,6 @@
 	"singleQuote": true,
 	"semi": true,
 	"trailingComma": "all",
-	"quoteProps": "as-needed"
+	"quoteProps": "as-needed",
+	"ignorePatterns": ["lib/**/*", "src/apex/**/*"]
 }
