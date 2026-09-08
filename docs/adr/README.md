@@ -59,3 +59,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0031](0031-update-delete-same-origin-check.md) | Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う | Accepted |
 | [0032](0032-ssrf-safe-remote-object-fetch.md) | リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える | Accepted |
 | [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Accepted |
+| [0034](0034-normalize-public-address-on-inbox.md) | inbox で受信したアクティビティの as:Public 宛先表現を正規化する | Accepted |

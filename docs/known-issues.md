@@ -3,114 +3,13 @@
 2026-09-05 時点(Phase 1 完了時)の調査で確認されたもの。**推測ではなく、コードを読んで確認した事実のみを記載する。**
 修正したらこのファイルから削除する(履歴は git に残る)。
 
-## セキュリティ
-
-### Update / Delete の同一オリジン検証がない
-
-ActivityPub 仕様は「受信サーバーは `Update` がそのオブジェクトを変更する権限を持つことを
-確認しなければならない(MUST)。最低限、`Update` とその `object` が同一オリジンであることを
-確認する」と定めている。HTTP 署名の検証は apex が行うが、
-**署名者のドメインと対象オブジェクトの `id` のドメインの照合は行われていない。**
-
-### SSRF 対策がない
-
-`Move` の `target` や `inReplyTo` などのリモート URL を無条件に fetch する経路があり、
-localhost や内部 IP への到達を防ぐ検証がない。
-
 ## ActivityPub 仕様準拠
-
-### inbox の重複排除が side effect まで届いていない (MUST)
-
-仕様は「サーバーは inbox が返すアクティビティの重複排除を行わなければならない。
-重複排除はアクティビティの `id` を比較し、既に見たものを捨てることで行わなければならない」と
-定めている。shared inbox と個別 inbox への二重配送、および送信側のリトライで実際に発生する。
-
-`functions/src/store.ts` の `saveActivity` はドキュメント ID の一致で重複を検出し、
-既存なら `undefined` を返す。**ここまでは正しく動いている。** 問題はその後の apex 側にある。
-
-`activitypub-express/net/activity.js:25-37` は `saveActivity` が falsy を返すと
-`updateActivityMeta(activity, 'collection', newTarget)` を呼び、その戻り値が truthy なら
-`isNewActivity = 'new collection'` を立てる。`updateActivityMeta` は成功時に**必ず**
-更新後のドキュメントを返すため、**同じ inbox への重複配送でも `'new collection'` になる。**
-その結果 `net/activity.js:88-91` の
-
-```js
-if (res.locals.apex.isNewActivity === false) {
-  return next()
-}
-```
-
-は到達しないデッドコードで、`inboxSideEffects` の switch が毎回再実行される
-(`update` ケースのみ `isNewActivity === true` を別途チェックしている)。
-
-実害は `functions/src/activitypub.ts` の `apex-inbox` リスナーに出る。`Follow` を自動承認して
-`Accept` を outbox に積むため、**重複配送のたびに `Accept` が相手サーバーへ再送される。**
-
-### Inbox Forwarding (7.1.2) の動作が未検証
-
-自分の投稿への他サーバーからの返信が、自分のフォロワーコレクションを `cc` に含む場合、
-それを自分のフォロワー全員へ転送しなければならない(MUST)。
-実装しないと、自分の返信だけがフォロワーに見えて相手の発言が見えない「幽霊リプライ」になる。
-
-**apex 4.4.1 は `net/activity.js:40-67` の `forwardFromInbox` として実装を持っており、
-`net/index.js:77` で `inbox.post` のミドルウェア列に組み込まれている。**
-したがって「未実装」ではない。ただし転送が走るには以下の3条件をすべて満たす必要があり、
-実データで満たされるかは未確認。
-
-1. `resLocal.isNewActivity === true`(初回受信であること)
-2. `resLocal.linked` にローカル IRI のオブジェクトが含まれること
-3. `to` / `cc` / `audience` にこのサーバーの followers / collections コレクションが含まれること
-
-条件1は上記「inbox の重複排除」の不具合の影響を直接受ける。
-
-### 素の `Public` を公開宛先として認識しない
-
-JSON-LD の compact 結果によって、公開宛先は `Public` / `as:Public` /
-`https://www.w3.org/ns/activitystreams#Public` の3通りで届きうる。
-仕様は3つとも受け付けるべきとしている。
-
-実際に apex の `fromJSONLD` を通して確認した結果は次のとおり。
-
-| 受信時の値 | `fromJSONLD` 後 | `isPublic()` |
-|---|---|---|
-| `as:Public` | `as:Public` | true |
-| `https://www.w3.org/ns/activitystreams#Public` | `as:Public` | true |
-| `Public` | `Public` | **false** |
-
-**3通りのうち素の `Public` だけが正規化されずに落ちる。** apex の context
-(`vocab/as.json:360-363`)は `Public` を `as:Public` の term として定義しているが、
-compact の結果としては term 名の `Public` が残り、`pub/consts.js:17` の
-`publicAddress: 'as:Public'` と一致しない。`isPublic()` が false になると
-`pub/collection.js:75` のフィルタで匿名リクエストからそのアクティビティが見えなくなる。
 
 ### inbox の side effect が限定的
 
 apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` / `Undo` / `Update`。
 `Follow` は apex 側にケースがなく、`functions/src/activitypub.ts` の `apex-inbox` リスナーで
 自前実装している。`Move` は apex が完全に非対応。
-
-## コレクションとページネーション
-
-### `followers` が匿名リクエストに対して常に空を返す
-
-`activitypub-express` の `getCollection`(`pub/collection.js`)は `includePrivate`
-(`res.locals.apex.authorized`)が false の場合、返す前に `stream.filter(act => isPublic(act))`
-で絞り込む。`authorized` はログイン中の本人リクエストのみ true になり
-(`net/security.js`)、匿名の連合フェッチは常に false。一方 `Follow` アクティビティは
-`to` に `as:Public` を含まないため `isPublic()` が常に false になり、
-**`GET /activitypub/u/:actor/followers?page=true` への匿名アクセスは`orderedItems` が
-常に空になる。**`totalItems`(`getStreamCount`)はこのフィルタを経由しないため正しい値を返す。
-([Issue #20](https://github.com/hakatashi/activitypub-firebase/issues/20) の実地検証で確認)
-
-### Undo 受信時に `followers_count` の減算が発火しない
-
-`functions/src/denormalizations.ts` の `onStreamCreated` は `Undo` の
-`object.type === 'Follow'` を見て `followers_count` を減算するが、apex の
-inbox 処理(`net/activity.js` の `denormalizeObject` 対象に `undo` が含まれない)は
-受信した `Undo` の `object` を文字列 IRI のまま保存し、埋め込みオブジェクトに展開しない。
-そのため `object.type` は常に `undefined` で判定が成立せず、**フォロー解除時の
-`followers_count` 減算は実質発火しない。**
-([Issue #20](https://github.com/hakatashi/activitypub-firebase/issues/20) の実地検証で確認)
 
 ## Mastodon API
 
