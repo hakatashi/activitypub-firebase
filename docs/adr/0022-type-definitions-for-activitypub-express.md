@@ -1,6 +1,6 @@
 # ADR-0022: activitypub-express の型定義を自前で持ち、Store は `implements` で検証する
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0040
 - **Date:** 2026-09-06
 
 ## 背景

@@ -1,6 +1,6 @@
 # ADR-0002: activitypub-express を継続利用し、配送層のみ差し替える
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0040
 - **Date:** 2026-09-03
 
 ## 背景

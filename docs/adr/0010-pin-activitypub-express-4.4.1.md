@@ -1,6 +1,6 @@
 # ADR-0010: activitypub-express を 4.4.1 に固定する
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0040
 - **Date:** 2026-09-04
 
 ## 背景

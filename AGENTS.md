@@ -63,6 +63,10 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
   すべて Cloud Functions 経由。
 - **PR を作成する前に `build` / `lint` / `format:check` / `test` を全て実行し、
   通ることを確認する。**
+- **apex のフォーク (`functions/src/apex/`) から `firebase-admin` / `firebase-functions` /
+  本体のモジュールを import しない。** フォークと本体の責務境界は
+  [ADR-0042](docs/adr/0042-apex-fork-responsibility-boundary.md) が定める。
+  境界をまたぎたくなったら、それは「その処理は本体側の責務だ」というシグナル。
 
 ## よく使うコマンド
 
@@ -77,13 +81,20 @@ npm --prefix functions test           # Firestore エミュレータ + jest
 
 ## 現在の最優先事項
 
-**Phase 1(配送)は完了した。** 配送は Cloud Tasks 経由で動作し、dev 環境から実在の
-Mastodon インスタンスへ Follow / Accept / Create が届くことを実地で確認済み
+**Phase 1(配送)と Phase 2(受信と AP 準拠)は完了した。** 配送は Cloud Tasks 経由で動作し、
+dev 環境から実在の Mastodon インスタンスへ Follow / Accept / Create が届き、
+Like / Announce / Undo / Inbox Forwarding の受信も実地で確認済み
 (→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)、
 [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md))。
 
-次は **Phase 2(受信と AP 準拠、Epic
-[#7](https://github.com/hakatashi/activitypub-firebase/issues/7))** と
+次は **Phase 2.5(apex フォーク、Epic
+[#103](https://github.com/hakatashi/activitypub-firebase/issues/103))** と
 **Phase 3(Mastodon API、Epic
 [#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**。この2つは並行できる
-(→ [`docs/roadmap.md`](docs/roadmap.md))。着手前に子 Issue を作ること。
+(→ [`docs/roadmap.md`](docs/roadmap.md))。
+
+Phase 2 で apex の不具合・実装不備を7件踏み、本体側の回避コードが apex の内部実装
+(ミドルウェア配列の並び)に依存する段階まで来た。**Phase 2.5 で apex をフォークして
+このリポジトリで保守し、回避コードを撤去する**(→ [ADR-0040](docs/adr/0040-fork-activitypub-express.md)、
+[ADR-0041](docs/adr/0041-vendor-fork-in-tree.md)、
+[ADR-0042](docs/adr/0042-apex-fork-responsibility-boundary.md))。
