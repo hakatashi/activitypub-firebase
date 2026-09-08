@@ -1,6 +1,6 @@
 # ADR-0031: Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0046
 - **Date:** 2026-09-07
 
 ## 背景

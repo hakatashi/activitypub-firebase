@@ -7,7 +7,6 @@ import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { correctIsNewActivity, markRedundantInboxDelivery } from './inboxDedup.js';
 import { resolveLikeAnnounceObjectAsPlainObject } from './inboxLikeAnnounceObject.js';
-import { verifySameOriginForUpdateDelete } from './inboxOriginCheck.js';
 import {
 	inboxActivityValidator,
 	inboxExecutionMiddlewares,
@@ -71,7 +70,7 @@ app.use(
 
 // inbox への配送処理パイプライン。apex 本体のミドルウェア配列を変更せず、
 // 各検証・補正ミドルウェアを順序通りフラットに並べて実行する
-// (→ ADR-0030, ADR-0031, ADR-0033, ADR-0038)。
+// (→ ADR-0030, ADR-0033, ADR-0038)。
 app.route(routes.inbox).get(apex.net.inbox.get).post(
 	// 1. リクエスト検証・署名検証・アクター/オブジェクト解決 (apex)
 	inboxValidationMiddlewares,
@@ -79,17 +78,15 @@ app.route(routes.inbox).get(apex.net.inbox.get).post(
 	resolveLikeAnnounceObjectAsPlainObject,
 	// 3. アクティビティ種別ごとの追加検証 (apex)
 	inboxActivityValidator,
-	// 4. Update / Delete の同一オリジン検証 (ADR-0031)
-	verifySameOriginForUpdateDelete,
-	// 5. 重複配送検出 (ADR-0030)
+	// 4. 重複配送検出 (ADR-0030)
 	markRedundantInboxDelivery,
-	// 6. Undo のオブジェクト解決埋め込み (ADR-0033)
+	// 5. Undo のオブジェクト解決埋め込み (ADR-0033)
 	denormalizeUndoObject,
-	// 7. アクティビティ保存 (apex)
+	// 6. アクティビティ保存 (apex)
 	apex.net.activity.save,
-	// 8. 重複配送時のフラグ補正 (ADR-0030)
+	// 7. 重複配送時のフラグ補正 (ADR-0030)
 	correctIsNewActivity,
-	// 9. スレッド解決・Side effects・配送・レスポンス (apex)
+	// 8. スレッド解決・Side effects・配送・レスポンス (apex)
 	inboxExecutionMiddlewares,
 );
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
