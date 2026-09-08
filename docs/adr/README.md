@@ -59,7 +59,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0031](0031-update-delete-same-origin-check.md) | Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う | Accepted |
 | [0032](0032-ssrf-safe-remote-object-fetch.md) | リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える | Accepted |
 | [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Accepted |
-| [0034](0034-normalize-public-address-on-inbox.md) | inbox で受信したアクティビティの as:Public 宛先表現を正規化する | Accepted |
+| [0034](0034-normalize-public-address-on-inbox.md) | inbox で受信したアクティビティの as:Public 宛先表現を正規化する | Superseded by ADR-0045 |
 | [0035](0035-mark-accepted-follow-as-public.md) | 承認した Follow に `_meta.isPublic` を付与し followers を匿名公開する | Accepted |
 | [0036](0036-reject-unsupported-http-signature-format-early.md) | draft-cavage 以外の署名形式を事前に 403 で弾く | Superseded by ADR-0044 |
 | [0037](0037-denormalize-like-announce-counts.md) | Like/Announce のカウントを `_meta` の非正規化カウンタとして持つ | Accepted |
@@ -70,3 +70,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0042](0042-apex-fork-responsibility-boundary.md) | apex フォークと本体コードの責務境界 | Accepted |
 | [0043](0043-smoke-test-dev-with-activitypub-testing.md) | activitypub-testing による dev 環境デプロイ後スモークテストの導入 | Accepted |
 | [0044](0044-self-implemented-http-signature-in-apex-fork.md) | HTTP 署名検証・生成を apex フォーク内に自前実装しエラーを分類する | Accepted |
+| [0045](0045-normalize-public-address-in-apex-jsonld.md) | apex フォークの JSON-LD 処理層で as:Public 宛先表現を正規化する | Accepted |

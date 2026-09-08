@@ -90,52 +90,59 @@ describe('/inbox forwarding (W3C ActivityPub 7.1.2, Issue #54)', () => {
 		);
 	});
 
-	test('forwards remote reply to followers when all 3 conditions are met', async () => {
-		const deliveryEnqueueSpy = vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(true);
+	test.each([
+		['as:Public', 'as:Public'],
+		['full URI', 'https://www.w3.org/ns/activitystreams#Public'],
+		['bare Public', 'Public'],
+	])(
+		'forwards remote reply to followers when all 3 conditions are met (%s)',
+		async (_label, publicTarget) => {
+			const deliveryEnqueueSpy = vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(true);
 
-		const replyActivityId = 'https://remote-b.example/activities/reply-1';
-		const replyNoteId = 'https://remote-b.example/objects/reply-note-1';
-		const parentNoteId = `https://${DEV_DOMAIN}/activitypub/u/hakatashi/o/parent-note-1`;
+			const replyActivityId = `https://remote-b.example/activities/reply-${encodeURIComponent(publicTarget)}`;
+			const replyNoteId = `https://remote-b.example/objects/reply-note-${encodeURIComponent(publicTarget)}`;
+			const parentNoteId = `https://${DEV_DOMAIN}/activitypub/u/hakatashi/o/parent-note-1`;
 
-		const replyCreateActivity = {
-			'@context': 'https://www.w3.org/ns/activitystreams',
-			id: replyActivityId,
-			type: 'Create',
-			actor: REMOTE_BOB_ID,
-			to: [LOCAL_ACTOR_ID, 'as:Public'],
-			cc: [LOCAL_FOLLOWERS_ID],
-			object: {
-				id: replyNoteId,
-				type: 'Note',
-				attributedTo: REMOTE_BOB_ID,
-				inReplyTo: parentNoteId,
-				to: [LOCAL_ACTOR_ID, 'as:Public'],
+			const replyCreateActivity = {
+				'@context': 'https://www.w3.org/ns/activitystreams',
+				id: replyActivityId,
+				type: 'Create',
+				actor: REMOTE_BOB_ID,
+				to: [LOCAL_ACTOR_ID, publicTarget],
 				cc: [LOCAL_FOLLOWERS_ID],
-				content: 'Nice reply from Bob!',
-			},
-		};
+				object: {
+					id: replyNoteId,
+					type: 'Note',
+					attributedTo: REMOTE_BOB_ID,
+					inReplyTo: parentNoteId,
+					to: [LOCAL_ACTOR_ID, publicTarget],
+					cc: [LOCAL_FOLLOWERS_ID],
+					content: 'Nice reply from Bob!',
+				},
+			};
 
-		const res = await request(wrapWithRawBody(activitypub))
-			.post('/activitypub/u/hakatashi/inbox')
-			.set('Content-Type', 'application/activity+json')
-			.send(JSON.stringify(replyCreateActivity));
+			const res = await request(wrapWithRawBody(activitypub))
+				.post('/activitypub/u/hakatashi/inbox')
+				.set('Content-Type', 'application/activity+json')
+				.send(JSON.stringify(replyCreateActivity));
 
-		expect(res.status).toBe(200);
+			expect(res.status).toBe(200);
 
-		// フォロワー Alice への転送配送がエンキューされていることを確認
-		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(1);
-		expect(deliveryEnqueueSpy).toHaveBeenCalledWith(
-			LOCAL_ACTOR_ID,
-			expect.any(String),
-			[FOLLOWER_ALICE_INBOX],
-			expect.any(String),
-		);
+			// フォロワー Alice への転送配送がエンキューされていることを確認
+			expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(1);
+			expect(deliveryEnqueueSpy).toHaveBeenCalledWith(
+				LOCAL_ACTOR_ID,
+				expect.any(String),
+				[FOLLOWER_ALICE_INBOX],
+				expect.any(String),
+			);
 
-		// エンキューされた body を検証 (元の Create アクティビティが含まれる)
-		const deliveredBody = JSON.parse(deliveryEnqueueSpy.mock.calls[0][1] as string);
-		expect(deliveredBody.id).toBe(replyActivityId);
-		expect(deliveredBody.type).toBe('Create');
-	});
+			// エンキューされた body を検証 (元の Create アクティビティが含まれる)
+			const deliveredBody = JSON.parse(deliveryEnqueueSpy.mock.calls[0][1] as string);
+			expect(deliveredBody.id).toBe(replyActivityId);
+			expect(deliveredBody.type).toBe('Create');
+		},
+	);
 
 	test('does not forward redundant deliveries (condition 1)', async () => {
 		const deliveryEnqueueSpy = vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(true);

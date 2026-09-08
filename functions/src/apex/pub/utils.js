@@ -24,6 +24,7 @@ module.exports = {
   isString,
   mergeJSONLD,
   nameToActorStreamsFactory,
+  normalizePublicAddresses,
   removeMeta,
   toJSONLD,
   fromJSONLD,
@@ -155,6 +156,41 @@ function objectIdFromValue (object) {
   return object?.id
 }
 
+// compact leaves bare 'Public' untouched, so normalize it to 'as:Public'
+function normalizePublicAddressValue (val) {
+  if (val === 'Public') {
+    return 'as:Public'
+  }
+  return val
+}
+
+function normalizePublicAddresses (target) {
+  if (!target || typeof target !== 'object') {
+    return target
+  }
+  if (Array.isArray(target)) {
+    for (let i = 0; i < target.length; i++) {
+      normalizePublicAddresses(target[i])
+    }
+    return target
+  }
+  for (const key of audienceFields) {
+    if (target[key] !== undefined) {
+      if (Array.isArray(target[key])) {
+        target[key] = target[key].map(normalizePublicAddressValue)
+      } else if (typeof target[key] === 'string') {
+        target[key] = normalizePublicAddressValue(target[key])
+      }
+    }
+  }
+  for (const key of Object.keys(target)) {
+    if (typeof target[key] === 'object' && target[key] !== null) {
+      normalizePublicAddresses(target[key])
+    }
+  }
+  return target
+}
+
 // convert incoming json-ld to local context and
 // partially expanded format for consistent property access
 async function fromJSONLD (obj) {
@@ -184,7 +220,11 @@ async function fromJSONLD (obj) {
   }
   const compact = await jsonld.compact(obj, this.context, opts)
   // strip context and graph wrapper for easier access
-  return compact['@graph'][0]
+  const result = compact['@graph'][0]
+  if (result) {
+    normalizePublicAddresses(result)
+  }
+  return result
 }
 // convert working objects to json-ld for transport
 function toJSONLD (obj) {
