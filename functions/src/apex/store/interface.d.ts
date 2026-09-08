@@ -1,5 +1,12 @@
 import type { APObject, DeliveryQueueRecord } from '../index.js';
 
+declare namespace IApexStore {
+	export interface SaveActivityResult {
+		isNew: true | 'new collection' | false;
+		activity?: APObject;
+	}
+}
+
 declare class IApexStore {
 	setup(initialUser?: APObject): Promise<void>;
 	generateId(): string;
@@ -38,7 +45,7 @@ declare class IApexStore {
 		documentUrl: string;
 		document: unknown;
 	}): Promise<void>;
-	saveActivity(activity: APObject): Promise<true | undefined>;
+	saveActivity(activity: APObject): Promise<IApexStore.SaveActivityResult>;
 	removeActivity(activity: APObject, actorId: string): Promise<void>;
 	updateActivity(activity: APObject, fullReplace: boolean): Promise<APObject>;
 	updateActivityMeta(

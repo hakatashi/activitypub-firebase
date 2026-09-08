@@ -1,6 +1,6 @@
 # ADR-0030: inbox の重複配送検出を、apex 本体を変更せず前後の薄いミドルウェアで行う
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0049
 - **Date:** 2026-09-07
 
 ## 背景

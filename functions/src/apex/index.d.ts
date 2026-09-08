@@ -50,6 +50,9 @@ declare namespace ActivitypubExpress {
 		updatedAt: unknown;
 	}
 
+	export type SaveActivityResult = IApexStore.SaveActivityResult;
+	export type SaveActivityStatus = true | 'new collection' | false;
+
 	export interface ApexStore extends IApexStore {
 		getObjects(ids: string[], includeMeta?: boolean): Promise<APObject[]>;
 		getObjectsByFieldValue(

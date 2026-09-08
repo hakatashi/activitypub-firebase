@@ -244,7 +244,6 @@ export const apexLocalsSchema = z
 		eventName: z.string().nullable().optional(),
 		eventMessage: z.unknown().optional(),
 		isNewActivity: z.union([z.boolean(), z.string()]).optional(),
-		isRedundantDelivery: z.boolean().optional(),
 		postWork: z
 			.array(z.custom<(res: express.Response) => unknown>((fn) => typeof fn === 'function'))
 			.optional(),

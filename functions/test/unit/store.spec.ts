@@ -110,16 +110,75 @@ describe('Store', () => {
 				type: 'Create',
 				_meta: { collection: ['https://example.com/inbox'] },
 			};
-			expect(await store.saveActivity(activity)).toBe(true);
+			const result = await store.saveActivity(activity);
+			expect(result).toEqual({
+				isNew: true,
+				activity,
+			});
 
 			const fetched = await store.getActivity(activity.id, true);
 			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
 		});
 
-		test('does not overwrite an existing activity with the same id', async () => {
-			const activity = { id: 'https://example.com/activities/2', type: 'Create' };
-			expect(await store.saveActivity(activity)).toBe(true);
-			expect(await store.saveActivity({ ...activity, type: 'Update' })).toBeUndefined();
+		test('returns "new collection" and adds to _meta.collection when a new collection is delivered', async () => {
+			const activity = {
+				id: 'https://example.com/activities/2',
+				type: 'Create',
+				_meta: { collection: ['https://example.com/inbox-1'] },
+			};
+			expect(await store.saveActivity(activity)).toEqual({
+				isNew: true,
+				activity,
+			});
+
+			const updated = await store.saveActivity({
+				...activity,
+				_meta: { collection: ['https://example.com/inbox-2'] },
+			});
+			expect(updated.isNew).toBe('new collection');
+			expect(updated.activity._meta?.collection).toEqual([
+				'https://example.com/inbox-1',
+				'https://example.com/inbox-2',
+			]);
+
+			const fetched = await store.getActivity(activity.id, true);
+			expect(fetched?._meta.collection).toEqual([
+				'https://example.com/inbox-1',
+				'https://example.com/inbox-2',
+			]);
+		});
+
+		test('returns false and does not modify document for redundant delivery to same collection', async () => {
+			const activity = {
+				id: 'https://example.com/activities/3',
+				type: 'Create',
+				_meta: { collection: ['https://example.com/inbox-1'] },
+			};
+			expect(await store.saveActivity(activity)).toEqual({
+				isNew: true,
+				activity,
+			});
+
+			const redundant = await store.saveActivity({
+				...activity,
+				type: 'Update', // should not overwrite
+				_meta: { collection: ['https://example.com/inbox-1'] },
+			});
+			expect(redundant.isNew).toBe(false);
+
+			const fetched = await store.getActivity(activity.id, true);
+			expect(fetched?.type).toBe('Create');
+			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox-1']);
+		});
+
+		test('does not overwrite an existing activity with the same id when no collection specified', async () => {
+			const activity = { id: 'https://example.com/activities/4', type: 'Create' };
+			expect(await store.saveActivity(activity)).toEqual({
+				isNew: true,
+				activity,
+			});
+			const duplicate = await store.saveActivity({ ...activity, type: 'Update' });
+			expect(duplicate.isNew).toBe(false);
 
 			const fetched = await store.getActivity(activity.id);
 			expect(fetched?.type).toBe('Create');
