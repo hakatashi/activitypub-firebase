@@ -1,0 +1,107 @@
+{
+	"rules": {
+		"no-unused-vars": "off",
+		"no-unused-expressions": "off",
+		"no-restricted-imports": [
+			"error",
+			{
+				"paths": [
+					{
+						"name": "firebase-admin",
+						"message": "apex fork must not import firebase-admin (ADR-0042)"
+					},
+					{
+						"name": "firebase-functions",
+						"message": "apex fork must not import firebase-functions (ADR-0042)"
+					}
+				],
+				"patterns": [
+					{
+						"group": ["firebase-admin/*", "firebase-functions/*"],
+						"message": "apex fork must not import Firebase (ADR-0042)"
+					}
+				]
+			}
+		]
+	},
+	"overrides": [
+		{
+			"files": ["*"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"paths": [
+							{
+								"name": "firebase-admin",
+								"message": "apex fork must not import firebase-admin (ADR-0042)"
+							},
+							{
+								"name": "firebase-functions",
+								"message": "apex fork must not import firebase-functions (ADR-0042)"
+							}
+						],
+						"patterns": [
+							{
+								"group": ["firebase-admin/*", "firebase-functions/*", "../*"],
+								"message": "apex fork must not import Firebase or outer project modules (ADR-0042)"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["*/*"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"paths": [
+							{
+								"name": "firebase-admin",
+								"message": "apex fork must not import firebase-admin (ADR-0042)"
+							},
+							{
+								"name": "firebase-functions",
+								"message": "apex fork must not import firebase-functions (ADR-0042)"
+							}
+						],
+						"patterns": [
+							{
+								"group": ["firebase-admin/*", "firebase-functions/*", "../../*"],
+								"message": "apex fork must not import Firebase or outer project modules (ADR-0042)"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["*/*/*"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"paths": [
+							{
+								"name": "firebase-admin",
+								"message": "apex fork must not import firebase-admin (ADR-0042)"
+							},
+							{
+								"name": "firebase-functions",
+								"message": "apex fork must not import firebase-functions (ADR-0042)"
+							}
+						],
+						"patterns": [
+							{
+								"group": ["firebase-admin/*", "firebase-functions/*", "../../../*"],
+								"message": "apex fork must not import Firebase or outer project modules (ADR-0042)"
+							}
+						]
+					}
+				]
+			}
+		}
+	]
+}

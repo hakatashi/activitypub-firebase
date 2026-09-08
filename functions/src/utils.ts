@@ -1,4 +1,4 @@
-import type { APObject } from 'activitypub-express';
+import type { APObject } from './apex/index.js';
 import type { APActor, APAnnounce, APFollow, APLike, APNote, APUndo } from 'activitypub-types';
 import type express from 'express';
 import { z } from 'zod';

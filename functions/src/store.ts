@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import type { Firestore } from '@google-cloud/firestore';
-import type { APObject, ApexStore } from 'activitypub-express';
-import IApexStore from 'activitypub-express/store/interface.js';
+import type { APObject, ApexStore } from './apex/index.js';
+import IApexStore from './apex/store/interface.js';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';

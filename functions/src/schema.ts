@@ -3,7 +3,7 @@ import type {
 	DocumentReference,
 	Timestamp,
 } from '@google-cloud/firestore';
-import type { APObject } from 'activitypub-express';
+import type { APObject } from './apex/index.js';
 import type {
 	AuthorizationCode,
 	Client,

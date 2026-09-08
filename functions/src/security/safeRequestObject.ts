@@ -1,4 +1,4 @@
-import type { Apex, APObject } from 'activitypub-express';
+import type { Apex, APObject } from '../apex/index.js';
 import { logger } from 'firebase-functions/v2';
 import { Agent } from 'undici';
 import { computeHttpSignatureHeaders } from './httpSignature.js';

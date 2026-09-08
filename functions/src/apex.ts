@@ -1,6 +1,6 @@
 import type { EventEmitter } from 'node:events';
-import type { APObject } from 'activitypub-express';
-import ActivitypubExpress from 'activitypub-express';
+import type { APObject } from './apex/index.js';
+import ActivitypubExpress from './apex/index.js';
 import type { Express } from 'express';
 import { logger } from 'firebase-functions/v2';
 import { domain } from './firebase.js';

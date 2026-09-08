@@ -1,4 +1,4 @@
-import type { APObject } from 'activitypub-express';
+import type { APObject } from './apex/index.js';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { isAPUndo, parseApexLocals } from './utils.js';
 

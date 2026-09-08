@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { Request as OauthRequest, Response as OauthResponse } from '@node-oauth/oauth2-server';
-import type { APObject as ApexObject, JsonLdActor } from 'activitypub-express';
+import type { APObject as ApexObject, JsonLdActor } from '../apex/index.js';
 import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
