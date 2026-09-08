@@ -26,6 +26,10 @@ export interface ObjectMeta {
 	collection?: string[];
 	privateKey?: string;
 	index?: MetaIndex;
+	isPublic?: boolean;
+	// objects コレクションのみで使う非正規化カウンタ (→ ADR-0037)。
+	likesCount?: number;
+	sharesCount?: number;
 	[key: string]: unknown;
 }
 

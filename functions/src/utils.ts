@@ -1,5 +1,5 @@
 import type { APObject } from 'activitypub-express';
-import type { APActor, APFollow, APNote, APUndo } from 'activitypub-types';
+import type { APActor, APAnnounce, APFollow, APLike, APNote, APUndo } from 'activitypub-types';
 import type express from 'express';
 import { z } from 'zod';
 
@@ -166,6 +166,20 @@ export const isAPUndo = <T>(object: T): object is T & APUndo => {
 		return false;
 	}
 	return objectToTypeArray(object).includes('Undo');
+};
+
+export const isAPLike = <T>(object: T): object is T & APLike => {
+	if (typeof object !== 'object' || object === null) {
+		return false;
+	}
+	return objectToTypeArray(object).includes('Like');
+};
+
+export const isAPAnnounce = <T>(object: T): object is T & APAnnounce => {
+	if (typeof object !== 'object' || object === null) {
+		return false;
+	}
+	return objectToTypeArray(object).includes('Announce');
 };
 
 // AS2 の Object/Link は id/href を持つが、activitypub-express は compactArrays: false で

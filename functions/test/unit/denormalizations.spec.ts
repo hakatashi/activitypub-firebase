@@ -3,7 +3,7 @@ import type { DocumentReference, QueryDocumentSnapshot } from 'firebase-admin/fi
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { onStreamCreated, onStreamWritten } from '../../src/denormalizations.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
-import { Streams, UserInfos } from '../../src/schema.js';
+import { Objects, Streams, UserInfos } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -432,6 +432,132 @@ describe('denormalizations', () => {
 			await expect(
 				onStreamCreated.run(makeCreatedEvent({ data: { data: () => undefined } })),
 			).resolves.toBeUndefined();
+		});
+
+		// Issue #55 の実地検証で、apex 本体の likes/shares コレクション機構が Note のような
+		// object を対象にすると機能しない(routes.likes/shares は streams コレクション専用)
+		// ことが分かったため、followers_count と同じ非正規化カウンタのパターンで
+		// objects._meta.likesCount / sharesCount を直接更新する (→ ADR-0037)。
+		test('increments _meta.likesCount of the liked object when a Like stream is created', async () => {
+			const noteId = 'https://example.com/activitypub/o/note-1';
+			await Objects.doc(escapeFirestoreKey(noteId)).set({
+				id: noteId,
+				type: 'Note',
+				_meta: { likesCount: 2 },
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('like-stream'));
+			await ref.set({
+				id: 'https://remote.example/activities/like-1',
+				type: 'Like',
+				actor: ['https://remote.example/u/alice'],
+				object: [noteId],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
+			expect(note._meta?.likesCount).toBe(3);
+		});
+
+		// apex 本体の activity.save は Like/Announce にも解決済みの object を埋め込んで
+		// 保存する(ADR-0038 で Like/Announce の object 解決が成功するようになった結果、
+		// 実際に dev 環境で観測した)。embed された object の型だけで statuses_count の
+		// 対象を判定すると、いいねした側(_meta.likesCount の更新とは無関係な第三者の
+		// UserInfos)を誤って更新しようとして batch 全体が失敗し、likesCount の更新も
+		// 巻き添えで失われていた (→ ADR-0039)。
+		test('increments _meta.likesCount without touching statuses_count when the Like embeds a Note object', async () => {
+			const noteId = 'https://example.com/activitypub/o/note-embedded';
+			await Objects.doc(escapeFirestoreKey(noteId)).set({ id: noteId, type: 'Note' });
+
+			const likerId = 'https://remote.example/u/alice';
+			// リモートの liker は UserInfos ドキュメントを持たない(単一ユーザー運用のため)。
+			// もし statuses_count の更新が誤って走れば、存在しないドキュメントへの
+			// batch.update() で例外になり、likesCount の更新も失われる。
+			const ref = Streams.doc(escapeFirestoreKey('like-stream-embedded'));
+			await ref.set({
+				id: 'https://remote.example/activities/like-embedded',
+				type: 'Like',
+				actor: [likerId],
+				object: [{ id: noteId, type: 'Note', attributedTo: ['https://example.com/u/hakatashi'] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await expect(
+				onStreamCreated.run(makeCreatedEvent({ data: snapshot })),
+			).resolves.toBeUndefined();
+
+			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
+			expect(note._meta?.likesCount).toBe(1);
+
+			const likerInfo = await UserInfos.doc(escapeFirestoreKey(likerId)).get();
+			expect(likerInfo.exists).toBe(false);
+		});
+
+		test('increments _meta.sharesCount of the shared object when an Announce stream is created', async () => {
+			const noteId = 'https://example.com/activitypub/o/note-2';
+			await Objects.doc(escapeFirestoreKey(noteId)).set({ id: noteId, type: 'Note' });
+
+			const ref = Streams.doc(escapeFirestoreKey('announce-stream'));
+			await ref.set({
+				id: 'https://remote.example/activities/announce-1',
+				type: 'Announce',
+				actor: ['https://remote.example/u/alice'],
+				object: [noteId],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
+			expect(note._meta?.sharesCount).toBe(1);
+		});
+
+		test('decrements _meta.likesCount when an Undo(Like) stream is created', async () => {
+			const noteId = 'https://example.com/activitypub/o/note-3';
+			await Objects.doc(escapeFirestoreKey(noteId)).set({
+				id: noteId,
+				type: 'Note',
+				_meta: { likesCount: 1 },
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('undo-like-stream'));
+			await ref.set({
+				id: 'https://remote.example/activities/undo-like-1',
+				type: 'Undo',
+				actor: ['https://remote.example/u/alice'],
+				object: [{ type: 'Like', object: [noteId] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
+			expect(note._meta?.likesCount).toBe(0);
+		});
+
+		test('decrements _meta.sharesCount when an Undo(Announce) stream is created', async () => {
+			const noteId = 'https://example.com/activitypub/o/note-4';
+			await Objects.doc(escapeFirestoreKey(noteId)).set({
+				id: noteId,
+				type: 'Note',
+				_meta: { sharesCount: 1 },
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('undo-announce-stream'));
+			await ref.set({
+				id: 'https://remote.example/activities/undo-announce-1',
+				type: 'Undo',
+				actor: ['https://remote.example/u/alice'],
+				object: [{ type: 'Announce', object: [noteId] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
+			expect(note._meta?.sharesCount).toBe(0);
 		});
 	});
 });
