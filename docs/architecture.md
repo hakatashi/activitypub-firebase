@@ -27,9 +27,12 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 
 ## ActivityPub 層
 
-プロトコル実装は `activitypub-express`(apex)に委譲している
-(→ [ADR-0040](adr/0040-fork-activitypub-express.md))。apex が署名検証・JSON-LD 処理・
-webfinger/nodeinfo・コレクションページングを提供する。
+プロトコル実装は `activitypub-express`(apex)に委譲している。apex は npm 依存ではなく
+**このリポジトリにフォークを取り込んでいる**(`functions/src/apex/`。
+→ [ADR-0040](adr/0040-fork-activitypub-express.md)、[ADR-0041](adr/0041-vendor-fork-in-tree.md))。
+apex が HTTP 署名の検証・生成、JSON-LD 処理、webfinger/nodeinfo、コレクションページングを提供する。
+フォークと本体コードの責務境界は [ADR-0042](adr/0042-apex-fork-responsibility-boundary.md) が定める
+(フォークから `firebase-admin` / `firebase-functions` / 本体モジュールを import しない)。
 
 apex インスタンスの生成は `functions/src/apex.ts` にある(`functions/src/tasks.ts` からも
 import されるため、`functions/src/activitypub.ts` との import サイクルを避けて分離している)。
@@ -55,6 +58,13 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
 - `Like` / `Announce` の受信カウントは apex 本体のコレクション機構(activity 専用)を使わず、
   `onStreamCreated` トリガーで対象オブジェクトの `_meta.likesCount` / `sharesCount` を
   直接インクリメント/デクリメントする(→ ADR-0037, ADR-0039)。
+- **リモートオブジェクトの取得は SSRF セーフな自前実装に差し替えている**
+  (`functions/src/security/`、apex の `requestObject` を置き換え。
+  → [ADR-0032](adr/0032-ssrf-safe-remote-object-fetch.md))。
+  スキームを `https` に限定し(ローカル開発時のみ `http` とループバックを許可)、
+  リダイレクトを含む**各ホップ**で名前解決した IP が unicast であることを検証する。
+  DNS rebinding を防ぐため、検証済みの IP に固定した undici の `Agent` で接続する。
+  レスポンスサイズ(5MB)・リダイレクト回数(5回)・タイムアウトにも上限を設ける。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
   `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`)は
   `X-Hakatashi-Token` ヘッダで認証する。
@@ -160,7 +170,9 @@ apex のストア抽象では集計ができないため、フォロワー数・
 
 ## 依存関係
 
-`activitypub-express` / `firebase-functions` / `firebase-admin` /
-`@node-oauth/oauth2-server` / `express` が主要な依存。バージョンは `functions/package.json` を参照。
+`firebase-functions` / `firebase-admin` / `@node-oauth/oauth2-server` / `express` /
+`jsonld` / `undici` が主要な依存。バージョンは `functions/package.json` を参照。
+`activitypub-express` は npm 依存ではなく `functions/src/apex/` にフォークを取り込んでいる
+(→ [ADR-0041](adr/0041-vendor-fork-in-tree.md))。
 型定義のみ `masto` パッケージを利用している(`CamelToSnake` 型ユーティリティで
 camelCase の型定義を snake_case の JSON に変換している)。

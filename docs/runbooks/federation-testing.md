@@ -32,10 +32,14 @@ Firestore REST API で読める。
 | 投稿がタイムラインに届く | `POST /activitypub/createPost` → `GET /api/v1/timelines/home` | 不要 |
 | プロフィール更新の反映 | Firestore REST で actor を書き換え → `publishProfileUpdate` → `GET /api/v1/accounts/:id` | 不要 |
 | フォロー解除の処理 | `POST /api/v1/accounts/:id/unfollow` → followers コレクション | 不要 |
+| Inbox Forwarding | `POST /api/v1/statuses`(`in_reply_to_id` 付き)→ `deliveries` | 不要 |
+| Like / Announce の受信カウント | `POST /api/v1/statuses/:id/favourite`・`/reblog` → `objects` の `_meta` | 不要 |
+| 他オリジンの `Delete`/`Update` 拒否 | 手で組んだ署名付きリクエストを inbox へ | **要**(署名を自分で作る) |
 | 配送のリトライと記録 | `deliveries/resend` + `gcloud tasks list` + `gcloud logging read` | 不要 |
 | テストアカウントとアクセストークンの発行 | `tootctl` + `rails runner` | 不要 |
 
-**手作業はゼロにできる。** 相手インスタンスを自前で持っている(→ [ADR-0014](../adr/0014-self-hosted-federation-test-instance.md))
+**他オリジンからの `Delete`/`Update` の拒否を除き、手作業はゼロにできる。**
+相手インスタンスを自前で持っている(→ [ADR-0014](../adr/0014-self-hosted-federation-test-instance.md))
 ため、通常はブラウザでの OAuth 認可が必要なアクセストークンの発行も、管理者権限で
 `rails runner` から直接できる(Mastodon 4.x の `grant_types_supported` は
 `authorization_code` と `client_credentials` だけで、パスワードグラントがない。
@@ -165,11 +169,24 @@ mapi "$REMOTE/api/v1/accounts/relationships?id[]=$REMOTE_ACCOUNT_ID" | jq '.[0] 
 - [ ] `userInfos` の `followers_count` が増えている
 
 ```bash
+# 匿名(Authorization なし)でコレクションを引く
 curl -sH 'Accept: application/activity+json' "$ACTOR/followers" | jq '{totalItems}'
+curl -sH 'Accept: application/activity+json' "$ACTOR/followers?page=true" \
+  | jq '{count: (.orderedItems | length), next}'
 ```
 
+- [ ] **匿名で** `orderedItems` が空でない(`Follow` は `to`/`cc` を持たないため
+      `_meta.isPublic` を明示的に立てている。→ [ADR-0035](../adr/0035-mark-accepted-follow-as-public.md))
+- [ ] フォロワーが `itemsPerPage` を超えるとき、`next` を辿って全ページ取得できる
+
+`totalItems` だけ正しくて `orderedItems` が空になる不具合は過去に2度踏んでいる。
+**必ず `?page=true` まで引くこと。**
+
 **`requested: true` のまま止まる場合は `Accept` が配送されていない。**
-「9. 配送の記録とリトライ」で `deliveries` を確認する。
+「12. 配送の記録とリトライ」で `deliveries` を確認する。
+
+同じ `Follow` を2回配送しても `Accept` が2回返らないこと(重複排除、
+→ [ADR-0030](../adr/0030-inbox-redundant-delivery-detection.md))は「10. 重複配送の冪等性」で確認する。
 
 ## 5. 投稿が届くか
 
@@ -180,11 +197,15 @@ curl -X POST "$DEV/activitypub/createPost" \
   -d '{"text": "federation test '"$(date +%s)"'"}'
 
 # 相手のホームタイムラインに出るか(配送は非同期なので少し待つ)
-mapi "$REMOTE/api/v1/timelines/home?limit=5" | jq '.[] | {acct: .account.acct, content}'
+mapi "$REMOTE/api/v1/timelines/home?limit=5" | jq '.[] | {id, acct: .account.acct, content}'
+
+# 相手側から見た投稿の ID(手順7・8で使う)と、dev 側の Note の IRI を控える
+export STATUS_ID=$(mapi "$REMOTE/api/v1/timelines/home?limit=1" | jq -r '.[0].id')
+export NOTE_ID=$(mapi "$REMOTE/api/v1/timelines/home?limit=1" | jq -r '.[0].uri')
 ```
 
 - [ ] フォロワーのホームタイムラインに表示される
-- [ ] `deliveries` に `status: "success"` の記録が残っている(手順9)
+- [ ] `deliveries` に `status: "success"` の記録が残っている(手順12)
 
 ## 6. プロフィール更新の配信
 
@@ -209,14 +230,99 @@ mapi "$REMOTE/api/v1/accounts/$REMOTE_ACCOUNT_ID" | jq '{display_name, note}'
 - [ ] 相手側の表示名が更新される
 - [ ] 確認後、元の値に戻す(同じ PATCH で書き戻す)
 
-## 7. 返信とスレッド
+## 7. 返信とスレッドと Inbox Forwarding
 
-- [ ] 相手から dev の投稿に返信し、`inbox` に届く
-      (`mapi -X POST "$REMOTE/api/v1/statuses" -d 'status=...' -d "in_reply_to_id=..."`)
-- [ ] Inbox Forwarding が動いていれば、その返信が dev のフォロワーにも転送される
-      (未実装。Issue #7)
+自分の投稿への外部リプライは、フォロワーコレクションが宛先に含まれていれば
+フォロワー全員へ転送しなければならない(W3C AP 7.1.2 の MUST)。
+実装しないと「自分の返信だけが見えて相手の発言が見えない」状態になる。
 
-## 8. フォロー解除
+転送は apex の `net/activity.js` の `forwardFromInbox` が行い、以下の3条件をすべて
+満たしたときだけ走る。転送されないときはこの順に切り分ける。
+
+1. 初回受信であること(`isNewActivity === true`。重複配送は転送しない)
+2. `resolveThread` がローカル IRI のオブジェクトを解決できていること
+3. `to`/`cc`/`audience` にこのサーバーの followers コレクションの IRI が含まれること
+
+```bash
+# 相手から dev の投稿へ返信する(STATUS_ID は手順5で控えた相手側の投稿 ID)
+mapi -X POST "$REMOTE/api/v1/statuses" -d 'status=@hakatashi reply test' \
+  -d "in_reply_to_id=$STATUS_ID" | jq '{id, uri}'
+
+# 転送は Cloud Tasks 経由なので、フォロワー宛の配送記録で確認する
+# (fsquery は「Firestore を直接読む」で定義する)
+fsquery '{"structuredQuery":{"from":[{"collectionId":"deliveries"}],"limit":10}}' \
+  | jq -c '.[].document.fields | {status: .status.stringValue, inbox: .inbox.stringValue}'
+```
+
+- [ ] 返信が dev の `inbox` に届き、`streams` に `Create` が保存される
+- [ ] その返信が dev のフォロワー宛に転送される(`deliveries` にフォロワーの inbox が残る)
+- [ ] 同じ返信を再配送しても転送が二重に走らない(条件1)
+
+## 8. いいね・ブースト(Like / Announce)の受信
+
+Mastodon の `Like` / `Announce` は `object` に**投稿(Note)の IRI** を指す。
+apex は本来これを別のアクティビティとしてしか受理しないため、通常オブジェクトとしても
+解決する変換を挟んでいる(→ [ADR-0038](../adr/0038-resolve-like-announce-object-as-plain-object.md))。
+カウントは `objects` の `_meta.likesCount` / `_meta.sharesCount` に非正規化される
+(→ [ADR-0037](../adr/0037-denormalize-like-announce-counts.md))。
+
+```bash
+# 相手から dev の投稿をふぁぼ・ブーストする
+mapi -X POST "$REMOTE/api/v1/statuses/$STATUS_ID/favourite" | jq '{favourited}'
+mapi -X POST "$REMOTE/api/v1/statuses/$STATUS_ID/reblog"    | jq '{reblogged}'
+
+# 対象 Note のカウンタ(個別 GET は二重エンコードの罠があるので runQuery で引く。
+# 「Firestore を直接読む」の注意書きを参照)
+fsquery '{"structuredQuery":{"from":[{"collectionId":"objects"}],
+  "where":{"fieldFilter":{"field":{"fieldPath":"type"},"op":"EQUAL",
+  "value":{"stringValue":"Note"}}},"limit":5}}' \
+  | jq -c '.[].document.fields._meta.mapValue.fields | {likesCount, sharesCount}'
+```
+
+- [ ] `Like` / `Announce` が 400 で拒否されず `streams` に保存される
+- [ ] `_meta.likesCount` / `_meta.sharesCount` が増える
+- [ ] `Undo` すると減る
+- [ ] **いいねした側のリモートアクターの `statuses_count` が動かない**
+      (`statuses_count` の非正規化は `Create` だけが対象。
+      → [ADR-0039](../adr/0039-scope-statuses-count-to-create.md))
+
+## 9. 他オリジンからの Delete / Update が拒否されるか
+
+署名者のドメインと対象オブジェクトの `id` のドメインが一致しないアクティビティは
+拒否しなければならない(MUST。→ [ADR-0031](../adr/0031-update-delete-same-origin-check.md))。
+これが抜けていると、任意のサーバーが他人の投稿を消せる。
+
+正規の Mastodon クライアントからは送れない。テスト用インスタンスの鍵で署名した
+**別オリジンのオブジェクトを指す `Delete` / `Update`** を手で組んで dev の inbox に投げる
+(署名鍵が要るので `mt bin/rails runner` から `ActivityPub` の配送を直接呼ぶか、
+テスト用アカウントの秘密鍵を取り出して自分で署名する)。
+
+- [ ] 他オリジンの `id` を対象にした `Delete` / `Update` が 403 で拒否される
+- [ ] 拒否された対象オブジェクトが `objects` に残っている(消されていない)
+- [ ] 同一オリジンの `Delete`(相手が自分の投稿を消す)は通り、Tombstone 化される
+
+## 10. 重複配送の冪等性
+
+Mastodon は再送を行うため、**同じアクティビティが複数回届くことが常にありうる。**
+2回目以降は状態を変えてはならない(→ [ADR-0030](../adr/0030-inbox-redundant-delivery-detection.md))。
+
+重複は意図的に起こしにくい(Mastodon は 2xx を返せば再送しない)。
+**5xx を返すと Sidekiq が最大16回再送する**性質を使うか、相手側で
+follow → unfollow → follow を素早く繰り返して同じ状態遷移を2度踏ませる。
+過去には署名形式の異なる二重配送(draft-cavage と RFC 9421)で実際に起きた
+(→ [ADR-0044](../adr/0044-self-implemented-http-signature-in-apex-fork.md))。
+
+```bash
+# 重複が起きたかどうかは、同一 id のアクティビティが1件しかないことで確認する
+fsquery '{"structuredQuery":{"from":[{"collectionId":"streams"}],"limit":20}}' \
+  | jq -r '.[].document.fields.id.stringValue' | sort | uniq -d
+```
+
+- [ ] 同じ `Follow` を2回受けても `Accept` は1回しか返らない
+- [ ] `followers_count` / `likesCount` / `sharesCount` が二重にカウントされない
+- [ ] `streams` に同じ `id` のアクティビティが2件できない
+
+## 11. フォロー解除
 
 ```bash
 mapi -X POST "$REMOTE/api/v1/accounts/$REMOTE_ACCOUNT_ID/unfollow" | jq '{following}'
@@ -226,7 +332,7 @@ curl -sH 'Accept: application/activity+json' "$ACTOR/followers" | jq '{totalItem
 
 - [ ] `Undo` が処理されて followers から消え、`followers_count` が減る
 
-## 9. 配送の記録とリトライ
+## 12. 配送の記録とリトライ
 
 配送結果は `deliveries` コレクションに記録される(→ [ADR-0012](../adr/0012-delivery-results-in-firestore.md))。
 
@@ -283,7 +389,7 @@ curl -s -X DELETE -H "Authorization: Bearer $GCP_TOKEN" \
 ## Firestore を直接読む
 
 クライアントからの直接アクセスは禁止されているが、`gcloud` の認証情報を使えば
-REST API で読める(確認作業のみ。書き込みは手順6・9のような一時的なものに限る)。
+REST API で読める(確認作業のみ。書き込みは手順6・12のような一時的なものに限る)。
 
 ```bash
 fsquery() {
