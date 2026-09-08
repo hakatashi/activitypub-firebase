@@ -4,6 +4,7 @@ import ActivitypubExpress from 'activitypub-express';
 import type { Express } from 'express';
 import { logger } from 'firebase-functions/v2';
 import { domain } from './firebase.js';
+import { safeRequestObject } from './security/safeRequestObject.js';
 import Store from './store.js';
 
 // activitypub.ts と tasks.ts の両方が apex インスタンスを必要とするため、
@@ -44,6 +45,11 @@ export const apex = ActivitypubExpress({
 		name: '博多市',
 	},
 });
+
+// リモートの未知 IRI 取得を SSRF セーフな自前実装に差し替える。index.js が pub/* の全関数を
+// `apex[prop] = pub[prop].bind(apex)` として直接代入しているため、apex 本体を変更せずに
+// resolveObject / resolveUnknown / resolveReferences のすべてに反映できる (→ ADR-0032)。
+apex.requestObject = safeRequestObject.bind(apex);
 
 // net/activity.js の inboxSideEffects (:195-196) と outboxSideEffects (:296-297) が
 // res.app.emit で発火させるイベントのペイロード。outbox 側には recipient が存在しない

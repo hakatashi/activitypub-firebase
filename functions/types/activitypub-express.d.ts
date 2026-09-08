@@ -180,6 +180,9 @@ declare module 'activitypub-express' {
 		// mastodon/api.ts など、apex 内部の APObject 表現を持たない値(activitypub-types の
 		// APActor 等)からも呼ばれるため、引数は index signature を要求しない `object` で受ける。
 		toJSONLD<T = Record<string, unknown>>(obj: object): Promise<T>;
+		// resolveObject/resolveUnknown が渡す JSON-LD 展開前の生オブジェクトを正規化する
+		// (functions/src/security/safeRequestObject.ts が requestObject の差し替え後に呼ぶ)。
+		fromJSONLD(obj: unknown): Promise<APObject>;
 		// pub/federation.js
 		deliver(
 			actorId: string,
@@ -187,6 +190,11 @@ declare module 'activitypub-express' {
 			address: string,
 			signingKey: string,
 		): Promise<DeliverResult | null>;
+		makeUserAgentString(): string;
+		// resolveObject/resolveUnknown/resolveReferences が内部で呼ぶ未知 IRI の fetch。
+		// apex.ts で SSRF セーフな自前実装に差し替える (→ ADR-0032)。安全でない URL や
+		// 取得失敗時は例外を投げる(呼び出し元の Promise.allSettled が個別に無視する)。
+		requestObject(id: string): Promise<APObject>;
 	}
 
 	function ActivitypubExpress(settings: ApexSettings): Apex;
