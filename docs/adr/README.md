@@ -61,7 +61,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Accepted |
 | [0034](0034-normalize-public-address-on-inbox.md) | inbox で受信したアクティビティの as:Public 宛先表現を正規化する | Accepted |
 | [0035](0035-mark-accepted-follow-as-public.md) | 承認した Follow に `_meta.isPublic` を付与し followers を匿名公開する | Accepted |
-| [0036](0036-reject-unsupported-http-signature-format-early.md) | draft-cavage 以外の署名形式を事前に 403 で弾く | Accepted |
+| [0036](0036-reject-unsupported-http-signature-format-early.md) | draft-cavage 以外の署名形式を事前に 403 で弾く | Superseded by ADR-0044 |
 | [0037](0037-denormalize-like-announce-counts.md) | Like/Announce のカウントを `_meta` の非正規化カウンタとして持つ | Accepted |
 | [0038](0038-resolve-like-announce-object-as-plain-object.md) | Like/Announce の object を Note などの通常オブジェクトとしても解決する | Accepted |
 | [0039](0039-scope-statuses-count-to-create.md) | `statuses_count` の非正規化を `Create` ストリームだけに限定する | Accepted |
@@ -69,3 +69,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0041](0041-vendor-fork-in-tree.md) | apex のフォークは in-tree に置き、モノレポ化しない | Accepted |
 | [0042](0042-apex-fork-responsibility-boundary.md) | apex フォークと本体コードの責務境界 | Accepted |
 | [0043](0043-smoke-test-dev-with-activitypub-testing.md) | activitypub-testing による dev 環境デプロイ後スモークテストの導入 | Accepted |
+| [0044](0044-self-implemented-http-signature-in-apex-fork.md) | HTTP 署名検証・生成を apex フォーク内に自前実装しエラーを分類する | Accepted |

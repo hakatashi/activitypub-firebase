@@ -1,7 +1,7 @@
 import type { Apex, APObject } from '../apex/index.js';
 import { logger } from 'firebase-functions/v2';
 import { Agent } from 'undici';
-import { computeHttpSignatureHeaders } from './httpSignature.js';
+import { computeHttpSignatureHeaders } from '../apex/pub/federation.js';
 import { assertSafeUrl } from './ssrf.js';
 
 const MAX_REDIRECTS = 5;

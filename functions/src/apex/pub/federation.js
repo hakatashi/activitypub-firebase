@@ -10,7 +10,9 @@ module.exports = {
   resolveReferences,
   runDelivery,
   startDelivery,
-  makeUserAgentString
+  makeUserAgentString,
+  computeHttpSignature,
+  computeHttpSignatureHeaders
 }
 const maxTimeout = Math.pow(2, 31) - 1
 let isDelivering = false
@@ -37,6 +39,46 @@ function computeHttpSignature ({ method, url, headerNames, headerValues, keyId, 
   return signatureHeader
 }
 
+/**
+ * @param {object} options
+ * @param {string} [options.method]
+ * @param {URL | string} options.url
+ * @param {string} options.keyId
+ * @param {string} options.privateKeyPem
+ * @param {string} [options.date]
+ * @param {string} [options.digest]
+ * @returns {{ date: string, signature: string, digest?: string }}
+ */
+function computeHttpSignatureHeaders ({
+  method = 'get',
+  url,
+  keyId,
+  privateKeyPem,
+  date = new Date().toUTCString(),
+  digest = undefined
+}) {
+  const parsedUrl = typeof url === 'string' ? new URL(url) : url
+  const headerNames = ['(request-target)', 'host', 'date']
+  const headerValues = { date }
+  if (digest !== undefined) {
+    headerNames.push('digest')
+    headerValues.digest = digest
+  }
+  const signature = computeHttpSignature({
+    method,
+    url: parsedUrl,
+    headerNames,
+    headerValues,
+    keyId,
+    privateKey: privateKeyPem
+  })
+  const result = { date, signature }
+  if (digest !== undefined) {
+    result.digest = digest
+  }
+  return result
+}
+
 async function requestObject (id) {
   if (this.isProductionEnv() && this.isLocalhostIRI(id)) {
     return null
@@ -47,17 +89,14 @@ async function requestObject (id) {
     'User-Agent': this.makeUserAgentString()
   }
   if (this.systemUser && this.systemUser._meta?.privateKey) {
-    const date = new Date().toUTCString()
-    headers.Date = date
-    headers.Host = url.host
-    const signature = computeHttpSignature({
+    const { date, signature } = computeHttpSignatureHeaders({
       method: 'get',
       url,
-      headerNames: ['(request-target)', 'host', 'date'],
-      headerValues: { date },
       keyId: this.systemUser.id,
-      privateKey: this.systemUser._meta.privateKey
+      privateKeyPem: this.systemUser._meta.privateKey
     })
+    headers.Date = date
+    headers.Host = url.host
     headers.Signature = signature
   }
 
@@ -115,13 +154,13 @@ async function deliver (actorId, activity, address, signingKey) {
     'User-Agent': this.makeUserAgentString()
   }
   if (signingKey) {
-    const signature = computeHttpSignature({
+    const { signature } = computeHttpSignatureHeaders({
       method: 'post',
       url,
-      headerNames: ['(request-target)', 'host', 'date', 'digest'],
-      headerValues: { date, digest },
       keyId: actorId,
-      privateKey: signingKey
+      privateKeyPem: signingKey,
+      date,
+      digest
     })
     headers.Signature = signature
   }

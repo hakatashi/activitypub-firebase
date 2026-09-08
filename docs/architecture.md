@@ -45,8 +45,7 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - inbox への配送処理は、apex 本体のミドルウェア配列を変更せず、前後の薄いミドルウェアを
   順序通りフラットに並べて実行している
-  (→ ADR-0030, ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0038)。
-  draft-cavage 以外の署名形式(RFC 9421 等)の事前拒否(`inboxSignature.ts`)、
+  (→ ADR-0030, ADR-0031, ADR-0033, ADR-0034, ADR-0038)。
   Like/Announce の object を通常オブジェクトとしても解決する変換(`inboxLikeAnnounceObject.ts`)、
   宛先の `as:Public` 正規化(`inboxPublic.ts`)、Update/Delete の同一オリジン検証(`inboxOriginCheck.ts`)、
   重複配送検出(`inboxDedup.ts`)、Undo の object 埋め込み(`inboxUndo.ts`)を行い、
