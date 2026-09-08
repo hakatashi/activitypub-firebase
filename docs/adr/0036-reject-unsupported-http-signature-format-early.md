@@ -1,6 +1,6 @@
 # ADR-0036: draft-cavage 以外の署名形式を事前に 403 で弾く
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0044
 - **Date:** 2026-09-08
 
 ## 背景

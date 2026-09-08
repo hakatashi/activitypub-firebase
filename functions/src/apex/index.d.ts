@@ -167,6 +167,18 @@ declare namespace ActivitypubExpress {
 		): Promise<DeliverResult | null>;
 		makeUserAgentString(): string;
 		requestObject(id: string): Promise<APObject>;
+		computeHttpSignatureHeaders(options: {
+			method?: string;
+			url: URL | string;
+			keyId: string;
+			privateKeyPem: string;
+			date?: string;
+			digest?: string;
+		}): {
+			date: string;
+			signature: string;
+			digest?: string;
+		};
 	}
 }
 
