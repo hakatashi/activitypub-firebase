@@ -26,7 +26,7 @@ Firestore REST API で読める。
 
 | 確認項目 | 手段 | 手作業 |
 |---|---|---|
-| actor / WebFinger / nodeinfo | `curl`(認証不要) | 不要 |
+| actor / WebFinger / nodeinfo | `curl` / `activitypub-testing`(認証不要) | 不要 |
 | リモートから検索できる | `GET /api/v2/search?resolve=true` | 不要 |
 | フォローと自動 Accept | `POST /api/v1/accounts/:id/follow` → `GET /api/v1/accounts/relationships` | 不要 |
 | 投稿がタイムラインに届く | `POST /activitypub/createPost` → `GET /api/v1/timelines/home` | 不要 |
@@ -113,6 +113,19 @@ curl -sH 'Accept: application/ld+json; profile="https://www.w3.org/ns/activityst
 
 > Cloud Functions のコールドスタートで初回だけ15秒以上かかることがある。
 > タイムアウトしたら `curl -m 60` で叩き直す。落ちていると即断しない。
+
+### activitypub-testing による自動適合性チェック
+
+Actor および各種コレクション (`inbox` / `outbox` / `followers` / `following` / `liked`) の AS2 応答構造と `OrderedCollection` 準拠性は、[`activitypub-testing`](https://codeberg.org/socialweb.coop/activitypub-testing) で一括検証できる(→ [ADR-0043](../adr/0043-smoke-test-dev-with-activitypub-testing.md))。dev への push デプロイ時にも CI のスモークテストジョブで自動実行される。
+
+```bash
+npx activitypub-testing test actor "$ACTOR"
+```
+
+確認すること:
+- `passed` が 7 件出ること(Actor のプロパティ・GET 応答、および各コレクションの OrderedCollection / Collection 検証)
+- `likes-collection-must-be-a-collection` / `shares-collection-must-be-a-collection` は Note 等のオブジェクト向けテストのため `inapplicable` で正常
+- `outbox-post-*` は C2S POST に対するテストで未認可のため 403 (`cantTell`) で正常
 
 ## 2. nodeinfo
 
