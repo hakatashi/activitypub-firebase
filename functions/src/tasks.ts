@@ -39,10 +39,9 @@ export const activityBodySchema = z.object({
 	id: z.string().min(1),
 });
 
-// apex.deliver は request-promise-native の `simple: false` で呼ばれ、
-// 4xx/5xx でも例外を投げずレスポンスを返す。ステータスコードごとに
-// リトライすべきか(throw して Cloud Tasks に任せる)、恒久失敗として
-// 破棄すべきか(正常終了する)を判定する。ネットワークエラー/タイムアウトは
+// apex.deliver は 4xx/5xx でも例外を投げずレスポンス (statusCode) を返す。
+// ステータスコードごとにリトライすべきか(throw して Cloud Tasks に任せる)、
+// 恒久失敗として破棄すべきか(正常終了する)を判定する。ネットワークエラー/タイムアウトは
 // apex.deliver 自体が reject するため、結果を記録してからそのまま
 // Cloud Tasks の再試行に委ねる(ADR-0012)。
 export const deliveryTask = onTaskDispatched<unknown>(
@@ -133,10 +132,8 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			// (→ ADR-0015)
 			result = await apex.deliver(`${actorId}#main-key`, body, address, privateKey);
 		} catch (err: unknown) {
-			// 捕捉した err は request-promise-core の RequestError の可能性があり、
-			// その場合 `.options.httpSignature.key`(actor の秘密鍵PEM)を保持している。
 			// message だけを取り出した新しい Error に包み直してから rethrow し、
-			// Cloud Functions のエラーログへ秘密鍵が漏れないようにする。
+			// Cloud Functions のエラーログへ機微情報が漏れないようにする。
 			const error = toError(err);
 			await apex.store.recordDeliveryResult({
 				activityId,

@@ -1,5 +1,5 @@
 'use strict'
-const request = require('request-promise-native')
+const { request } = require('undici')
 const crypto = require('crypto')
 
 // federation communication utilities
@@ -16,28 +16,65 @@ const maxTimeout = Math.pow(2, 31) - 1
 let isDelivering = false
 let nextDelivery = null
 
-function requestObject (id) {
+function computeHttpSignature ({ method, url, headerNames, headerValues, keyId, privateKey }) {
+  const signedHeaders = headerNames.map(name => {
+    const lowerName = name.toLowerCase()
+    if (lowerName === '(request-target)') {
+      return [lowerName, `${method.toLowerCase()} ${url.pathname}${url.search}`]
+    }
+    if (lowerName === 'host') {
+      return [lowerName, url.host]
+    }
+    const val = headerValues[lowerName]
+    if (val === undefined) {
+      throw new Error(`Missing header value for signature: ${name}`)
+    }
+    return [lowerName, val]
+  })
+  const stringToSign = signedHeaders.map(([name, val]) => `${name}: ${val}`).join('\n')
+  const signature = crypto.sign('sha256', Buffer.from(stringToSign, 'utf-8'), privateKey).toString('base64')
+  const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="${signedHeaders.map(([name]) => name).join(' ')}",signature="${signature}"`
+  return signatureHeader
+}
+
+async function requestObject (id) {
   if (this.isProductionEnv() && this.isLocalhostIRI(id)) {
     return null
   }
-  const req = {
-    url: id,
-    headers: {
-      Accept: 'application/activity+json',
-      'User-Agent': this.makeUserAgentString()
-    },
-    json: true,
-    timeout: this.requestTimeout
+  const url = new URL(id)
+  const headers = {
+    Accept: 'application/activity+json',
+    'User-Agent': this.makeUserAgentString()
   }
-  if (this.systemUser) {
-    req.httpSignature = {
-      key: this.systemUser._meta.privateKey,
+  if (this.systemUser && this.systemUser._meta?.privateKey) {
+    const date = new Date().toUTCString()
+    headers.Date = date
+    headers.Host = url.host
+    const signature = computeHttpSignature({
+      method: 'get',
+      url,
+      headerNames: ['(request-target)', 'host', 'date'],
+      headerValues: { date },
       keyId: this.systemUser.id,
-      headers: ['(request-target)', 'host', 'date'],
-      authorizationHeaderName: 'Signature'
-    }
+      privateKey: this.systemUser._meta.privateKey
+    })
+    headers.Signature = signature
   }
-  return request(req).then(this.fromJSONLD)
+
+  const response = await request(url, {
+    method: 'GET',
+    headers,
+    headersTimeout: this.requestTimeout,
+    bodyTimeout: this.requestTimeout
+  })
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    await response.body.dump()
+    throw new Error(`Request failed with status code ${response.statusCode}`)
+  }
+
+  const json = await response.body.json()
+  return this.fromJSONLD(json)
 }
 
 const refProps = ['inReplyTo', 'object', 'target', 'tag']
@@ -60,33 +97,50 @@ async function resolveReferences (object, depth = 0) {
   return objects.concat(nextLevelResolved.flat())
 }
 
-function deliver (actorId, activity, address, signingKey) {
+async function deliver (actorId, activity, address, signingKey) {
   if (this.isProductionEnv() && this.isLocalhostIRI(address)) {
     return null
   }
+  const url = new URL(address)
   // digest header added for Mastodon 3.2.1 compatibility
-  const digest = crypto.createHash('sha256')
+  const digest = 'SHA-256=' + crypto.createHash('sha256')
     .update(activity)
     .digest('base64')
-  return request({
-    method: 'POST',
-    url: address,
-    headers: {
-      'Content-Type': this.consts.jsonldOutgoingType,
-      Digest: `SHA-256=${digest}`,
-      'User-Agent': this.makeUserAgentString()
-    },
-    httpSignature: {
-      key: signingKey,
+  const date = new Date().toUTCString()
+  const headers = {
+    'Content-Type': this.consts.jsonldOutgoingType,
+    Date: date,
+    Digest: digest,
+    Host: url.host,
+    'User-Agent': this.makeUserAgentString()
+  }
+  if (signingKey) {
+    const signature = computeHttpSignature({
+      method: 'post',
+      url,
+      headerNames: ['(request-target)', 'host', 'date', 'digest'],
+      headerValues: { date, digest },
       keyId: actorId,
-      headers: ['(request-target)', 'host', 'date', 'digest'],
-      authorizationHeaderName: 'Signature'
-    },
-    resolveWithFullResponse: true,
-    simple: false,
-    timeout: this.requestTimeout,
-    body: activity
+      privateKey: signingKey
+    })
+    headers.Signature = signature
+  }
+
+  const response = await request(url, {
+    method: 'POST',
+    headers,
+    body: activity,
+    headersTimeout: this.requestTimeout,
+    bodyTimeout: this.requestTimeout
   })
+
+  const body = await response.body.text()
+
+  return {
+    statusCode: response.statusCode,
+    headers: response.headers,
+    body
+  }
 }
 
 async function queueForDelivery (actor, activity, addresses) {
