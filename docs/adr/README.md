@@ -55,7 +55,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0027](0027-branded-firestore-key.md) | エスケープ済み Firestore キーをブランド型で区別する | Accepted |
 | [0028](0028-allow-as-casts-in-test-files.md) | 型アサーションの配置ルールにテストファイルの例外を加える | Accepted |
 | [0029](0029-blocklist-filter-in-application.md) | `getStream` の `blockList` フィルタはアプリケーション側で行う | Accepted |
-| [0030](0030-inbox-redundant-delivery-detection.md) | inbox の重複配送検出を、apex 本体を変更せず前後の薄いミドルウェアで行う | Accepted |
+| [0030](0030-inbox-redundant-delivery-detection.md) | inbox の重複配送検出を、apex 本体を変更せず前後の薄いミドルウェアで行う | Superseded by ADR-0049 |
 | [0031](0031-update-delete-same-origin-check.md) | Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う | Superseded by ADR-0046 |
 | [0032](0032-ssrf-safe-remote-object-fetch.md) | リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える | Accepted |
 | [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Superseded by ADR-0048 |
@@ -74,3 +74,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0046](0046-validate-owner-same-origin-in-apex.md) | Update / Delete の同一オリジン検証を apex フォークの validateOwner に組み込む | Accepted |
 | [0047](0047-resolve-like-announce-object-in-apex.md) | Like / Announce の object 解決を apex フォークの validators で通常オブジェクトに対応させる | Accepted |
 | [0048](0048-denormalize-undo-object-in-apex.md) | Undo の object を apex フォークの activity.save で denormalizeObject 対象に含める | Accepted |
+| [0049](0049-save-activity-return-contract-and-inbox-dedup.md) | saveActivity の戻り値契約を明示化し、重複配送検出を Store と apex 内で完結させる | Accepted |

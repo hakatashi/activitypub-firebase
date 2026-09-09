@@ -22,17 +22,10 @@ module.exports = {
       activity = [{}, activity, { object: [resLocal.object] }]
         .reduce(apex.mergeJSONLD)
     }
-    apex.store.saveActivity(activity).then(saveResult => {
-      resLocal.isNewActivity = !!saveResult
-      if (!saveResult) {
-        const newTarget = activity._meta.collection[0]
-        return apex.store
-          .updateActivityMeta(activity, 'collection', newTarget)
-      }
-    }).then(updated => {
-      if (updated) {
-        req.body = updated
-        resLocal.isNewActivity = 'new collection'
+    apex.store.saveActivity(activity).then(result => {
+      resLocal.isNewActivity = result.isNew
+      if (result.activity) {
+        req.body = result.activity
       }
       next()
     }).catch(next)

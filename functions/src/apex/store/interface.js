@@ -56,6 +56,13 @@ module.exports = class IApexStore {
     throw new Error('Not implemented')
   }
 
+  /**
+   * Save an activity and add to collections specified in _meta.collection.
+   * Resolves with an object indicating whether the activity is newly created (true),
+   * added to a new collection ('new collection'), or a duplicate delivery (false).
+   * @param  {object} activity - activity to save
+   * @returns {Promise<{ isNew: boolean | 'new collection', activity?: object }>}
+   */
   saveActivity (activity) {
     throw new Error('Not implemented')
   }

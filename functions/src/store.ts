@@ -318,19 +318,47 @@ export default class Store extends IApexStore implements ApexStore {
 		return activity;
 	}
 
-	override async saveActivity(activity: APObject) {
+	override saveActivity(activity: APObject): Promise<IApexStore.SaveActivityResult> {
 		logger.info({ type: 'saveActivity', activity });
 		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
-		let inserted: undefined | true = undefined;
-		await this.db.runTransaction(async (transaction) => {
+		return this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
-			if (activityDoc.exists) {
-				return;
+			if (!activityDoc.exists) {
+				transaction.set(activityRef, activity);
+				return { isNew: true, activity };
 			}
-			transaction.set(activityRef, activity);
-			inserted = true;
+
+			const existingData = activityDoc.data();
+			assert(existingData !== undefined, 'existingData is undefined');
+
+			const existingCollections: string[] = Array.isArray(existingData._meta?.collection)
+				? existingData._meta.collection
+				: [];
+			const incomingCollections: string[] = Array.isArray(activity._meta?.collection)
+				? activity._meta.collection
+				: [];
+
+			const newCollections = incomingCollections.filter(
+				(collection) => !existingCollections.includes(collection),
+			);
+
+			if (newCollections.length > 0) {
+				const updatedCollections = [...existingCollections, ...newCollections];
+				const updatedActivity: APObject = {
+					...existingData,
+					_meta: {
+						...existingData._meta,
+						collection: updatedCollections,
+					},
+				};
+				transaction.update(activityRef, {
+					'_meta.collection': updatedCollections,
+				});
+				return { isNew: 'new collection', activity: updatedActivity };
+			}
+
+			return { isNew: false, activity: existingData };
 		});
-		return inserted;
 	}
 
 	// MongoDB 実装の `deleteMany({ id: activity.id, actor: actorId })` に対応する。

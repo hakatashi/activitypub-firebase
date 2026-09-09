@@ -28,7 +28,7 @@ describe('apex activity save (ADR-0048)', () => {
 		saveObject: vi.fn().mockResolvedValue(true),
 		updateObject: vi.fn().mockResolvedValue(true),
 		getActivity: vi.fn().mockResolvedValue(undefined),
-		saveActivity: vi.fn().mockResolvedValue(true),
+		saveActivity: vi.fn().mockResolvedValue({ isNew: true, activity: {} }),
 		updateActivity: vi.fn().mockResolvedValue(true),
 		updateActivityMeta: vi.fn().mockResolvedValue(undefined),
 		removeActivity: vi.fn().mockResolvedValue(undefined),
@@ -171,5 +171,79 @@ describe('apex activity save (ADR-0048)', () => {
 		await runMiddleware(apex.net.activity.save, req, res);
 
 		expect(mockStore.saveActivity).not.toHaveBeenCalled();
+	});
+
+	test('sets isNewActivity to true and updates req.body when saveActivity returns isNew: true', async () => {
+		const createdActivity = {
+			id: FOLLOW_ID,
+			type: 'Follow',
+			actor: [ACTOR_ID],
+			object: [RECIPIENT_ID],
+			_meta: { collection: [`${RECIPIENT_ID}/inbox`] },
+		};
+
+		vi.mocked(mockStore.saveActivity).mockResolvedValueOnce({
+			isNew: true,
+			activity: createdActivity,
+		});
+
+		const { req, res } = createMockReqRes(
+			{ id: FOLLOW_ID, type: 'Follow' },
+			{ activity: true, target: recipient },
+		);
+
+		await runMiddleware(apex.net.activity.save, req, res);
+
+		expect(res.locals.apex.isNewActivity).toBe(true);
+		expect(req.body).toEqual(createdActivity);
+	});
+
+	test('sets isNewActivity to "new collection" and updates req.body when saveActivity returns isNew: "new collection"', async () => {
+		const updatedActivity = {
+			id: FOLLOW_ID,
+			type: 'Follow',
+			actor: [ACTOR_ID],
+			object: [RECIPIENT_ID],
+			_meta: { collection: ['https://other.example/inbox', `${RECIPIENT_ID}/inbox`] },
+		};
+
+		vi.mocked(mockStore.saveActivity).mockResolvedValueOnce({
+			isNew: 'new collection',
+			activity: updatedActivity,
+		});
+
+		const { req, res } = createMockReqRes(
+			{ id: FOLLOW_ID, type: 'Follow' },
+			{ activity: true, target: recipient },
+		);
+
+		await runMiddleware(apex.net.activity.save, req, res);
+
+		expect(res.locals.apex.isNewActivity).toBe('new collection');
+		expect(req.body).toEqual(updatedActivity);
+	});
+
+	test('sets isNewActivity to false when saveActivity returns isNew: false (duplicate delivery)', async () => {
+		const existingActivity = {
+			id: FOLLOW_ID,
+			type: 'Follow',
+			actor: [ACTOR_ID],
+			object: [RECIPIENT_ID],
+			_meta: { collection: [`${RECIPIENT_ID}/inbox`] },
+		};
+
+		vi.mocked(mockStore.saveActivity).mockResolvedValueOnce({
+			isNew: false,
+			activity: existingActivity,
+		});
+
+		const { req, res } = createMockReqRes(
+			{ id: FOLLOW_ID, type: 'Follow' },
+			{ activity: true, target: recipient },
+		);
+
+		await runMiddleware(apex.net.activity.save, req, res);
+
+		expect(res.locals.apex.isNewActivity).toBe(false);
 	});
 });

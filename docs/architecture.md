@@ -46,10 +46,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを await している
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
   `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
-- inbox への配送処理は、apex 本体のミドルウェア配列を変更せず、前後の薄いミドルウェアを
-  順序通りフラットに並べて実行している
-  (→ ADR-0030)。
-  重複配送検出(`inboxDedup.ts`)を行い、
+- inbox への配送処理は `apex.net.inbox.post` をそのまま利用している。
+  重複配送の検出と `isNewActivity` の設定は `Store#saveActivity` の戻り値契約に基づいて apex 内部で完結して行われ(→ [ADR-0049](adr/0049-save-activity-return-contract-and-inbox-dedup.md))、
   スレッド解決(`resolveThread`)を経て自分の投稿への外部リプライがフォロワーへ転送される(Inbox Forwarding, W3C AP 7.1.2)。
   (なお、Like/Announce の通常オブジェクト解決は apex フォークの validators で行われ [ADR-0047](adr/0047-resolve-like-announce-object-in-apex.md)、
   Undo の object 非正規化は apex フォークの `activity.save` で行われ [ADR-0048](adr/0048-denormalize-undo-object-in-apex.md)、
