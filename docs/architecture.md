@@ -58,10 +58,10 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
 - `Like` / `Announce` の受信カウントは apex 本体のコレクション機構(activity 専用)を使わず、
   `onStreamCreated` トリガーで対象オブジェクトの `_meta.likesCount` / `sharesCount` を
   直接インクリメント/デクリメントする(→ ADR-0037, ADR-0039)。
-- **リモートオブジェクトの取得は SSRF セーフな自前実装に差し替えている**
-  (`functions/src/security/`、apex の `requestObject` を置き換え。
-  → [ADR-0032](adr/0032-ssrf-safe-remote-object-fetch.md))。
-  スキームを `https` に限定し(ローカル開発時のみ `http` とループバックを許可)、
+- **リモートオブジェクトの取得は apex フォークの `requestObject` が SSRF セーフに行う**
+  (`functions/src/apex/pub/federation.js` / `ssrf.js`。→ [ADR-0050](adr/0050-ssrf-safe-request-object-in-apex.md))。
+  スキームは既定で `https` のみ、アドレスは `unicast` のみ。`apex.ts` が
+  `remoteFetchPolicy` を注入し、ローカル開発/テスト時のみ `http` とループバックを許可する。
   リダイレクトを含む**各ホップ**で名前解決した IP が unicast であることを検証する。
   DNS rebinding を防ぐため、検証済みの IP に固定した undici の `Agent` で接続する。
   レスポンスサイズ(5MB)・リダイレクト回数(5回)・タイムアウトにも上限を設ける。

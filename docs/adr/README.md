@@ -57,7 +57,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0029](0029-blocklist-filter-in-application.md) | `getStream` の `blockList` フィルタはアプリケーション側で行う | Accepted |
 | [0030](0030-inbox-redundant-delivery-detection.md) | inbox の重複配送検出を、apex 本体を変更せず前後の薄いミドルウェアで行う | Superseded by ADR-0049 |
 | [0031](0031-update-delete-same-origin-check.md) | Update / Delete の同一オリジン検証を、apex 本体を変更せず前段ミドルウェアで行う | Superseded by ADR-0046 |
-| [0032](0032-ssrf-safe-remote-object-fetch.md) | リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える | Accepted |
+| [0032](0032-ssrf-safe-remote-object-fetch.md) | リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える | Superseded by ADR-0050 |
 | [0033](0033-denormalize-undo-object.md) | inbox で受信した Undo の object を保存前に解決済みオブジェクトで埋め込む | Superseded by ADR-0048 |
 | [0034](0034-normalize-public-address-on-inbox.md) | inbox で受信したアクティビティの as:Public 宛先表現を正規化する | Superseded by ADR-0045 |
 | [0035](0035-mark-accepted-follow-as-public.md) | 承認した Follow に `_meta.isPublic` を付与し followers を匿名公開する | Accepted |
@@ -75,3 +75,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0047](0047-resolve-like-announce-object-in-apex.md) | Like / Announce の object 解決を apex フォークの validators で通常オブジェクトに対応させる | Accepted |
 | [0048](0048-denormalize-undo-object-in-apex.md) | Undo の object を apex フォークの activity.save で denormalizeObject 対象に含める | Accepted |
 | [0049](0049-save-activity-return-contract-and-inbox-dedup.md) | saveActivity の戻り値契約を明示化し、重複配送検出を Store と apex 内で完結させる | Accepted |
+| [0050](0050-ssrf-safe-request-object-in-apex.md) | SSRF セーフな `requestObject` を apex フォークに取り込む | Accepted |

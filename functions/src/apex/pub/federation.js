@@ -1,5 +1,6 @@
 'use strict'
-const { request } = require('undici')
+const { Agent, request } = require('undici')
+const { assertSafeUrl } = require('./ssrf')
 const crypto = require('crypto')
 
 // federation communication utilities
@@ -79,41 +80,109 @@ function computeHttpSignatureHeaders ({
   return result
 }
 
-async function requestObject (id) {
-  if (this.isProductionEnv() && this.isLocalhostIRI(id)) {
-    return null
-  }
-  const url = new URL(id)
-  const headers = {
-    Accept: 'application/activity+json',
-    'User-Agent': this.makeUserAgentString()
-  }
-  if (this.systemUser && this.systemUser._meta?.privateKey) {
-    const { date, signature } = computeHttpSignatureHeaders({
-      method: 'get',
-      url,
-      keyId: this.systemUser.id,
-      privateKeyPem: this.systemUser._meta.privateKey
-    })
-    headers.Date = date
-    headers.Host = url.host
-    headers.Signature = signature
-  }
+const maxRedirects = 5
+const maxResponseBytes = 5 * 1024 * 1024
 
-  const response = await request(url, {
-    method: 'GET',
-    headers,
-    headersTimeout: this.requestTimeout,
-    bodyTimeout: this.requestTimeout
+// assertSafeUrl が検証した IP アドレスに接続を固定する Agent を作る。lookup を差し替えることで、
+// 接続時に DNS が再解決されて検証済みアドレスと異なる IP (攻撃者制御の DNS が返す
+// private/loopback アドレス) に接続してしまう DNS rebinding を防ぐ。ホスト名自体は変えないため
+// TLS の SNI / 証明書検証には影響しない。
+function makePinnedAgent (addresses) {
+  const toEntry = address => ({ address, family: address.includes(':') ? 6 : 4 })
+  return new Agent({
+    connect: {
+      lookup: (_hostname, options, callback) => {
+        if (options.all) {
+          callback(null, addresses.map(toEntry))
+        } else {
+          const { address, family } = toEntry(addresses[0])
+          callback(null, address, family)
+        }
+      }
+    }
   })
+}
 
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    await response.body.dump()
-    throw new Error(`Request failed with status code ${response.statusCode}`)
+async function readBodyWithLimit (body, headers) {
+  const contentLength = headers['content-length']
+  if (contentLength !== undefined && Number(contentLength) > maxResponseBytes) {
+    // 破棄時に発火する AbortError を握りつぶす (呼び出し元へは下の Error を投げる)
+    body.on('error', () => {})
+    body.destroy()
+    throw new Error(`Response too large: ${contentLength} bytes`)
+  }
+  const chunks = []
+  let total = 0
+  // ループ内で throw すると for await...of が body を破棄する
+  for await (const chunk of body) {
+    total += chunk.byteLength
+    if (total > maxResponseBytes) {
+      throw new Error(`Response exceeded ${maxResponseBytes} bytes`)
+    }
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks).toString('utf-8')
+}
+
+// SSRF セーフなリモートオブジェクト取得。URL の検証 (スキーム / DNS 解決結果のアドレス範囲) を
+// リダイレクトの各ホップで行い、検証済み IP に接続を固定する。何を内部とみなすかは
+// settings.remoteFetchPolicy で注入できる (→ ssrf.js)。
+async function requestObject (id) {
+  const guardOptions = { policy: this.settings?.remoteFetchPolicy, logger: this.logger }
+  let { url, addresses } = await assertSafeUrl(id, guardOptions)
+
+  for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
+    const headers = {
+      Accept: 'application/activity+json',
+      'User-Agent': this.makeUserAgentString()
+    }
+    if (this.systemUser && this.systemUser._meta?.privateKey) {
+      const { date, signature } = computeHttpSignatureHeaders({
+        method: 'get',
+        url,
+        // keyId には公開鍵の id (`#main-key`) を渡す必要がある
+        keyId: `${this.systemUser.id}#main-key`,
+        privateKeyPem: this.systemUser._meta.privateKey
+      })
+      headers.Date = date
+      headers.Signature = signature
+    }
+
+    const agent = makePinnedAgent(addresses)
+    let response
+    try {
+      response = await request(url, {
+        method: 'GET',
+        headers,
+        headersTimeout: this.requestTimeout,
+        bodyTimeout: this.requestTimeout,
+        dispatcher: agent
+      })
+
+      if (response.statusCode >= 300 && response.statusCode < 400) {
+        const location = response.headers.location
+        await response.body.dump()
+        if (!location) {
+          throw new Error(`Redirect from ${url.toString()} is missing Location header`)
+        }
+        ;({ url, addresses } = await assertSafeUrl(new URL(location, url).toString(), guardOptions))
+        continue
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await response.body.dump()
+        throw new Error(`Request failed with status code ${response.statusCode}`)
+      }
+
+      const body = await readBodyWithLimit(response.body, response.headers)
+      return await this.fromJSONLD(JSON.parse(body))
+    } finally {
+      await agent.close()
+    }
   }
 
-  const json = await response.body.json()
-  return this.fromJSONLD(json)
+  this.logger.warn({ type: 'ssrfBlockedTooManyRedirects', url: id })
+  throw new Error(`Too many redirects while fetching ${id}`)
 }
 
 const refProps = ['inReplyTo', 'object', 'target', 'tag']

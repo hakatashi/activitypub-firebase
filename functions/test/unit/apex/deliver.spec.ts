@@ -52,6 +52,8 @@ describe('apex federation (undici)', () => {
 			logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 			store: mockStore,
 			offlineMode: false,
+			// テストサーバーは http://127.0.0.1 で待ち受けるため許可する
+			remoteFetchPolicy: { allowedProtocols: ['http:'], allowedRanges: ['loopback'] },
 			...overrides,
 		});
 
@@ -213,7 +215,7 @@ describe('apex federation (undici)', () => {
 			expect(lastReceivedRequest.url).toBe('/o/test-note');
 			expect(lastReceivedRequest.headers.accept).toBe('application/activity+json');
 			expect(lastReceivedRequest.headers.signature).toContain(
-				'keyId="https://example.com/u/system"',
+				'keyId="https://example.com/u/system#main-key"',
 			);
 		});
 
