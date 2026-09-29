@@ -108,6 +108,14 @@ declare namespace ActivitypubExpress {
 		[key: string]: unknown;
 	}
 
+	// リモート取得 (requestObject) の SSRF 対策ポリシー。省略した項目は厳格なデフォルト
+	// (https のみ / unicast アドレスのみ / DNS 解決) になる。関数の場合は取得のたびに評価される。
+	export interface RemoteFetchPolicy {
+		allowedProtocols?: string[];
+		allowedRanges?: string[];
+		resolveAddresses?: (hostname: string) => Promise<string[]>;
+	}
+
 	export interface ApexSettings {
 		name: string;
 		version: string;
@@ -119,6 +127,7 @@ declare namespace ActivitypubExpress {
 		routes: Record<string, string>;
 		store: ApexStore;
 		offlineMode?: boolean;
+		remoteFetchPolicy?: RemoteFetchPolicy | (() => RemoteFetchPolicy);
 		endpoints?: {
 			proxyUrl: string;
 		};

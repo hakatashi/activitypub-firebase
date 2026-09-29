@@ -1,6 +1,6 @@
 # ADR-0032: リモートオブジェクト取得 (`requestObject`) を自前の SSRF セーフな実装に差し替える
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0050
 - **Date:** 2026-09-08
 
 ## 背景
