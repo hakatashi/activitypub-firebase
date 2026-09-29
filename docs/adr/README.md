@@ -76,3 +76,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0048](0048-denormalize-undo-object-in-apex.md) | Undo の object を apex フォークの activity.save で denormalizeObject 対象に含める | Accepted |
 | [0049](0049-save-activity-return-contract-and-inbox-dedup.md) | saveActivity の戻り値契約を明示化し、重複配送検出を Store と apex 内で完結させる | Accepted |
 | [0050](0050-ssrf-safe-request-object-in-apex.md) | SSRF セーフな `requestObject` を apex フォークに取り込む | Accepted |
+| [0051](0051-typescript-apex-fork.md) | apex フォークを TypeScript / ESM 化し、型を実装から導出する | Accepted |
