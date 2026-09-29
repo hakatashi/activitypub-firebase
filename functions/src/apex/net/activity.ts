@@ -177,7 +177,7 @@ export const inboxSideEffects = (req: Request, res: Response, next: NextFunction
 						if (apex.hasMeta(object, 'collection', following)) {
 							object = await apex.store.updateActivityMeta(object, 'collection', following, true);
 							resLocal.postWork.push(async () =>
-								apex.publishUpdate(recipient, await apex.getFollowers(recipient)),
+								apex.publishUpdate(recipient, await apex.getFollowing(recipient)),
 							);
 						}
 					})(),

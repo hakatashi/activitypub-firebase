@@ -227,7 +227,12 @@ export const verifySignature = async (
 
 	const signerKey = publicKeyPemOf(signer);
 	if (!signer || signerKey === undefined) {
-		apex.logger.warn('Could not find key for %s %j', sigHead.keyId, signer);
+		apex.logger.warn(
+			'Could not find key for %s (signer id: %s, type: %s)',
+			sigHead.keyId,
+			signer?.id,
+			signer?.type,
+		);
 		res.status(403).send('Invalid http signature');
 		return;
 	}

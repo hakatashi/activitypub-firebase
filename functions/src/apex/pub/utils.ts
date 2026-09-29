@@ -24,8 +24,6 @@ declare module 'jsonld' {
 	};
 }
 
-export { isString };
-
 const actorStreamNames = [
 	'inbox',
 	'outbox',
@@ -359,7 +357,7 @@ export const isSameOrigin = (id1: unknown, id2: unknown): boolean => {
  * federation with additional regex or url parsing
  */
 const localhosts = [
-	'https://localhost',
+	'http://localhost',
 	'https://localhost',
 	'http://127.0.0.1',
 	'https://127.0.0.1',
@@ -513,7 +511,7 @@ export const jsonldContextLoader = async function (
 				document: context.document,
 			});
 		} catch (err) {
-			this.logger.error('Error saving jsonld contact cache', errorMessage(err));
+			this.logger.error('Error saving jsonld context cache', errorMessage(err));
 		}
 	}
 	return context;
