@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import type { Firestore } from '@google-cloud/firestore';
-import type { APObject, ApexStore } from './apex/index.js';
+import type { APObject, ApexStore, SaveActivityResult } from './apex/index.js';
 import IApexStore from './apex/store/interface.js';
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
@@ -13,17 +13,27 @@ import { toIdArray } from './utils.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
 
+// tasks.ts の配送タスクが記録する配送結果 (→ ADR-0012)
+export interface DeliveryResult {
+	activityId: string;
+	actorId: string;
+	address: string;
+	body: string;
+	attempts: number;
+	status: 'permanent_failure' | 'retrying' | 'success';
+	statusCode?: number;
+	error?: string;
+}
+
 // Firestore の `in` フィルタは1クエリにつき最大30件までしか指定できない。
 export const FIRESTORE_IN_QUERY_LIMIT = 30;
 
-// IApexStore (store/interface.js) を継承しつつ、ApexStore (Store 独自の拡張込みの契約、
-// functions/types/activitypub-express.d.ts) を implements することで、override していない
-// メソッドが残っていても型チェックが通る(=実装漏れがコンパイルエラーにならない)ことを防ぐ
-// (→ ADR-0022)。deliveryDequeue/deliveryRequeue は override しておらず、IApexStore 由来の
-// 「呼ばれたら例外を投げる」実装のままになっている。
+// IApexStore (apex/store/interface.ts) を継承しつつ ApexStore (apex が Store に要求する契約) を
+// implements する (→ ADR-0022、ADR-0051)。deliveryDequeue/deliveryRequeue は override しておらず、
+// IApexStore 由来の「呼ばれたら例外を投げる」実装のままになっている。
 //
 // これは意図的なスタブであり安全: apex 本体で deliveryDequeue/deliveryRequeue を呼ぶのは
-// pub/federation.js の runDelivery のみで、runDelivery は startDelivery 経由でしか
+// pub/federation.ts の runDelivery のみで、runDelivery は startDelivery 経由でしか
 // 呼ばれない。startDelivery は `if (isDelivering || this.offlineMode) return` で
 // offlineMode が真なら即 return し runDelivery を呼ばない。このプロジェクトの apex 初期化
 // (apex.ts) は常に offlineMode: true で、配送は Store.deliveryEnqueue が Cloud Tasks へ直接
@@ -318,7 +328,7 @@ export default class Store extends IApexStore implements ApexStore {
 		return activity;
 	}
 
-	override saveActivity(activity: APObject): Promise<IApexStore.SaveActivityResult> {
+	override saveActivity(activity: APObject): Promise<SaveActivityResult> {
 		logger.info({ type: 'saveActivity', activity });
 		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
 		return this.db.runTransaction(async (transaction) => {
@@ -486,7 +496,7 @@ export default class Store extends IApexStore implements ApexStore {
 		status,
 		statusCode,
 		error,
-	}: Parameters<ApexStore['recordDeliveryResult']>[0]) {
+	}: DeliveryResult) {
 		logger.info({
 			type: 'recordDeliveryResult',
 			activityId,

@@ -33,6 +33,10 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 apex が HTTP 署名の検証・生成、JSON-LD 処理、webfinger/nodeinfo、コレクションページングを提供する。
 フォークと本体コードの責務境界は [ADR-0042](adr/0042-apex-fork-responsibility-boundary.md) が定める
 (フォークから `firebase-admin` / `firebase-functions` / 本体モジュールを import しない)。
+フォークは ESM の TypeScript で、型は実装から導出される。`Apex` 型は Store の型で総称化されており、
+本体は `apex.store` を自前の `Store` 型として扱う。`_meta` の本体固有キーは `functions/src/meta.ts` が
+module augmentation で足す(→ [ADR-0051](adr/0051-typescript-apex-fork.md))。
+上流同梱の jasmine spec は `functions/test/apex-upstream/` に無改変で置いてあり、実行されていない。
 
 apex インスタンスの生成は `functions/src/apex.ts` にある(`functions/src/tasks.ts` からも
 import されるため、`functions/src/activitypub.ts` との import サイクルを避けて分離している)。
@@ -59,7 +63,7 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `onStreamCreated` トリガーで対象オブジェクトの `_meta.likesCount` / `sharesCount` を
   直接インクリメント/デクリメントする(→ ADR-0037, ADR-0039)。
 - **リモートオブジェクトの取得は apex フォークの `requestObject` が SSRF セーフに行う**
-  (`functions/src/apex/pub/federation.js` / `ssrf.js`。→ [ADR-0050](adr/0050-ssrf-safe-request-object-in-apex.md))。
+  (`functions/src/apex/pub/federation.ts` / `ssrf.ts`。→ [ADR-0050](adr/0050-ssrf-safe-request-object-in-apex.md))。
   スキームは既定で `https` のみ、アドレスは `unicast` のみ。`apex.ts` が
   `remoteFetchPolicy` を注入し、ローカル開発/テスト時のみ `http` とループバックを許可する。
   リダイレクトを含む**各ホップ**で名前解決した IP が unicast であることを検証する。
@@ -107,15 +111,15 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 
 ### `_meta` メタデータフィールド
 
-`objects` および `streams` コレクション内のドキュメントには、内部管理用のメタデータとして `_meta` オブジェクトが付与される。apex は JSON-LD 出力時に `_` で始まるプロパティをすべて落とし(`pub/utils.js` の `skipPrivate`)、`getObject`/`getActivity`/`findActivityByCollectionAnd*Id` も `includeMeta` が真でなければ `_meta` を削除する。
+`objects` および `streams` コレクション内のドキュメントには、内部管理用のメタデータとして `_meta` オブジェクトが付与される。apex は JSON-LD 出力時に `_` で始まるプロパティをすべて落とし(`pub/utils.ts` の `skipPrivate`)、`getObject`/`getActivity`/`findActivityByCollectionAnd*Id` も `includeMeta` が真でなければ `_meta` を削除する。
 
 #### 1. `activitypub-express` (apex) 由来のプロパティ
 
 | プロパティ | 対象 | 型 | 役割・書き込みタイミング |
 |---|---|---|---|
-| `_meta.collection` | `streams` | `string[]` | アクティビティが所属するコレクション（`inbox`, `outbox`, `followers`, `following`, `liked`, `blocked`, `rejected`, `rejections`, `shares`, `likes` 等）の IRI 配列。受信時 (`net/validators.js`) と送信時 (`net/validators.js` / `pub/activity.js`) に apex が `addMeta` で積み、フォロー承認/いいね/ブースト/ブロック/拒絶等の副作用処理では `updateActivityMeta` が追加・削除する。apex の `hasMeta`/`removeMeta` が `Array.isArray` を要求するため、Firestore 上でも配列のまま保存する (→ [ADR-0017](adr/0017-meta-collection-as-array.md))。 |
+| `_meta.collection` | `streams` | `string[]` | アクティビティが所属するコレクション（`inbox`, `outbox`, `followers`, `following`, `liked`, `blocked`, `rejected`, `rejections`, `shares`, `likes` 等）の IRI 配列。受信時 (`net/validators.ts`) と送信時 (`net/validators.ts` / `pub/activity.ts`) に apex が `addMeta` で積み、フォロー承認/いいね/ブースト/ブロック/拒絶等の副作用処理では `updateActivityMeta` が追加・削除する。apex の `hasMeta`/`removeMeta` が `Array.isArray` を要求するため、Firestore 上でも配列のまま保存する (→ [ADR-0017](adr/0017-meta-collection-as-array.md))。 |
 | `_meta.privateKey` | `objects` | `string` | ローカルアクターの HTTP 署名用 RSA 秘密鍵 (PEM)。アクター作成時 (`createActor`) に生成・保存され、連合配信時の署名およびローカルユーザー判定 (`getUserCount`) に使用される。 |
-| `_meta.isPublic` | `streams` | `boolean` | apex の `isPublic()` (`pub/utils.js`) が `to`/`cc` の `as:Public` と並んで読む宛先判定のショートカット。`Follow` は `to`/`cc` を持たないため、承認時に `Store#markActivityPublic` (`activitypub.ts` の Follow 自動承認処理) が明示的に `true` を書き込み、匿名の `/followers` コレクションに表示されるようにする (→ [ADR-0035](adr/0035-mark-accepted-follow-as-public.md))。 |
+| `_meta.isPublic` | `streams` | `boolean` | apex の `isPublic()` (`pub/utils.ts`) が `to`/`cc` の `as:Public` と並んで読む宛先判定のショートカット。`Follow` は `to`/`cc` を持たないため、承認時に `Store#markActivityPublic` (`activitypub.ts` の Follow 自動承認処理) が明示的に `true` を書き込み、匿名の `/followers` コレクションに表示されるようにする (→ [ADR-0035](adr/0035-mark-accepted-follow-as-public.md))。 |
 | `_meta.likesCount` / `_meta.sharesCount` | `objects` | `number` | `Like` / `Announce` の受信カウント。apex 本体の likes/shares コレクション機構は activity (streams) 専用で Note のような object を対象にすると機能しないため使わず、`onStreamCreated` トリガーが対象オブジェクトへ直接インクリメント/デクリメントする (→ [ADR-0037](adr/0037-denormalize-like-announce-counts.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ

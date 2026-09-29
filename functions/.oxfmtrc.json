@@ -5,5 +5,10 @@
 	"semi": true,
 	"trailingComma": "all",
 	"quoteProps": "as-needed",
-	"ignorePatterns": ["lib/**/*", "src/apex/**/*"]
+	"ignorePatterns": [
+		"lib/**/*",
+		"src/apex/**/*.md",
+		"src/apex/vocab/**/*",
+		"test/apex-upstream/**/*"
+	]
 }

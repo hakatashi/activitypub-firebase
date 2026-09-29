@@ -21,17 +21,19 @@ export type IdIndex = Record<FirestoreKey, true>;
 export type MetaIndex = Record<MetaIndexField, IdIndex>;
 
 // `objects` / `streams` の `_meta` は apex 本体やこのプロジェクトの拡張が書き込むキーの集合で、
-// AP オブジェクトと同様に厳密なスキーマ化はしない(→ ADR-0023 決定2)。既知のキーだけ型を与える。
-export interface ObjectMeta {
-	collection?: string[];
-	privateKey?: string;
-	index?: MetaIndex;
-	isPublic?: boolean;
-	// objects コレクションのみで使う非正規化カウンタ (→ ADR-0037)。
-	likesCount?: number;
-	sharesCount?: number;
-	[key: string]: unknown;
+// AP オブジェクトと同様に厳密なスキーマ化はしない(→ ADR-0023 決定2)。apex が読み書きするキー
+// (collection / privateKey / isPublic) は apex 側で型が付いており、このプロジェクト固有のキーだけを
+// module augmentation で足す (→ ADR-0051)。
+declare module './apex/types.js' {
+	interface ObjectMeta {
+		index?: MetaIndex;
+		// objects コレクションのみで使う非正規化カウンタ (→ ADR-0037)。
+		likesCount?: number;
+		sharesCount?: number;
+	}
 }
+
+export type { ObjectMeta } from './apex/index.js';
 
 // IRI の集合を map 形式のインデックスに変換する。IRI はドットやスラッシュを含むため、
 // ドキュメント ID と同じ escapeFirestoreKey でキーをエスケープする。

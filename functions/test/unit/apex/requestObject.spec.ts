@@ -4,13 +4,11 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { Apex, APObject } from '../../../src/apex/index.js';
-// @ts-expect-error -- JS モジュール (型定義なし)
 import { requestObject } from '../../../src/apex/pub/federation.js';
+import { UnsafeUrlError } from '../../../src/apex/pub/ssrf.js';
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void;
 
-// federation.js は CJS として require されるため ssrf.js のクラスとは別インスタンスになり、
-// instanceof では比較できない。メッセージで照合する。
 const NOT_ALLOWED = /Address not allowed/;
 
 // テストは実際の localhost サーバーへ到達させる。policy はループバックと http を許可する。
@@ -32,8 +30,7 @@ const makeApex = (overrides: Record<string, unknown> = {}, policy: object = {}) 
 		...overrides,
 	}) as unknown as Apex;
 
-const request = (apex: Apex, id: string): Promise<APObject> =>
-	(requestObject as (this: Apex, id: string) => Promise<APObject>).call(apex, id);
+const request = (apex: Apex, id: string) => requestObject.call(apex, id);
 
 describe('apex requestObject (SSRF-safe)', () => {
 	let server: Server;
@@ -108,7 +105,9 @@ describe('apex requestObject (SSRF-safe)', () => {
 			res.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data' });
 			res.end();
 		};
-		await expect(request(makeApex(), `${origin}/o/1`)).rejects.toThrow(NOT_ALLOWED);
+		const result = request(makeApex(), `${origin}/o/1`);
+		await expect(result).rejects.toThrow(UnsafeUrlError);
+		await expect(result).rejects.toThrow(NOT_ALLOWED);
 	});
 
 	test('pins the connection to the validated address (DNS rebinding)', async () => {
