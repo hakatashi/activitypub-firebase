@@ -1296,17 +1296,21 @@ describe('inbox', function () {
           .send(act)
           .expect(403)
       })
+      // Under ADR-0056, POST requests require a valid Digest header matching the body
       it('handles unverifiable delete without fetching', function () {
         const act = merge({}, activity)
         act.id = 'https://mocked.com/s/abc123'
         act.actor = 'https://mocked.com/u/mocked'
         act.object = act.actor
         act.type = 'Delete'
+        const body = JSON.stringify(act)
+        const digest = `SHA-256=${crypto.createHash('sha256').update(body).digest('base64')}`
         return request(app)
           .post('/inbox/test')
           .set('Content-Type', 'application/activity+json')
           .set('Date', new Date().toUTCString())
-          .set('Signature', 'keyId="https://mocked.com/u/mocked",algorithm="rsa-sha256",headers="(request-target) host date",signature="asfdlajsflkjasklgja="')
+          .set('Digest', digest)
+          .set('Signature', 'keyId="https://mocked.com/u/mocked",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="asfdlajsflkjasklgja="')
           .send(act)
           .expect(200)
       })
@@ -1314,8 +1318,9 @@ describe('inbox', function () {
         const recip = await apex.createActor('recipient', 'recipient')
         await apex.store.saveObject(recip)
         const body = apex.stringifyPublicJSONLD(activity)
+        const digestValue = crypto.createHash('sha256').update(body).digest('base64')
         const headers = {
-          digest: crypto.createHash('sha256').update(body).digest('base64'),
+          digest: `SHA-256=${digestValue}`,
           host: 'localhost'
         }
         httpSignature.signRequest({

@@ -268,7 +268,12 @@ export async function initApex() {
 	apex.store.deliveryEnqueue = async () => true;
 
 	app.use(
-		express.json({ type: apex.consts.jsonldTypes }),
+		express.json({
+			type: apex.consts.jsonldTypes,
+			verify: (req, _res, buf) => {
+				(req as { rawBody?: Buffer }).rawBody = buf;
+			},
+		}),
 		express.urlencoded({ extended: true }),
 		apex,
 	);
