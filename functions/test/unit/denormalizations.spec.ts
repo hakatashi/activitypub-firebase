@@ -559,5 +559,82 @@ describe('denormalizations', () => {
 			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
 			expect(note._meta?.sharesCount).toBe(0);
 		});
+
+		test('does not decrement _meta.likesCount below 0 when Undo(Like) is received without prior like', async () => {
+			const noteId = 'https://example.com/activitypub/o/note-underflow-like';
+			await Objects.doc(escapeFirestoreKey(noteId)).set({
+				id: noteId,
+				type: 'Note',
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('undo-like-underflow-stream'));
+			await ref.set({
+				id: 'https://remote.example/activities/undo-like-underflow',
+				type: 'Undo',
+				actor: ['https://remote.example/u/alice'],
+				object: [{ type: 'Like', object: [noteId] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
+			expect(note._meta?.likesCount).toBe(0);
+		});
+
+		test('does not decrement _meta.sharesCount below 0 when Undo(Announce) is received without prior announce', async () => {
+			const noteId = 'https://example.com/activitypub/o/note-underflow-announce';
+			await Objects.doc(escapeFirestoreKey(noteId)).set({
+				id: noteId,
+				type: 'Note',
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('undo-announce-underflow-stream'));
+			await ref.set({
+				id: 'https://remote.example/activities/undo-announce-underflow',
+				type: 'Undo',
+				actor: ['https://remote.example/u/alice'],
+				object: [{ type: 'Announce', object: [noteId] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
+			expect(note._meta?.sharesCount).toBe(0);
+		});
+
+		test('does not decrement followers_count below 0 when Undo(Follow) is received with 0 followers', async () => {
+			const followerId = 'https://remote.example/u/alice';
+			const followedId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 0,
+				following_count: 0,
+				statuses_count: 0,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('undo-follow-underflow-stream'));
+			await ref.set({
+				id: 'https://remote.example/activities/undo-follow-underflow',
+				type: 'Undo',
+				actor: [followerId],
+				object: [{ type: 'Follow', object: [followedId] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
+			expect(userInfo.followers_count).toBe(0);
+		});
 	});
 });
