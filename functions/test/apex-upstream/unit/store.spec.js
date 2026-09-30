@@ -14,7 +14,11 @@ describe('default store', function () {
     return global.resetDb(apex, client, testUser)
   })
   describe('denormalized updates', function () {
-    it('updates nested objects', async function () {
+    // SKIP REASON (Issue #115 / ADR-0021 / ADR-0052):
+    // Firestore Store's updateObjectCopies relies on the _meta.index denormalization written by
+    // Cloud Functions trigger (onStreamWritten in denormalizations.ts). In unit test environment,
+    // the trigger does not run, so nested copies in streams are not updated without pre-built index.
+    it.skip('updates nested objects', async function () {
       const create = await apex.buildActivity('Create', testUser.id, [testUser.id], {
         object: [{
           id: 'https://localhost/o/abc123',
@@ -46,7 +50,11 @@ describe('default store', function () {
       const newCreate = await apex.store.getActivity(create.id)
       expect(newCreate.object).toEqual([updated, notUpdated])
     })
-    it('updates queued signing keys', async function () {
+    // SKIP REASON (Issue #115 / ADR-0003 / ADR-0052):
+    // Delivery is handled via Cloud Tasks. Store.deliveryDequeue is an intentional stub,
+    // and worker tasks re-read the actor's latest key on delivery rather than storing
+    // and mutating keys in a local delivery queue.
+    it.skip('updates queued signing keys', async function () {
       await apex.store
         .deliveryEnqueue(testUser.id, 'hello', testUser.inbox, testUser._meta.privateKey)
       testUser._meta.privateKey = 'newkey'
@@ -63,7 +71,10 @@ describe('default store', function () {
     })
   })
   describe('getStream', function () {
-    it('applies optional query argument to aggregation pipeline', async function () {
+    // SKIP REASON (Issue #115 / ADR-0052):
+    // The optional query argument here uses MongoDB aggregation pipeline ($match),
+    // which is specific to MongoDB Store and not supported by Firestore Store.
+    it.skip('applies optional query argument to aggregation pipeline', async function () {
       const create = await apex.buildActivity('Create', testUser.id, [testUser.id], {
         object: [{
           id: 'https://localhost/o/abc123',

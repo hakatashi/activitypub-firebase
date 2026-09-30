@@ -143,7 +143,9 @@ export default class Store extends IApexStore implements ApexStore {
 	}
 
 	override async saveObject(object: APObject) {
-		await Objects.doc(escapeFirestoreKey(object.id)).set(object);
+		const objectId = object.id ?? this.generateId();
+		const objectWithId = object.id ? object : { ...object, id: objectId };
+		await Objects.doc(escapeFirestoreKey(objectId)).set(objectWithId);
 		return true;
 	}
 
@@ -329,13 +331,15 @@ export default class Store extends IApexStore implements ApexStore {
 	}
 
 	override saveActivity(activity: APObject): Promise<SaveActivityResult> {
-		logger.info({ type: 'saveActivity', activity });
-		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
+		const activityId = activity.id ?? this.generateId();
+		const activityWithId = activity.id ? activity : { ...activity, id: activityId };
+		logger.info({ type: 'saveActivity', activity: activityWithId });
+		const activityRef = Streams.doc(escapeFirestoreKey(activityId));
 		return this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
 			if (!activityDoc.exists) {
-				transaction.set(activityRef, activity);
-				return { isNew: true, activity };
+				transaction.set(activityRef, activityWithId);
+				return { isNew: true, activity: activityWithId };
 			}
 
 			const existingData = activityDoc.data();

@@ -34,7 +34,12 @@ describe('combined inbox/outbox flows', function () {
     return global.resetDb(apex, client, testUser)
   })
 
-  it('adds followers and delivers to them', async function () {
+  // SKIP REASON (Issue #115 / ADR-0003 / ADR-0052):
+  // This test expects apex's built-in delivery loop to deliver activities to followers via
+  // HTTP POST. In this project, delivery is decoupled via Cloud Tasks (Store.deliveryEnqueue
+  // enqueues to Google Cloud Tasks, offlineMode is true, and deliveryDequeue is a stub).
+  // Therefore, in-process delivery via nock does not occur.
+  it.skip('adds followers and delivers to them', async function () {
     const follow = await apex
       .buildActivity('Follow', 'https://mocked.com/u/mocked', testUser.id, {
         object: testUser.id
