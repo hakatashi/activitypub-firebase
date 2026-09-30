@@ -1,11 +1,15 @@
 import { createHash, sign } from 'node:crypto';
-import type { LookupAddress } from 'node:dns';
-import type { LookupFunction } from 'node:net';
-import { Agent, request } from 'undici';
+import { request } from 'undici';
 import type { Dispatcher } from 'undici';
 import type { Apex, APObject } from '../types.js';
 import { errorMessage } from '../values.js';
-import { assertSafeUrl } from './ssrf.js';
+import {
+	assertSafeUrl,
+	makePinnedAgent,
+	maxRedirects,
+	readBodyWithLimit,
+	UnsafeUrlError,
+} from './ssrf.js';
 
 const maxTimeout = 2 ** 31 - 1;
 let isDelivering = false;
@@ -78,57 +82,6 @@ export const computeHttpSignatureHeaders = ({
 		privateKey: privateKeyPem,
 	});
 	return digest === undefined ? { date, signature } : { date, signature, digest };
-};
-
-const maxRedirects = 5;
-const maxResponseBytes = 5 * 1024 * 1024;
-
-// assertSafeUrl が検証した IP アドレスに接続を固定する Agent を作る。lookup を差し替えることで、
-// 接続時に DNS が再解決されて検証済みアドレスと異なる IP (攻撃者制御の DNS が返す
-// private/loopback アドレス) に接続してしまう DNS rebinding を防ぐ。ホスト名自体は変えないため
-// TLS の SNI / 証明書検証には影響しない。
-const makePinnedAgent = (addresses: string[]) => {
-	const toEntry = (address: string): LookupAddress => ({
-		address,
-		family: address.includes(':') ? 6 : 4,
-	});
-	const lookup: LookupFunction = (_hostname, options, callback) => {
-		if (options.all) {
-			callback(null, addresses.map(toEntry));
-		} else {
-			const [head = ''] = addresses;
-			const { address, family } = toEntry(head);
-			callback(null, address, family);
-		}
-	};
-	return new Agent({ connect: { lookup } });
-};
-
-const readBodyWithLimit = async (
-	body: Dispatcher.ResponseData['body'],
-	headers: Dispatcher.ResponseData['headers'],
-): Promise<string> => {
-	const contentLength = headers['content-length'];
-	if (contentLength !== undefined && Number(contentLength) > maxResponseBytes) {
-		// 破棄時に発火する AbortError を握りつぶす (呼び出し元へは下の Error を投げる)
-		body.on('error', () => {
-			// noop
-		});
-		body.destroy();
-		throw new Error(`Response too large: ${String(contentLength)} bytes`);
-	}
-	const chunks: Buffer[] = [];
-	let total = 0;
-	// ループ内で throw すると for await...of が body を破棄する
-	for await (const chunk of body) {
-		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-		total += buffer.byteLength;
-		if (total > maxResponseBytes) {
-			throw new Error(`Response exceeded ${maxResponseBytes} bytes`);
-		}
-		chunks.push(buffer);
-	}
-	return Buffer.concat(chunks).toString('utf-8');
 };
 
 // SSRF セーフなリモートオブジェクト取得。URL の検証 (スキーム / DNS 解決結果のアドレス範囲) を
@@ -221,7 +174,6 @@ export const resolveReferences = async function (
 export interface DeliverResult {
 	statusCode: number;
 	headers: Dispatcher.ResponseData['headers'];
-	body: string;
 }
 
 export const deliver = async function (
@@ -231,10 +183,18 @@ export const deliver = async function (
 	address: string,
 	signingKey: string | undefined,
 ): Promise<DeliverResult | null> {
-	if (this.isProductionEnv() && this.isLocalhostIRI(address)) {
-		return null;
+	const guardOptions = { policy: this.settings?.remoteFetchPolicy, logger: this.logger };
+	let safe: { url: URL; addresses: string[] };
+	try {
+		safe = await assertSafeUrl(address, guardOptions);
+	} catch (err) {
+		if (err instanceof UnsafeUrlError) {
+			return null;
+		}
+		throw err;
 	}
-	const url = new URL(address);
+	const { url, addresses } = safe;
+
 	// digest header added for Mastodon 3.2.1 compatibility
 	const digest = `SHA-256=${createHash('sha256').update(activity).digest('base64')}`;
 	const date = new Date().toUTCString();
@@ -257,21 +217,26 @@ export const deliver = async function (
 		headers.Signature = signature;
 	}
 
-	const response = await request(url, {
-		method: 'POST',
-		headers,
-		body: activity,
-		headersTimeout: this.requestTimeout,
-		bodyTimeout: this.requestTimeout,
-	});
+	const agent = makePinnedAgent(addresses);
+	try {
+		const response = await request(url, {
+			method: 'POST',
+			headers,
+			body: activity,
+			headersTimeout: this.requestTimeout,
+			bodyTimeout: this.requestTimeout,
+			dispatcher: agent,
+		});
 
-	const body = await response.body.text();
+		await response.body.dump();
 
-	return {
-		statusCode: response.statusCode,
-		headers: response.headers,
-		body,
-	};
+		return {
+			statusCode: response.statusCode,
+			headers: response.headers,
+		};
+	} finally {
+		await agent.close();
+	}
 };
 
 export const queueForDelivery = async function (

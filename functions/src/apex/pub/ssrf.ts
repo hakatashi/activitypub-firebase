@@ -1,5 +1,9 @@
+import type { LookupAddress } from 'node:dns';
 import { promises as dns } from 'node:dns';
+import type { LookupFunction } from 'node:net';
 import ipaddr from 'ipaddr.js';
+import { Agent } from 'undici';
+import type { Dispatcher } from 'undici';
 import type { ApexLogger } from '../types.js';
 
 // リモートが指定した任意の URL への到達 (SSRF) を防ぐための検証。
@@ -85,4 +89,56 @@ export const assertSafeUrl = async (
 	}
 
 	return { url, addresses };
+};
+
+export const maxRedirects = 5;
+export const maxResponseBytes = 5 * 1024 * 1024;
+
+// assertSafeUrl が検証した IP アドレスに接続を固定する Agent を作る。lookup を差し替えることで、
+// 接続時に DNS が再解決されて検証済みアドレスと異なる IP (攻撃者制御の DNS が返す
+// private/loopback アドレス) に接続してしまう DNS rebinding を防ぐ。ホスト名自体は変えないため
+// TLS の SNI / 証明書検証には影響しない。
+export const makePinnedAgent = (addresses: string[]): Agent => {
+	const toEntry = (address: string): LookupAddress => ({
+		address,
+		family: address.includes(':') ? 6 : 4,
+	});
+	const lookup: LookupFunction = (_hostname, options, callback) => {
+		if (options.all) {
+			callback(null, addresses.map(toEntry));
+		} else {
+			const [head = ''] = addresses;
+			const { address, family } = toEntry(head);
+			callback(null, address, family);
+		}
+	};
+	return new Agent({ connect: { lookup } });
+};
+
+export const readBodyWithLimit = async (
+	body: Dispatcher.ResponseData['body'],
+	headers: Dispatcher.ResponseData['headers'],
+	limit = maxResponseBytes,
+): Promise<string> => {
+	const contentLength = headers['content-length'];
+	if (contentLength !== undefined && Number(contentLength) > limit) {
+		// 破棄時に発火する AbortError を握りつぶす (呼び出し元へは下の Error を投げる)
+		body.on('error', () => {
+			// noop
+		});
+		body.destroy();
+		throw new Error(`Response too large: ${String(contentLength)} bytes`);
+	}
+	const chunks: Buffer[] = [];
+	let total = 0;
+	// ループ内で throw すると for await...of が body を破棄する
+	for await (const chunk of body) {
+		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+		total += buffer.byteLength;
+		if (total > limit) {
+			throw new Error(`Response exceeded ${limit} bytes`);
+		}
+		chunks.push(buffer);
+	}
+	return Buffer.concat(chunks).toString('utf-8');
 };
