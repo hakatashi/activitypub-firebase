@@ -29,6 +29,30 @@ describe('activitypub', () => {
 		expect(response.status).toBe(404);
 	});
 
+	test('POST /activitypub/proxy is not implemented (removed for security)', async () => {
+		const response = await request(activitypub)
+			.post('/activitypub/proxy')
+			.set('Accept', 'application/activity+json')
+			.send('id=https%3A%2F%2Fremote.example%2Fnotes%2F1');
+		expect(response.status).toBe(404);
+	});
+
+	describe('/activitypub/u/:actor', () => {
+		beforeEach(async () => {
+			const actor = await apex.createActor('hakatashi', '博多市', '', '', 'Person');
+			await apex.store.saveObject(actor);
+		});
+
+		test('GET /activitypub/u/:actor does not expose proxyUrl endpoint', async () => {
+			const response = await request(activitypub)
+				.get('/activitypub/u/hakatashi')
+				.set('Accept', 'application/activity+json');
+			expect(response.status).toBe(200);
+			expect(response.body.endpoints?.proxyUrl).toBeUndefined();
+			expect(response.body.proxyUrl).toBeUndefined();
+		});
+	});
+
 	describe('/nodeinfo', () => {
 		describe('/nodeinfo/1.1', () => {
 			test('Not implemented', async () => {
