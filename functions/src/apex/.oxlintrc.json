@@ -1,7 +1,10 @@
 {
+	"extends": ["../../.oxlintrc.json"],
+	"env": {
+		"node": true,
+		"es2022": true
+	},
 	"rules": {
-		"no-unused-vars": "off",
-		"no-unused-expressions": "off",
 		"no-restricted-imports": [
 			"error",
 			{
@@ -22,7 +25,14 @@
 					}
 				]
 			}
-		]
+		],
+		"no-underscore-dangle": [
+			"error",
+			{
+				"allow": ["_meta", "_id", "_local"]
+			}
+		],
+		"max-params": "off"
 	},
 	"overrides": [
 		{

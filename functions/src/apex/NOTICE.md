@@ -6,3 +6,5 @@ This directory contains a fork of [activitypub-express](https://github.com/wmurp
 - Upstream repository: https://github.com/wmurphyrd/activitypub-express
 - Upstream author: Will Murphy
 - License: MIT (see LICENSE file in this directory)
+
+The fork has since been rewritten in TypeScript (ES modules). The upstream jasmine specs are kept verbatim in `functions/test/apex-upstream/`.

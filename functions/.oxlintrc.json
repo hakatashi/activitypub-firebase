@@ -1,6 +1,6 @@
 {
 	"extends": ["./node_modules/@hakatashi/oxlint-config/index.json"],
-	"ignorePatterns": ["lib/**/*"],
+	"ignorePatterns": ["lib/**/*", "test/apex-upstream/**/*"],
 	"env": {
 		"node": true,
 		"es2022": true
@@ -8,7 +8,12 @@
 	"rules": {
 		"import/no-namespace": "off",
 		"import/no-named-as-default-member": "off",
-		"no-underscore-dangle": ["error", { "allow": ["_meta", "_id"] }],
+		"no-underscore-dangle": [
+			"error",
+			{
+				"allow": ["_meta", "_id"]
+			}
+		],
 		"typescript/no-explicit-any": "error"
 	}
 }

@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from 'vitest';
-// @ts-expect-error -- JS モジュール (型定義なし)
 import { assertSafeUrl, UnsafeUrlError } from '../../../src/apex/pub/ssrf.js';
 
 const logger = { warn: vi.fn() };

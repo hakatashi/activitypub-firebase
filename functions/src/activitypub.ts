@@ -226,7 +226,8 @@ onApexOutbox(app, (message) => {
 	logger.info({ type: 'outbox', message: redactSensitiveBody(message) });
 
 	if (message.activity.type === 'Create') {
-		logger.info(`New ${message.object?.type} from ${message.actor}`);
+		const objectType = typeof message.object === 'string' ? undefined : message.object?.type;
+		logger.info(`New ${objectType} from ${message.actor}`);
 	}
 });
 
