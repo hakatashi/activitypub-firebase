@@ -203,7 +203,7 @@ export const jsonld = async (req: Request, res: Response, next: NextFunction): P
 		} catch (err) {
 			// potential fetch errors on context sources
 			apex.logger.error('jsonld validation', errorMessage(err));
-			res.status(500).send('Error processing request JSON-LD');
+			res.status(400).send('Error processing request JSON-LD');
 			return;
 		}
 		next();

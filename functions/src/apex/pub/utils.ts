@@ -13,16 +13,11 @@ import {
 	isString,
 	toArray,
 } from '../values.js';
+import { request } from 'undici';
+import { assertSafeUrl, makePinnedAgent, maxRedirects, readBodyWithLimit } from './ssrf.js';
 
 type DocumentLoader = NonNullable<Options.Compact['documentLoader']>;
 type RemoteDocument = Awaited<ReturnType<DocumentLoader>>;
-
-// @types/jsonld には documentLoaders が定義されていない
-declare module 'jsonld' {
-	export const documentLoaders: {
-		node: () => (url: string) => Promise<RemoteDocument>;
-	};
-}
 
 const actorStreamNames = [
 	'inbox',
@@ -482,8 +477,6 @@ const coreContexts: Record<string, RemoteDocument> = {
 };
 // cached JSONLD contexts to reduce requests an eliminate
 // failures caused when context servers are unavailable
-const nodeDocumentLoader = jsonld.documentLoaders.node();
-
 export const jsonldContextLoader = async function (
 	this: Apex,
 	url: string,
@@ -500,19 +493,68 @@ export const jsonldContextLoader = async function (
 	} catch (err) {
 		this.logger.error('Error checking jsonld context cache', errorMessage(err));
 	}
-	const context = await nodeDocumentLoader(url);
-	if (context?.document) {
+
+	const guardOptions = { policy: this.settings?.remoteFetchPolicy, logger: this.logger };
+	let { url: targetUrl, addresses } = await assertSafeUrl(url, guardOptions);
+
+	for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
+		const headers: Record<string, string> = {
+			Accept: 'application/ld+json, application/json',
+			'User-Agent': this.makeUserAgentString(),
+		};
+
+		const agent = makePinnedAgent(addresses);
 		try {
-			// save original url in case of redirects
-			context.documentUrl = url;
-			await this.store.saveContext({
-				contextUrl: context.contextUrl ?? null,
-				documentUrl: context.documentUrl,
-				document: context.document,
+			const response = await request(targetUrl, {
+				method: 'GET',
+				headers,
+				headersTimeout: this.requestTimeout,
+				bodyTimeout: this.requestTimeout,
+				dispatcher: agent,
 			});
-		} catch (err) {
-			this.logger.error('Error saving jsonld context cache', errorMessage(err));
+
+			if (response.statusCode >= 300 && response.statusCode < 400) {
+				const { location } = response.headers;
+				await response.body.dump();
+				if (typeof location !== 'string' || !location) {
+					throw new Error(`Redirect from ${targetUrl.toString()} is missing Location header`);
+				}
+				({ url: targetUrl, addresses } = await assertSafeUrl(
+					new URL(location, targetUrl).toString(),
+					guardOptions,
+				));
+				continue;
+			}
+
+			if (response.statusCode < 200 || response.statusCode >= 300) {
+				await response.body.dump();
+				throw new Error(`Request failed with status code ${response.statusCode}`);
+			}
+
+			const body = await readBodyWithLimit(response.body, response.headers);
+			const document = JSON.parse(body);
+
+			const context = asRemoteDocument({
+				documentUrl: url,
+				document,
+			});
+
+			try {
+				await this.store.saveContext({
+					contextUrl: context.contextUrl ?? null,
+					documentUrl: context.documentUrl,
+					document: context.document,
+				});
+			} catch (err) {
+				this.logger.error('Error saving jsonld context cache', errorMessage(err));
+			}
+
+			return context;
+		} finally {
+			await agent.close();
 		}
 	}
-	return context;
+
+	this.logger.warn({ type: 'ssrfBlockedTooManyRedirects', url });
+	throw new Error(`Too many redirects while fetching ${url}`);
 };
