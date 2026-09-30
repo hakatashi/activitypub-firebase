@@ -2,7 +2,7 @@ import { createHash, sign } from 'node:crypto';
 import { request } from 'undici';
 import type { Dispatcher } from 'undici';
 import type { Apex, APObject } from '../types.js';
-import { errorMessage } from '../values.js';
+import { errorMessage, firstString, isAPObject, isHashtag, isRecord, toArray } from '../values.js';
 import {
 	assertSafeUrl,
 	makePinnedAgent,
@@ -148,27 +148,145 @@ export const requestObject = async function (
 	throw new Error(`Too many redirects while fetching ${id}`);
 };
 
-const refProps = ['inReplyTo', 'object', 'target', 'tag'];
+const topLevelRefProps = ['inReplyTo', 'object', 'target', 'tag'] as const;
+const recursiveRefProps = ['inReplyTo', 'object', 'target'] as const;
+
+export interface ResolveReferencesOptions {
+	visited?: Set<string>;
+	resolvedCount?: { count: number };
+}
+
+const getCandidateIri = (item: unknown): string | undefined => {
+	if (typeof item === 'string') {
+		return item;
+	}
+	if (isRecord(item)) {
+		const id = firstString(item.id);
+		if (id !== undefined) {
+			return id;
+		}
+		const href = firstString(item.href);
+		if (href !== undefined) {
+			return href;
+		}
+	}
+	return undefined;
+};
+
+const mapConcurrentSettled = async <T, R>(
+	items: readonly T[],
+	concurrency: number,
+	fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> => {
+	const results: PromiseSettledResult<R>[] = Array.from({ length: items.length });
+	let nextIndex = 0;
+	const worker = async () => {
+		while (nextIndex < items.length) {
+			const index = nextIndex++;
+			const item = items[index];
+			if (item === undefined) {
+				continue;
+			}
+			try {
+				const value = await fn(item);
+				results[index] = { status: 'fulfilled', value };
+			} catch (reason) {
+				results[index] = { status: 'rejected', reason };
+			}
+		}
+	};
+	const workers = Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, () =>
+		worker(),
+	);
+	await Promise.all(workers);
+	return results;
+};
 
 export const resolveReferences = async function (
 	this: Apex,
 	object: APObject,
 	depth = 0,
+	context?: ResolveReferencesOptions,
 ): Promise<APObject[]> {
-	const objectPromises = refProps
-		.flatMap((prop) => object[prop]) // may have multiple tags to resolve
-		.map((o) => this.resolveUnknown(o));
-	const objects = (await Promise.allSettled(objectPromises)).flatMap((r) =>
+	const visited = context?.visited ?? new Set<string>();
+	const resolvedCount = context?.resolvedCount ?? { count: 0 };
+	const threadLimit = this.threadLimit;
+	const threadConcurrency = this.threadConcurrency;
+
+	if (depth === 0 && typeof object.id === 'string') {
+		visited.add(object.id);
+	}
+
+	if (depth > this.threadDepth || resolvedCount.count >= threadLimit) {
+		return [];
+	}
+
+	const props = depth === 0 ? topLevelRefProps : recursiveRefProps;
+	const candidates: unknown[] = [];
+	for (const prop of props) {
+		const val = object[prop];
+		if (val !== undefined && val !== null) {
+			const arr = toArray(val);
+			for (const item of arr) {
+				if (item === undefined || item === null || isHashtag(item)) {
+					continue;
+				}
+				const iri = getCandidateIri(item);
+				if (iri !== undefined) {
+					if (visited.has(iri)) {
+						continue;
+					}
+					visited.add(iri);
+				}
+				candidates.push(item);
+			}
+		}
+	}
+
+	if (!candidates.length) {
+		return [];
+	}
+
+	const settledResults = await mapConcurrentSettled(
+		candidates,
+		threadConcurrency,
+		async (candidate) => {
+			if (resolvedCount.count >= threadLimit) {
+				return null;
+			}
+			const resolved = await this.resolveUnknown(candidate);
+			if (resolvedCount.count >= threadLimit) {
+				return null;
+			}
+			if (resolved && isAPObject(resolved)) {
+				if (typeof resolved.id === 'string') {
+					visited.add(resolved.id);
+				}
+				resolvedCount.count++;
+				return resolved;
+			}
+			return null;
+		},
+	);
+
+	const objects = settledResults.flatMap((r) =>
 		r.status === 'fulfilled' && r.value ? [r.value] : [],
 	);
-	if (!objects.length || depth >= this.threadDepth) {
+
+	if (!objects.length || depth >= this.threadDepth || resolvedCount.count >= threadLimit) {
 		return objects;
 	}
-	const nextLevel = objects.map((o) => this.resolveReferences(o, depth + 1));
-	const nextLevelResolved = (await Promise.allSettled(nextLevel)).flatMap((r) =>
-		r.status === 'fulfilled' && r.value ? [r.value] : [],
-	);
-	return objects.concat(nextLevelResolved.flat());
+
+	const nextLevelResults: APObject[] = [];
+	for (const obj of objects) {
+		if (resolvedCount.count >= threadLimit) {
+			break;
+		}
+		const children = await this.resolveReferences(obj, depth + 1, { visited, resolvedCount });
+		nextLevelResults.push(...children);
+	}
+
+	return objects.concat(nextLevelResults);
 };
 
 export interface DeliverResult {

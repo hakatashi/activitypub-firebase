@@ -79,6 +79,8 @@ export interface ApexSettings<S extends ApexStore = ApexStore> {
 	pageParam?: string;
 	itemsPerPage?: number;
 	threadDepth?: number;
+	threadLimit?: number;
+	threadConcurrency?: number;
 	systemUser?: APObject;
 	logger?: ApexLogger;
 	routes: ApexRoutes;
@@ -107,6 +109,8 @@ export interface ApexCore<S extends ApexStore = ApexStore> {
 	pageParam: string;
 	itemsPerPage: number;
 	threadDepth: number;
+	threadLimit: number;
+	threadConcurrency: number;
 	systemUser: APObject | undefined;
 	logger: ApexLogger;
 	offlineMode: boolean | undefined;

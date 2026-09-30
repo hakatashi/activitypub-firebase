@@ -1,5 +1,5 @@
 import type { Apex, APObject } from '../types.js';
-import { first, firstString, isAPObject, isRecord } from '../values.js';
+import { first, firstString, isAPObject, isHashtag, isRecord } from '../values.js';
 
 // find object in local DB or fetch from origin server
 export const resolveObject = async function (
@@ -64,7 +64,7 @@ export const resolveUnknown = async function (
 	rawObjectOrIRI: unknown,
 ): Promise<APObject | null> {
 	let object: unknown;
-	if (!rawObjectOrIRI) {
+	if (!rawObjectOrIRI || isHashtag(rawObjectOrIRI)) {
 		return null;
 	}
 	// For Link/Mention, we want to resolved the linked object

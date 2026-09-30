@@ -331,7 +331,11 @@ describe('federation', function () {
       // does not create cached copies of local collections
       expect(await apex.store.getObject(testUser.followers[0])).toBeFalsy()
     })
-    it('limits recursion', async function () {
+    // In upstream apex, mutually-referencing objects bounced back and forth until
+    // threadDepth was reached (yielding 6 objects for two nodes).
+    // In this fork (Issue #138 / ADR-0055), visited tracking detects circular references
+    // and terminates the cycle immediately, returning the 2 unique objects.
+    it('detects circular references and terminates recursion early', async function () {
       const fakes = {
         'https://mocked.com/s/one': {
           id: 'https://mocked.com/s/one',
@@ -353,7 +357,25 @@ describe('federation', function () {
       const out = await apex.resolveReferences({
         target: ['https://mocked.com/s/one']
       })
-      expect(out.length).toBe(6)
+      expect(out.length).toBe(2)
+      expect(out).toContain(fakes['https://mocked.com/s/one'])
+      expect(out).toContain(fakes['https://mocked.com/s/two'])
+    })
+    it('limits recursion depth on linear chains', async function () {
+      const fakes = {
+        'https://mocked.com/s/1': { id: 'https://mocked.com/s/1', type: 'Note', inReplyTo: 'https://mocked.com/s/2' },
+        'https://mocked.com/s/2': { id: 'https://mocked.com/s/2', type: 'Note', inReplyTo: 'https://mocked.com/s/3' },
+        'https://mocked.com/s/3': { id: 'https://mocked.com/s/3', type: 'Note', inReplyTo: 'https://mocked.com/s/4' },
+        'https://mocked.com/s/4': { id: 'https://mocked.com/s/4', type: 'Note', inReplyTo: 'https://mocked.com/s/5' },
+        'https://mocked.com/s/5': { id: 'https://mocked.com/s/5', type: 'Note', inReplyTo: 'https://mocked.com/s/6' },
+        'https://mocked.com/s/6': { id: 'https://mocked.com/s/6', type: 'Note' }
+      }
+      spyOn(apex, 'requestObject').and.callFake(id => fakes[id])
+      apex.threadDepth = 3
+      const out = await apex.resolveReferences({
+        inReplyTo: ['https://mocked.com/s/1']
+      })
+      expect(out.length).toBe(4)
     })
   })
   describe('security', function () {
