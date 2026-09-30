@@ -63,7 +63,13 @@ const apex = ActivitypubExpress({
 const client = new MongoClient('mongodb://localhost:27017')
 
 app.use(
-  express.json({ type: apex.consts.jsonldTypes }),
+  express.json({
+    type: apex.consts.jsonldTypes,
+    verify: (req, res, buf) => {
+      // apex requires req.rawBody on POST requests to verify Digest in HTTP signatures
+      req.rawBody = buf
+    }
+  }),
   express.urlencoded({ extended: true }),
   apex
 )
@@ -356,7 +362,11 @@ the object, and the server will find the related Follow/Accept/Block and substit
 * **http signatures**
   * In production mode, incoming POST requests without valid http signatures will be
   rejected (401 if missing, 403 if invalid)
-  * Outoing POST requests are signed ('(request-target)', 'host', 'date', 'digest')
+  * Incoming POST requests must include the `digest` header in their signature; apex verifies
+  this against `req.rawBody` (e.g. captured via `express.json({ verify: (req, res, buf) => { req.rawBody = buf } })`)
+  * Incoming requests must include either `date` or `(created)` in their signature, and the timestamp
+  must fall within the acceptable validity window (clock skew tolerance of 1 hour, expiration limit of 12 hours)
+  * Outgoing POST requests are signed ('(request-target)', 'host', 'date', 'digest')
   with the actor's keypair using the `Signature` header
   * When using the `systemUser` config option, outgoing GET requests are signed
   ('(request-target)', 'host', 'date') with the system user's keypair using the

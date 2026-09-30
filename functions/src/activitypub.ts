@@ -32,12 +32,6 @@ const nodeinfoCors = cors({
 });
 
 app.use((req, res, next) => {
-	if (!('rawBody' in req) && req.body) {
-		(req as { rawBody?: unknown }).rawBody = Buffer.isBuffer(req.body)
-			? req.body
-			: Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
-	}
-
 	// Default express.json() parser doesn't properly work with cloud functions
 	const contentType = req.headers['content-type'];
 	if (contentType !== undefined && apex.consts.jsonldTypes.includes(contentType) && req.body) {
