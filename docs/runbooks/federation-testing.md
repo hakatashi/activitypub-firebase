@@ -52,7 +52,9 @@ home timeline に含まれるか、`account.display_name`)で等価に確認で�
 ## 0. 準備
 
 ```bash
-# 管理者トークン(Secret Manager から取得する。画面やログに出さないこと)
+# 管理者トークン(Secret Manager から取得する。画面やログに出さないこと)。
+# これは /activitypub/* の管理者エンドポイント用の秘密値で、Mastodon API の Bearer には使えない
+# (使うと invalid_token で 500 になる)。Mastodon API には下の MASTODON_DEV_TOKEN を使う。
 export HAKATASHI_TOKEN=$(gcloud secrets versions access latest \
   --secret=HAKATASHI_TOKEN --project=activitypub-firebase-dev)
 
@@ -77,6 +79,37 @@ export ACTOR=$DEV/activitypub/u/hakatashi
 # .env
 REMOTE=https://mastodon-test.hakatashi.com
 REMOTE_TOKEN=xxxxxxxx
+```
+
+### dev の Mastodon API 用 OAuth アクセストークン(`MASTODON_DEV_TOKEN`)
+
+`/api/v1/timelines/home` など認証が必要な Mastodon API を dev に対して叩くときの Bearer。
+`HAKATASHI_TOKEN` とは別物なので、`.env` にも別の名前で記録する。
+
+Elk 経由のログインは未対応 (#62) のため、OAuth フローを手で踏んで発行する。
+
+```bash
+B=https://mastodon-dev.hakatashi.com
+# 1) アプリ登録 → client_id / client_secret を控える
+curl -s -X POST $B/api/v1/apps -d client_name=cli-test \
+  -d redirect_uris=urn:ietf:wg:oauth:2.0:oob -d "scopes=read"
+# 2) ブラウザでこの URL を開き、ログインして認可 → 表示された code を控える
+echo "$B/oauth/authorize?client_id=<CLIENT_ID>&response_type=code&redirect_uri=urn:ietf:wg:oauth:2.0:oob&scope=read"
+# 3) code をトークンに交換 → access_token を .env の MASTODON_DEV_TOKEN に書く
+curl -s -X POST $B/oauth/token -d grant_type=authorization_code \
+  -d client_id=<CLIENT_ID> -d client_secret=<CLIENT_SECRET> \
+  -d redirect_uri=urn:ietf:wg:oauth:2.0:oob -d code=<CODE>
+```
+
+- 確認: `curl -H "Authorization: Bearer $MASTODON_DEV_TOKEN" $B/api/v1/accounts/verify_credentials` が 200 を返す。
+- 失効・dev データの破棄で無効になったら同じ手順で取り直す。リフレッシュトークンは使わない。
+- **トークンを画面・ログ・PR・コミットに出さない。** `.env` は `.gitignore` 済み。
+- 取得済みの値は `.env` を読むこと。Secret Manager から取り直す必要はない
+  (そもそも Secret Manager にこのトークンはない)。
+
+```bash
+# .env(追記)
+MASTODON_DEV_TOKEN=xxxxxxxx
 ```
 
 ```bash
