@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { Request as OauthRequest, Response as OauthResponse } from '@node-oauth/oauth2-server';
 import type { APObject as ApexObject, JsonLdActor } from '../apex/index.js';
-import type { APNote, APActor, APObject } from 'activitypub-types';
+import type { APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
 import firebase from 'firebase-admin';
@@ -22,9 +22,18 @@ import { metaIndexPath } from '../meta.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
-import { isAPActor, isAPFollow, isAPNote, isAPUndo, toIdArray, toStringValue } from '../utils.js';
+import { isAPActor, isAPFollow, isAPNote, isAPUndo, toIdArray } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
+import { getStatusVisibility, noteObjectToStatus, resolveNotesRelations } from './status.js';
+
+export { getStatusVisibility, noteObjectToStatus, resolveNotesRelations };
+export type {
+	MastodonStatus,
+	NoteStatusContext,
+	NoteStatusOptions,
+	StatusVisibility,
+} from './status.js';
 
 const validScopes = [
 	'follow',
@@ -128,52 +137,6 @@ const actorUsernameToAccount = async (
 	return actorObjectToAccount(object, userInfo);
 };
 
-// `id` には AP IRI ではなく、時系列順に採番した Mastodon ID を渡す (→ ADR-0006、ADR-0058)。
-// 取得は `getMastodonIds` で行う。
-export const noteObjectToStatus = (
-	note: APNote,
-	account: CamelToSnake<mastodon.v1.Account>,
-	id: string,
-): CamelToSnake<mastodon.v1.Status> => {
-	assert(note.id !== undefined, 'note.id is undefined');
-	assert(note.published !== undefined, 'note.published is undefined');
-	return {
-		id,
-		created_at: note.published.toString(),
-		edited_at: null,
-		in_reply_to_id: null,
-		in_reply_to_account_id: null,
-		sensitive: false,
-		spoiler_text: '',
-		visibility: 'public',
-		language: 'ja',
-		// Mastodon の `uri` は連合で使う ActivityPub の IRI。
-		uri: note.id,
-		url: `https://${domain}/@${account.username}@${domain}/${id}`,
-		replies_count: 0,
-		reblogs_count: 0,
-		favourites_count: 0,
-		reblogged: false,
-		favourited: false,
-		muted: false,
-		bookmarked: false,
-		pinned: false,
-		content: toStringValue(note.content) ?? '',
-		reblog: null,
-		application: {
-			name: 'activitypub-firebase',
-			website: `https://${domain}`,
-		},
-		account,
-		media_attachments: [],
-		mentions: [],
-		tags: [],
-		emojis: [],
-		card: null,
-		poll: null,
-	};
-};
-
 const getAttributedTo = (object: APObject): string | undefined => toIdArray(object.attributedTo)[0];
 
 const userIdsToAcconts = async (
@@ -226,9 +189,10 @@ const getAllNotes = async () => {
 		assert(attributedTo !== undefined, 'attributedTo is undefined');
 		return attributedTo;
 	});
-	const [accounts, mastodonIds] = await Promise.all([
+	const [accounts, mastodonIds, context] = await Promise.all([
 		userIdsToAcconts(userIds),
 		getMastodonIds(validNotes.map((note) => ({ iri: note.id, published: note.published }))),
+		resolveNotesRelations(validNotes),
 	]);
 	const accountsMap = new Map(zip(userIds, accounts));
 
@@ -242,7 +206,7 @@ const getAllNotes = async () => {
 		const mastodonId = mastodonIds.get(note.id);
 		assert(mastodonId !== undefined, 'mastodonId is undefined');
 
-		return noteObjectToStatus(note, account, mastodonId);
+		return noteObjectToStatus(note, account, { id: mastodonId, ...context });
 	});
 };
 

@@ -85,3 +85,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0057](0057-support-rfc-9421-via-standard-library.md) | RFC 9421 (HTTP Message Signatures) に標準ライブラリ http-message-sig で対応する | Accepted |
 | [0058](0058-mastodon-id-snowflake-layout.md) | Mastodon ID の具体的な採番方式と IRI との相互マッピング | Accepted |
 | [0059](0059-never-refetch-local-objects.md) | ローカルオブジェクトを HTTP で取り直さず、fullReplace でも _meta を引き継ぐ | Accepted |
+| [0060](0060-derive-mastodon-status-from-real-data.md) | Status エンティティを Note の実データから導出する | Accepted |

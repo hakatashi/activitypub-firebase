@@ -1,6 +1,9 @@
 import request from 'supertest';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { apex } from '../../src/activitypub.js';
+import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
+import { UserInfos } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -100,6 +103,74 @@ describe('mastodon', () => {
 				expect(response.body.redirect_uri).toBe('urn:ietf:wg:oauth:2.0:oob');
 				expect(response.body.client_id).toEqual(expect.any(String));
 				expect(response.body.client_secret).toEqual(expect.any(String));
+			});
+		});
+
+		describe('/api/v1/timelines/public', () => {
+			test('returns statuses from stored notes with real data', async () => {
+				const actorId = `https://${domain}/activitypub/u/hakatashi`;
+				await apex.store.saveObject({
+					id: actorId,
+					type: 'Person',
+					preferredUsername: 'hakatashi',
+					name: 'Koki Takahashi',
+				});
+				await UserInfos.doc(escapeFirestoreKey(actorId)).set({
+					id: '1',
+					uid: 'hakatashi-uid',
+					bot: false,
+					locked: false,
+					created_at: '2023-01-01T00:00:00.000Z',
+					followers_count: 0,
+					following_count: 0,
+					statuses_count: 1,
+					last_status_at: '2023-06-01',
+					emojis: [],
+					fields: [],
+					roles: [],
+				});
+
+				const noteId = `https://${domain}/activitypub/o/test-note`;
+				await apex.store.saveObject({
+					id: noteId,
+					type: 'Note',
+					attributedTo: actorId,
+					published: '2023-06-01T00:00:00.000Z',
+					to: 'as:Public',
+					content: 'Hello fediverse integration test!',
+					summary: 'Spoiler warning',
+					sensitive: true,
+					tag: [
+						{
+							type: 'Hashtag',
+							name: '#integration',
+						},
+					],
+				});
+
+				const response = await request(mastodon).get('/api/v1/timelines/public');
+				expect(response.status).toBe(200);
+				expect(response.body).toHaveLength(1);
+				expect(response.body[0]).toMatchObject({
+					uri: noteId,
+					content: 'Hello fediverse integration test!',
+					spoiler_text: 'Spoiler warning',
+					sensitive: true,
+					visibility: 'public',
+					language: 'ja',
+					application: {
+						name: 'activitypub-firebase',
+					},
+					tags: [
+						{
+							name: 'integration',
+						},
+					],
+					account: {
+						id: '1',
+						username: 'hakatashi',
+					},
+				});
 			});
 		});
 	});
