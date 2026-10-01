@@ -1,4 +1,4 @@
-import { createHash, sign } from 'node:crypto';
+import { constants, createHash, createPrivateKey, KeyObject, sign } from 'node:crypto';
 import { request } from 'undici';
 import type { Dispatcher } from 'undici';
 import type { Apex, APObject } from '../types.js';
@@ -82,6 +82,141 @@ export const computeHttpSignatureHeaders = ({
 		privateKey: privateKeyPem,
 	});
 	return digest === undefined ? { date, signature } : { date, signature, digest };
+};
+
+export const computeRfc9421SignatureHeaders = ({
+	method = 'get',
+	url,
+	keyId,
+	privateKeyPem,
+	privateKey,
+	created = Math.floor(Date.now() / 1000),
+	expires,
+	body,
+	label = 'sig1',
+	coveredComponents,
+	components: componentsAlias,
+	headers,
+	alg,
+	algorithm: algorithmAlias,
+}: {
+	method?: string;
+	url: URL | string;
+	keyId: string;
+	privateKeyPem?: string | undefined;
+	privateKey?: string | KeyObject | undefined;
+	created?: number | undefined;
+	expires?: number | undefined;
+	body?: Buffer | string | Record<string, unknown> | undefined;
+	label?: string | undefined;
+	coveredComponents?: string[] | undefined;
+	components?: string[] | undefined;
+	headers?: Record<string, string> | undefined;
+	alg?: string | undefined;
+	algorithm?: string | undefined;
+}): {
+	'Signature-Input': string;
+	Signature: string;
+	'Content-Digest'?: string;
+	'signature-input': string;
+	signature: string;
+	'content-digest'?: string;
+} => {
+	const privKey = privateKeyPem ?? privateKey;
+	if (!privKey) {
+		throw new Error('computeRfc9421SignatureHeaders requires privateKeyPem or privateKey');
+	}
+	const parsedUrl = typeof url === 'string' ? new URL(url) : url;
+	let contentDigest: string | undefined;
+	if (body !== undefined) {
+		const buf = Buffer.isBuffer(body)
+			? body
+			: Buffer.from(typeof body === 'string' ? body : JSON.stringify(body), 'utf-8');
+		const b64 = createHash('sha256').update(buf).digest('base64');
+		contentDigest = `sha-256=:${b64}:`;
+	}
+
+	const components =
+		coveredComponents ??
+		componentsAlias ??
+		(body === undefined
+			? ['@method', '@target-uri']
+			: ['@method', '@target-uri', 'content-digest']);
+
+	const effectiveAlg = alg ?? algorithmAlias;
+	const quotedComponents = components.map((c) => (c.startsWith('"') ? c : `"${c}"`));
+	let sigParams = `(${quotedComponents.join(' ')});created=${created};keyid="${keyId}"`;
+	if (expires !== undefined) {
+		sigParams += `;expires=${expires}`;
+	}
+	if (effectiveAlg !== undefined) {
+		sigParams += `;alg="${effectiveAlg}"`;
+	}
+
+	const signatureInput = `${label}=${sigParams}`;
+
+	const lines: string[] = [];
+	for (const comp of quotedComponents) {
+		const quoteClose = comp.indexOf('"', 1);
+		const name = quoteClose === -1 ? comp.toLowerCase() : comp.slice(1, quoteClose).toLowerCase();
+		if (name === '@method') {
+			lines.push(`${comp}: ${method.toUpperCase()}`);
+		} else if (name === '@target-uri') {
+			lines.push(`${comp}: ${parsedUrl.toString()}`);
+		} else if (name === '@authority') {
+			lines.push(`${comp}: ${parsedUrl.host.toLowerCase()}`);
+		} else if (name === '@scheme') {
+			lines.push(`${comp}: ${parsedUrl.protocol.replace(/:$/, '').toLowerCase()}`);
+		} else if (name === '@path') {
+			lines.push(`${comp}: ${parsedUrl.pathname || '/'}`);
+		} else if (name === '@query') {
+			lines.push(`${comp}: ${parsedUrl.search}`);
+		} else if (name === '@request-target') {
+			lines.push(`${comp}: ${parsedUrl.pathname + parsedUrl.search}`);
+		} else if (name === 'content-digest' && contentDigest !== undefined) {
+			lines.push(`${comp}: ${contentDigest}`);
+		} else if (headers && headers[name] !== undefined) {
+			lines.push(`${comp}: ${headers[name].trim()}`);
+		}
+	}
+	lines.push(`"@signature-params": ${sigParams}`);
+	const signatureBase = lines.join('\n');
+
+	const keyObj = privKey instanceof KeyObject ? privKey : createPrivateKey(privKey);
+	const baseBuffer = Buffer.from(signatureBase, 'utf-8');
+	let sigBuffer: Buffer;
+	if (effectiveAlg === 'rsa-pss-sha512') {
+		sigBuffer = sign('sha512', baseBuffer, {
+			key: keyObj,
+			padding: constants.RSA_PKCS1_PSS_PADDING,
+			saltLength: 64,
+		});
+	} else if (effectiveAlg === 'ed25519' || keyObj.asymmetricKeyType === 'ed25519') {
+		sigBuffer = sign(null, baseBuffer, keyObj);
+	} else {
+		sigBuffer = sign('sha256', baseBuffer, keyObj);
+	}
+
+	const signature = `${label}=:${sigBuffer.toString('base64')}:`;
+
+	const result: {
+		'Signature-Input': string;
+		Signature: string;
+		'Content-Digest'?: string;
+		'signature-input': string;
+		signature: string;
+		'content-digest'?: string;
+	} = {
+		'Signature-Input': signatureInput,
+		Signature: signature,
+		'signature-input': signatureInput,
+		signature,
+	};
+	if (contentDigest !== undefined) {
+		result['Content-Digest'] = contentDigest;
+		result['content-digest'] = contentDigest;
+	}
+	return result;
 };
 
 // SSRF セーフなリモートオブジェクト取得。URL の検証 (スキーム / DNS 解決結果のアドレス範囲) を

@@ -135,4 +135,72 @@ describe('apex computeHttpSignatureHeaders', () => {
 		);
 		expect(isValid).toBe(false);
 	});
+
+	describe('apex computeRfc9421SignatureHeaders', () => {
+		const { publicKey: edPublicKey, privateKey: edPrivateKey } = generateKeyPairSync('ed25519', {
+			publicKeyEncoding: { type: 'spki', format: 'pem' },
+			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+		});
+
+		test('produces an RFC 9421 GET signature verifiable against signature base', () => {
+			const url = 'https://remote.example/u/alice';
+			const headers = apex.computeRfc9421SignatureHeaders({
+				method: 'GET',
+				url,
+				keyId: 'https://example.com/u/alice#main-key',
+				privateKeyPem: privateKey,
+			});
+
+			expect(headers['Signature-Input']).toMatch(
+				/^sig1=\("@method" "@target-uri"\);created=\d+;keyid="https:\/\/example\.com\/u\/alice#main-key"$/,
+			);
+			expect(headers.Signature).toMatch(/^sig1=:[A-Za-z0-9+/=]+:$/);
+			expect(headers['Content-Digest']).toBeUndefined();
+		});
+
+		test('produces an RFC 9421 POST signature with Content-Digest', () => {
+			const url = 'https://remote.example/inbox';
+			const body = { type: 'Create', actor: 'https://example.com/u/alice' };
+			const headers = apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url,
+				keyId: 'https://example.com/u/alice#main-key',
+				privateKeyPem: privateKey,
+				body,
+			});
+
+			expect(headers['Signature-Input']).toMatch(
+				/^sig1=\("@method" "@target-uri" "content-digest"\);created=\d+;keyid="https:\/\/example\.com\/u\/alice#main-key"$/,
+			);
+			expect(headers.Signature).toMatch(/^sig1=:[A-Za-z0-9+/=]+:$/);
+			expect(headers['Content-Digest']).toMatch(/^sha-256=:[A-Za-z0-9+/=]+:$/);
+		});
+
+		test('produces an Ed25519 RFC 9421 signature', () => {
+			const url = 'https://remote.example/inbox';
+			const body = JSON.stringify({ type: 'Follow' });
+			const headers = apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url,
+				keyId: 'https://example.com/u/alice#ed25519-key',
+				privateKey: edPrivateKey,
+				algorithm: 'ed25519',
+				body,
+			});
+
+			expect(headers['Signature-Input']).toContain('alg="ed25519"');
+			expect(headers.Signature).toMatch(/^sig1=:[A-Za-z0-9+/=]+:$/);
+
+			const sigMatch = /^sig1=:(?<sig>[A-Za-z0-9+/=]+):$/.exec(headers.Signature);
+			const sigBytes = Buffer.from(sigMatch?.groups?.sig ?? '', 'base64');
+			const stringToSign = [
+				`"@method": POST`,
+				`"@target-uri": ${url}`,
+				`"content-digest": ${headers['Content-Digest']}`,
+				`"@signature-params": ${headers['Signature-Input'].slice('sig1='.length)}`,
+			].join('\n');
+			const isValid = verify(null, Buffer.from(stringToSign, 'utf-8'), edPublicKey, sigBytes);
+			expect(isValid).toBe(true);
+		});
+	});
 });
