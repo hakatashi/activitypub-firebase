@@ -47,6 +47,19 @@ export const toIdTimestamp = (published: unknown, now = Date.now()) => {
 	return Math.max(0, Math.min(parsed, now));
 };
 
+// `_meta.published` に入れる、タイムライン用の並べ替えキー。ID のタイムスタンプ (`toIdTimestamp`)
+// と同じ規則で決めるので、ID の大小と同じ順序になる。ミリ秒つきの ISO 8601 (UTC) なので辞書順が時系列順になる。
+// AP の `published` は配列・表記揺れ・欠損がありうるため、クエリには使わずこちらを使う (→ ADR-0062)。
+// `published` が解釈できなければ undefined (タイムラインの対象外)。
+export const toPublishedSortKey = (published: unknown, now = Date.now()) => {
+	const publishedString =
+		published instanceof Date ? published.toISOString() : toStringValue(published);
+	if (publishedString === undefined || Number.isNaN(Date.parse(publishedString))) {
+		return undefined;
+	}
+	return new Date(toIdTimestamp(published, now)).toISOString();
+};
+
 // トランザクション内で IRI の Mastodon ID を引き、無ければ採番する。
 //
 // Firestore のトランザクションは「すべての読み取りの後に書き込み」を要求する。この関数は

@@ -202,6 +202,27 @@ describe('Mastodon timelines (Issue #58)', () => {
 			expect(home.map((s) => s.uri)).toEqual([uris[2], uris[1]]);
 		});
 
+		test('notes with array-valued published are paged like any other (_meta.published)', async () => {
+			const uris = await seed(2);
+			const arrayId = `${REMOTE_A}/notes/array`;
+			await apex.store.saveObject({
+				id: arrayId,
+				type: 'Note',
+				attributedTo: REMOTE_A,
+				content: 'array',
+				published: [new Date(Date.UTC(2026, 0, 1, 0, 1, 30)).toISOString()],
+				to: [PUBLIC],
+				cc: [],
+			} as unknown as APObject);
+
+			const all = await getPublicTimeline({ limit: 10 });
+			expect(all.map((s) => s.uri)).toEqual([uris[1], arrayId, uris[0]]);
+			const older = await getPublicTimeline({ limit: 10, maxId: all[0]?.id });
+			expect(older.map((s) => s.uri)).toEqual([arrayId, uris[0]]);
+			const newer = await getPublicTimeline({ limit: 10, minId: all[2]?.id });
+			expect(newer.map((s) => s.uri)).toEqual([uris[1], arrayId]);
+		});
+
 		test('pages keep filling past non-visible notes', async () => {
 			const publicUris = await seed(3);
 			for (let i = 0; i < 10; i++) {

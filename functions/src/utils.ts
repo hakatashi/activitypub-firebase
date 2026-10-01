@@ -205,17 +205,6 @@ export const toIdArray = (value: unknown): string[] => {
 	});
 };
 
-// `published` が1要素の文字列配列で届くことがある (JSON-LD の圧縮結果など)。Firestore は型ごとに
-// 比較を分けるため、配列のままだと `published` の範囲指定クエリから落ち、並び順も狂う
-// (→ ADR-0062)。保存前に文字列へ畳む。
-export const normalizePublished = <T extends object>(object: T): T => {
-	const published: unknown = 'published' in object ? object.published : undefined;
-	if (Array.isArray(published) && published.length === 1 && typeof published[0] === 'string') {
-		return { ...object, published: published[0] };
-	}
-	return object;
-};
-
 export const redactSensitiveBody = (body: unknown): unknown => {
 	if (Array.isArray(body)) {
 		return body.map(redactSensitiveBody);

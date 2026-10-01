@@ -30,6 +30,8 @@ declare module './apex/types.js' {
 		// objects コレクションのみで使う非正規化カウンタ (→ ADR-0037)。
 		likesCount?: number;
 		sharesCount?: number;
+		// タイムラインの並べ替え・範囲指定用の published (→ ADR-0062)。objects コレクションのみ。
+		published?: string;
 	}
 }
 

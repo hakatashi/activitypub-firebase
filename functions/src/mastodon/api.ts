@@ -322,12 +322,8 @@ const TIMELINE_FETCH_FACTOR = 3;
 // 小さい limit でも読み足しラウンドを使い切って空ページになりにくいよう、1回に読む件数の下限を設ける。
 const MIN_TIMELINE_FETCH_SIZE = 100;
 const MAX_TIMELINE_FETCH_ROUNDS = 10;
-// ID のタイムスタンプから求めた published の範囲に持たせる余裕。published の表記揺れ
-// (ミリ秒の有無など) で境界の Note を取りこぼさないよう広めに読み、ID で厳密に比較し直す (→ ADR-0062)。
-const ID_BOUND_MARGIN_MS = 1000;
-
-const idToPublishedBound = (id: string, offsetMs: number) =>
-	new Date(mastodonIdToTimestamp(id) + offsetMs).toISOString();
+// ID のタイムスタンプ部は `_meta.published` (→ ADR-0062) と同じ規則で決まるので、そのまま範囲の端にできる。
+const idToPublishedBound = (id: string) => new Date(mastodonIdToTimestamp(id)).toISOString();
 
 interface PagedNote {
 	id: string;
@@ -378,10 +374,8 @@ const collectVisibleNotes = async ({
 }): Promise<PagedNote[]> => {
 	const ascending = isAscending(page);
 	const lowerId = lowerBoundId(page);
-	const lower =
-		lowerId === undefined ? undefined : idToPublishedBound(lowerId, -ID_BOUND_MARGIN_MS);
-	const upper =
-		page.maxId === undefined ? undefined : idToPublishedBound(page.maxId, ID_BOUND_MARGIN_MS);
+	const lower = lowerId === undefined ? undefined : idToPublishedBound(lowerId);
+	const upper = page.maxId === undefined ? undefined : idToPublishedBound(page.maxId);
 	const fetchSize = Math.max(page.limit * TIMELINE_FETCH_FACTOR, MIN_TIMELINE_FETCH_SIZE);
 
 	const collected: PagedNote[] = [];
@@ -407,11 +401,11 @@ const collectVisibleNotes = async ({
 				collected.push({ id, note });
 			}
 		}
-		const lastPublished = rows.at(-1)?.published;
+		const lastPublished = rows.at(-1)?._meta?.published;
 		if (rows.length < fetchSize || lastPublished === undefined) {
 			break;
 		}
-		cursor = String(lastPublished);
+		cursor = lastPublished;
 	}
 	return takePage(collected, (entry) => entry.id, page);
 };
