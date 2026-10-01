@@ -2,7 +2,7 @@ import type { APActor } from 'activitypub-types';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
-import { getFollowers } from '../../src/mastodon/api.js';
+import { getFollowers, getFollowersPage } from '../../src/mastodon/api.js';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import { Streams } from '../../src/schema.js';
@@ -239,5 +239,31 @@ describe('getFollowers', () => {
 		);
 
 		expect(await getFollowers(actor)).toEqual([]);
+	});
+
+	test('paginates followers by the Mastodon ID of the Follow activity', async () => {
+		const names = ['a', 'b', 'c', 'd'];
+		for (const [i, name] of names.entries()) {
+			const followerId = `https://remote.example/u/${name}`;
+			await apex.store.saveObject({ id: followerId, type: 'Person', preferredUsername: name });
+			await saveStream(`follow-${name}`, {
+				id: `https://remote.example/activities/follow-${name}`,
+				type: 'Follow',
+				actor: [followerId],
+				object: [actor.id],
+				published: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(),
+			});
+		}
+		const usernames = (page: { accounts: { username: string }[] }) =>
+			page.accounts.map((a) => a.username);
+
+		const first = await getFollowersPage(actor, { limit: 2 });
+		expect(usernames(first)).toEqual(['d', 'c']);
+		const second = await getFollowersPage(actor, { limit: 2, maxId: first.cursorIds.at(-1) });
+		expect(usernames(second)).toEqual(['b', 'a']);
+		const none = await getFollowersPage(actor, { limit: 2, maxId: second.cursorIds.at(-1) });
+		expect(none.accounts).toEqual([]);
+		const forward = await getFollowersPage(actor, { limit: 2, minId: second.cursorIds.at(-1) });
+		expect(usernames(forward)).toEqual(['c', 'b']);
 	});
 });

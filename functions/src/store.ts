@@ -132,19 +132,26 @@ export default class Store extends IApexStore implements ApexStore {
 		});
 	}
 
-	// タイムライン用に Note を新しい順に取得する。`actors` を渡すとその attributedTo のものだけに
-	// 絞る (Firestore の `in` 制約により 30 件まで)。`before` は published のカーソル (排他)。
+	// タイムライン用に Note を published 順に取得する。`actors` を渡すとその attributedTo のものだけに
+	// 絞る (Firestore の `in` 制約により 30 件まで)。`lower` / `upper` は published の範囲 (両端を含む)。
+	// `cursor` は読み足し用の published のカーソル (排他。`order` の進行方向の先)。
 	// 可視性の判定は呼び出し側 (statusAttributes.ts の isNoteVisibleTo) の責務。
 	async getNotes({
 		actors,
 		limit,
-		before,
+		order = 'desc',
+		lower,
+		upper,
+		cursor,
 	}: {
 		actors?: string[] | undefined;
 		limit: number;
-		before?: string | undefined;
+		order?: 'asc' | 'desc';
+		lower?: string | undefined;
+		upper?: string | undefined;
+		cursor?: string | undefined;
 	}): Promise<APObject[]> {
-		logger.info({ type: 'getNotes', actors, limit, before });
+		logger.info({ type: 'getNotes', actors, limit, order, lower, upper, cursor });
 		if (actors !== undefined && actors.length === 0) {
 			return [];
 		}
@@ -152,9 +159,15 @@ export default class Store extends IApexStore implements ApexStore {
 		if (actors !== undefined) {
 			query = query.where('attributedTo', 'in', actors);
 		}
-		query = query.orderBy('published', 'desc');
-		if (before !== undefined) {
-			query = query.startAfter(before);
+		if (lower !== undefined) {
+			query = query.where('published', '>=', lower);
+		}
+		if (upper !== undefined) {
+			query = query.where('published', '<=', upper);
+		}
+		query = query.orderBy('published', order);
+		if (cursor !== undefined) {
+			query = query.startAfter(cursor);
 		}
 		const docs = await query.limit(limit).get();
 		return docs.docs.map((doc) => doc.data());

@@ -19,4 +19,4 @@
 - 取得は `ApexStore.getNotes({ actors, limit, before })`。可視性は Firestore で絞れないため、
   新しい順に読み、足りなければ `published` カーソルで読み足す (上限ラウンド数あり)。
   複合インデックス `type + attributedTo + published` を追加する。
-- `limit` は既定 20、最大 40。`max_id` 等のカーソルページネーションは別 Issue。
+- `limit` は既定 20、最大 40。カーソルページネーションは → ADR-0062。
