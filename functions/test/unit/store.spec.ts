@@ -653,6 +653,51 @@ describe('Store', () => {
 	describe('updateObject / updateObjectCopies', () => {
 		const objectId = 'https://example.com/objects/note-1';
 
+		// 外部から取得・受信した表現は _meta を持たない。fullReplace でも既存の _meta
+		// (秘密鍵・非正規化カウンタ) を失わない (Issue #150、ADR-0059)。
+		test('keeps existing _meta on fullReplace', async () => {
+			const actorId = 'https://example.com/users/local';
+			await store.saveObject({
+				id: actorId,
+				type: 'Person',
+				name: 'old',
+				_meta: { privateKey: 'secret', likesCount: 2 },
+			});
+
+			await store.updateObject({ id: actorId, type: 'Person', name: 'new' }, null, true);
+
+			expect(await store.getObject(actorId, true)).toEqual({
+				id: actorId,
+				type: 'Person',
+				name: 'new',
+				_meta: { privateKey: 'secret', likesCount: 2 },
+			});
+		});
+
+		test('keeps existing _meta.collection on updateActivity fullReplace', async () => {
+			const activityId = 'https://example.com/activities/replace-1';
+			await store.saveActivity({
+				id: activityId,
+				type: 'Create',
+				actor: ['https://example.com/users/hakatashi'],
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+
+			await store.updateActivity(
+				{
+					id: activityId,
+					type: 'Create',
+					actor: ['https://example.com/users/hakatashi'],
+					summary: 'x',
+				},
+				true,
+			);
+
+			const activity = await store.getActivity(activityId, true);
+			expect(activity?.summary).toBe('x');
+			expect(activity?._meta?.collection).toEqual(['https://example.com/inbox']);
+		});
+
 		test('replaces embedded copies in streams while keeping the object field an array', async () => {
 			await saveActivityWithIndex({
 				id: 'https://example.com/activities/create-1',

@@ -145,5 +145,46 @@ describe('apex pub/object resolveObject & resolveUnknown (ADR-0053)', () => {
 			expect(result).toEqual(newNote);
 			expect(store.saveObject).toHaveBeenCalledWith(newNote);
 		});
+
+		// 署名検証の鍵リフレッシュは resolveObject(keyId, false, true) を呼ぶ。keyId に自サーバーの
+		// アクターを指定されても HTTP で取り直して上書きしてはならない (Issue #150、ADR-0059)。
+		test('does not refetch a cached local object by IRI even when refresh is requested', async () => {
+			const store = createMockStore();
+			const LOCAL_ACTOR_ID = `https://${DOMAIN}/u/alice`;
+			const storedActor = { id: LOCAL_ACTOR_ID, type: 'Person', _meta: { privateKey: 'secret' } };
+			vi.mocked(store.getObject).mockResolvedValue(storedActor);
+
+			const apex = createApex(store);
+			const requestObject = vi.fn().mockResolvedValue({ id: LOCAL_ACTOR_ID, type: 'Person' });
+			apex.requestObject = requestObject;
+
+			const result = await apex.resolveObject(`${LOCAL_ACTOR_ID}#main-key`, false, true);
+
+			expect(result).toEqual(storedActor);
+			expect(store.getObject).toHaveBeenCalledWith(LOCAL_ACTOR_ID, true);
+			expect(requestObject).not.toHaveBeenCalled();
+			expect(store.updateObject).not.toHaveBeenCalled();
+			expect(store.saveObject).not.toHaveBeenCalled();
+		});
+
+		test('still refetches a cached remote object by IRI when refresh is requested', async () => {
+			const store = createMockStore();
+			vi.mocked(store.getObject).mockResolvedValue({
+				id: REMOTE_NOTE_ID,
+				type: 'Note',
+				content: 'old',
+			});
+
+			const apex = createApex(store);
+			const fresh = { id: REMOTE_NOTE_ID, type: 'Note', content: 'new' };
+			const requestObject = vi.fn().mockResolvedValue(fresh);
+			apex.requestObject = requestObject;
+
+			const result = await apex.resolveObject(REMOTE_NOTE_ID, false, true);
+
+			expect(result).toEqual(fresh);
+			expect(requestObject).toHaveBeenCalledWith(REMOTE_NOTE_ID);
+			expect(store.updateObject).toHaveBeenCalledWith(fresh, null, true);
+		});
 	});
 });

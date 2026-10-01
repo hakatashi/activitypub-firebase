@@ -31,16 +31,13 @@ export const resolveObject = async function (
 	} else {
 		const iri = new URL(String(id));
 		// remove any hash from url
+		const objectId = `${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`;
 		cached =
-			(await this.store.getObject(
-				`${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`,
-				true,
-			)) ??
-			(await this.store.getActivity(
-				`${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`,
-				true,
-			));
-		if (cached && !refresh) {
+			(await this.store.getObject(objectId, true)) ??
+			(await this.store.getActivity(objectId, true));
+		// 自サーバー所有のオブジェクトは DB が正本なので、refresh 指定があっても HTTP で取り直さない。
+		// 取り直した公開表現には _meta が無く、上書きすると秘密鍵などが失われる (→ ADR-0059)。
+		if (cached && (!refresh || this.isLocalIRI(objectId))) {
 			return cached;
 		}
 		if (localOnly) {
