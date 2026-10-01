@@ -33,11 +33,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 クライアントが起動時に叩く `custom_emojis` / `filters` / `announcements` / `lists` などが
 501 を返すと、クライアントが例外を投げて起動に失敗しうる。空配列を返すスタブが必要。
 
-### Status エンティティの値が固定値
-
-`noteObjectToStatus` は `replies_count` / `reblogs_count` / `favourites_count` を 0 固定、
-`visibility` を `'public'` 固定、`language` を `'ja'` 固定、`in_reply_to_id` を `null` 固定で返す。
-
 ### instance 情報が古い/サンプルのまま
 
 `functions/src/mastodon/instanceInformation.ts` の `version` が `'4.0.0'` で、
