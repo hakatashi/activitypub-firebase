@@ -17,6 +17,7 @@ import {
 	toFirestoreKey,
 	unescapeFirestoreKey,
 } from '../firebase.js';
+import { getMastodonIds } from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
@@ -127,14 +128,15 @@ const actorUsernameToAccount = async (
 	return actorObjectToAccount(object, userInfo);
 };
 
+// `id` には AP IRI ではなく、時系列順に採番した Mastodon ID を渡す (→ ADR-0006、ADR-0058)。
+// 取得は `getMastodonIds` で行う。
 export const noteObjectToStatus = (
 	note: APNote,
 	account: CamelToSnake<mastodon.v1.Account>,
+	id: string,
 ): CamelToSnake<mastodon.v1.Status> => {
 	assert(note.id !== undefined, 'note.id is undefined');
 	assert(note.published !== undefined, 'note.published is undefined');
-	const id = note.id.split('/').pop();
-	assert(id !== undefined, 'id is undefined');
 	return {
 		id,
 		created_at: note.published.toString(),
@@ -145,7 +147,8 @@ export const noteObjectToStatus = (
 		spoiler_text: '',
 		visibility: 'public',
 		language: 'ja',
-		uri: `https://${domain}/@${account.username}@${domain}/${id}`,
+		// Mastodon の `uri` は連合で使う ActivityPub の IRI。
+		uri: note.id,
 		url: `https://${domain}/@${account.username}@${domain}/${id}`,
 		replies_count: 0,
 		reblogs_count: 0,
@@ -223,19 +226,24 @@ const getAllNotes = async () => {
 		assert(attributedTo !== undefined, 'attributedTo is undefined');
 		return attributedTo;
 	});
-	const accountsMap = new Map(zip(userIds, await userIdsToAcconts(userIds)));
+	const [accounts, mastodonIds] = await Promise.all([
+		userIdsToAcconts(userIds),
+		getMastodonIds(validNotes.map((note) => ({ iri: note.id, published: note.published }))),
+	]);
+	const accountsMap = new Map(zip(userIds, accounts));
 
-	return Promise.all(
-		validNotes.map((note) => {
-			const attributedTo = getAttributedTo(note);
-			assert(attributedTo !== undefined, 'attributedTo is undefined');
+	return validNotes.map((note) => {
+		const attributedTo = getAttributedTo(note);
+		assert(attributedTo !== undefined, 'attributedTo is undefined');
 
-			const account = accountsMap.get(attributedTo);
-			assert(account !== undefined, 'account is undefined');
+		const account = accountsMap.get(attributedTo);
+		assert(account !== undefined, 'account is undefined');
 
-			return noteObjectToStatus(note, account);
-		}),
-	);
+		const mastodonId = mastodonIds.get(note.id);
+		assert(mastodonId !== undefined, 'mastodonId is undefined');
+
+		return noteObjectToStatus(note, account, mastodonId);
+	});
 };
 
 const getInboxId = (actor: APActor) => {

@@ -91,3 +91,19 @@ export const Contexts = db.collection('contexts') as CollectionReference<StoredC
 
 export const Objects = db.collection('objects') as CollectionReference<APObject>;
 export const Streams = db.collection('streams') as CollectionReference<APObject>;
+
+// Mastodon API の ID と AP IRI の相互マッピング (→ ADR-0006、ADR-0058)。
+// 両方向のドキュメントは `functions/src/mastodonId.ts` が同一トランザクションで書き込む。
+// `mastodonIds` のドキュメント ID (= Mastodon ID) が一意性の鍵になる。
+export interface MastodonIdRecord {
+	iri: string;
+}
+
+export interface MastodonIdByIriRecord {
+	mastodonId: string;
+}
+
+export const MastodonIds = db.collection('mastodonIds') as CollectionReference<MastodonIdRecord>;
+export const MastodonIdsByIri = db.collection(
+	'mastodonIdsByIri',
+) as CollectionReference<MastodonIdByIriRecord>;

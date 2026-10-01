@@ -7,6 +7,7 @@ import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
+import { getOrAssignMastodonIdInTransaction } from './mastodonId.js';
 import { metaIndexPath } from './meta.js';
 import { Contexts, Deliveries, Objects, Streams } from './schema.js';
 import { toIdArray } from './utils.js';
@@ -159,6 +160,9 @@ export default class Store extends IApexStore implements ApexStore {
 					};
 				}
 			}
+			// 新規・既存を問わず Mastodon ID のマッピングを保証する (→ ADR-0058)。
+			// 読み取りを伴うため、トランザクション内の書き込みより前に呼ぶ。
+			await getOrAssignMastodonIdInTransaction(transaction, objectId, objectWithId.published);
 			transaction.set(docRef, objectWithId);
 		});
 		return true;
@@ -352,6 +356,9 @@ export default class Store extends IApexStore implements ApexStore {
 		const activityRef = Streams.doc(escapeFirestoreKey(activityId));
 		return this.db.runTransaction(async (transaction) => {
 			const activityDoc = await transaction.get(activityRef);
+			// 新規・既存を問わず Mastodon ID のマッピングを保証する (→ ADR-0058)。
+			// 読み取りを伴うため、トランザクション内の書き込みより前に呼ぶ。
+			await getOrAssignMastodonIdInTransaction(transaction, activityId, activityWithId.published);
 			if (!activityDoc.exists) {
 				transaction.set(activityRef, activityWithId);
 				return { isNew: true, activity: activityWithId };

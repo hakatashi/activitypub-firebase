@@ -22,13 +22,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 → [ADR-0005](adr/0005-single-user-multi-ready-data-model.md)
 
-### Status ID がランダムで時系列順にならない
-
-`noteObjectToStatus` は Note の IRI 末尾(Firestore の自動生成 ID)を Status ID に使っている。
-これはランダムなので、ID の大小比較で成立している Mastodon API のページネーションが実装できない。
-
-→ [ADR-0006](adr/0006-mastodon-api-id-scheme.md)
-
 ### 投稿できない
 
 `POST /api/v1/statuses` が未実装。投稿は管理者トークン付きで `/activitypub/createPost` を

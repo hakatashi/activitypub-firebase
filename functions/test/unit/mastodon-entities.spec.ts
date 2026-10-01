@@ -97,10 +97,11 @@ describe('noteObjectToStatus', () => {
 			content: 'Hello, Fediverse!',
 		} as unknown as APNote;
 
-		const status = noteObjectToStatus(note, account);
+		const status = noteObjectToStatus(note, account, '00109547043225600000');
 
 		expect(status).toMatchObject({
-			id: 'abc123',
+			id: '00109547043225600000',
+			uri: 'https://example.com/activitypub/o/abc123',
 			created_at: '2023-06-01T00:00:00.000Z',
 			content: 'Hello, Fediverse!',
 			visibility: 'public',
@@ -116,6 +117,6 @@ describe('noteObjectToStatus', () => {
 			content: ['first', 'second'],
 		} as unknown as APNote;
 
-		expect(noteObjectToStatus(note, account).content).toBe('first');
+		expect(noteObjectToStatus(note, account, '00109547043225600000').content).toBe('first');
 	});
 });
