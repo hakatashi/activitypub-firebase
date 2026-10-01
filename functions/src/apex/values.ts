@@ -16,6 +16,20 @@ export const isAPObject = (value: unknown): value is APObject =>
 	typeof value.type === 'string' &&
 	value.type !== '';
 
+export const isHashtag = (value: unknown): boolean => {
+	if (!isRecord(value)) {
+		return false;
+	}
+	const typeVal = value.type;
+	if (typeof typeVal === 'string') {
+		return typeVal === 'Hashtag' || typeVal === 'as:Hashtag';
+	}
+	if (Array.isArray(typeVal)) {
+		return typeVal.some((t) => t === 'Hashtag' || t === 'as:Hashtag');
+	}
+	return false;
+};
+
 export const toArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : [value]);
 
 export const first = (value: unknown): unknown => toArray(value)[0];

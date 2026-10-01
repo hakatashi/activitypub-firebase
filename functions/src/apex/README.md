@@ -176,7 +176,9 @@ context | String, Object, Array. JSON-LD context(s) to use with your app in addi
 endpoints | Object. Optional system-wide api endpoint URLs included in [actor objects](https://www.w3.org/TR/activitypub/#actor-objects): `proxyUrl`, `oauthAuthorizationEndpoint`, `oauthTokenEndpoint`, `provideClientKey`, `signClientKey`, `sharedInbox`, `uploadMedia`
 logger | Object with `info`, `warn`, `error` methods to replace `console`
 store | Replace the default storage model & database backend with your own (see `store/interface.js` for API)
-threadDepth | Controls how far up apex will follow links in incoming activities in order to display the conversation thread & check for inbox forwarding needs  (default 10)
+threadDepth | Controls how far up apex will follow links in incoming activities in order to display the conversation thread & check for inbox forwarding needs  (default 5)
+threadLimit | Maximum total number of objects resolved per request in resolveReferences (default 10)
+threadConcurrency | Maximum number of concurrent remote fetches during reference resolution (default 2)
 systemUser | Actor object representing system and used for signing GETs (see below)
 offlineMode | Disable delivery. Useful for running migrations and queueing deliveries to be sent when app is running
 requestTimeout | Timeout for requests to other servers, ms (default 5000)

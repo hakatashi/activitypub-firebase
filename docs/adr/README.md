@@ -80,3 +80,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0052](0052-connect-apex-specs-to-firestore-store.md) | apex 同梱 spec を Firestore Store の適合テストとして繋ぎ直す | Accepted |
 | [0053](0053-prevent-object-corruption-and-counter-underflow.md) | 受信処理における既存オブジェクトの上書き防止と非正規化カウンタの保護 | Accepted |
 | [0054](0054-ssrf-safe-jsonld-context-loader.md) | `jsonldContextLoader` での SSRF 防御と 4xx エラー応答 | Accepted |
+| [0055](0055-resolve-references-limits-and-cycle-detection.md) | `resolveReferences` での循環参照検出・探索数制限・タグ再帰抑止 | Accepted |
+
