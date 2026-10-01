@@ -82,20 +82,17 @@ npm --prefix functions test           # Firestore エミュレータ + jest
 
 ## 現在の最優先事項
 
-**Phase 1(配送)と Phase 2(受信と AP 準拠)は完了した。** 配送は Cloud Tasks 経由で動作し、
-dev 環境から実在の Mastodon インスタンスへ Follow / Accept / Create が届き、
-Like / Announce / Undo / Inbox Forwarding の受信も実地で確認済み
+**Phase 1(配送)・Phase 2(受信と AP 準拠)・Phase 2.5(apex フォーク)は完了した。**
+配送は Cloud Tasks 経由で動作し、dev 環境から実在の Mastodon インスタンスへ
+Follow / Accept / Create が届き、Like / Announce / Undo / Inbox Forwarding の受信も実地で確認済み
 (→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)、
 [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md))。
-
-次は **Phase 2.5(apex フォーク、Epic
-[#103](https://github.com/hakatashi/activitypub-firebase/issues/103))** と
-**Phase 3(Mastodon API、Epic
-[#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**。この2つは並行できる
-(→ [`docs/roadmap.md`](docs/roadmap.md))。
-
-Phase 2 で apex の不具合・実装不備を7件踏み、本体側の回避コードが apex の内部実装
-(ミドルウェア配列の並び)に依存する段階まで来た。**Phase 2.5 で apex をフォークして
-このリポジトリで保守し、回避コードを撤去する**(→ [ADR-0040](docs/adr/0040-fork-activitypub-express.md)、
-[ADR-0041](docs/adr/0041-vendor-fork-in-tree.md)、
+apex は `functions/src/apex/` にフォークして TypeScript で保守しており、
+本体側にあった apex の回避コードはすべてフォーク内へ移して撤去済み
+(→ [ADR-0040](docs/adr/0040-fork-activitypub-express.md)、
 [ADR-0042](docs/adr/0042-apex-fork-responsibility-boundary.md))。
+**apex の不具合はフォーク側で直す。本体側に回避コードを書かない。**
+
+次は **Phase 3(Mastodon API、Epic
+[#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**。
+Phase 4 は Phase 3 の後に着手する(→ [`docs/roadmap.md`](docs/roadmap.md))。

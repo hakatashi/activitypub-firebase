@@ -36,7 +36,10 @@ apex が HTTP 署名の検証・生成、JSON-LD 処理、webfinger/nodeinfo、�
 フォークは ESM の TypeScript で、型は実装から導出される。`Apex` 型は Store の型で総称化されており、
 本体は `apex.store` を自前の `Store` 型として扱う。`_meta` の本体固有キーは `functions/src/meta.ts` が
 module augmentation で足す(→ [ADR-0051](adr/0051-typescript-apex-fork.md))。
-上流同梱の jasmine spec は `functions/test/apex-upstream/` に無改変で置いてあり、実行されていない。
+上流同梱の jasmine spec は `functions/test/apex-upstream/` に置き、Vitest 互換シム経由で
+Firestore Store(エミュレータ)に対する適合テストとして `npm test` で実行している。
+意図的な設計差で落ちるものは理由を明記して skip している(→ [ADR-0052](adr/0052-connect-apex-specs-to-firestore-store.md))。
+フォーク自体の単体テストは `functions/test/unit/apex/` にある。
 
 apex インスタンスの生成は `functions/src/apex.ts` にある(`functions/src/tasks.ts` からも
 import されるため、`functions/src/activitypub.ts` との import サイクルを避けて分離している)。
@@ -44,6 +47,12 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
 
 - Cloud Functions は body を先に読んでしまうため、JSON-LD の body を手動でパースしている。
 - HTTP 署名検証を通すため `req.headers.host` を公開ドメインで上書きしている。
+- **HTTP 署名の検証・生成は apex フォーク内の自前実装**(`functions/src/apex/net/security.ts`)が行う
+  (→ [ADR-0044](adr/0044-self-implemented-http-signature-in-apex-fork.md))。draft-cavage 以外の形式や
+  不正な署名は 403、鍵取得の一時的失敗は 5xx に分類する。署名対象に `date` か `(created)`、
+  POST では `digest` を必須とし、`Digest` を未加工ボディ(Cloud Functions が提供する `req.rawBody`)の
+  SHA-256 と照合し、署名時刻が許容幅(未来 1 時間・過去 13 時間)を外れたものを 403 で拒否する
+  (→ [ADR-0056](adr/0056-verify-digest-and-date-window-in-http-signature.md))。
 - apex はレスポンス送出後に `postWork` を実行する設計だが、Cloud Functions では
   レスポンス後の CPU が保証されない。そのため `functions/src/postWork.ts` の
   `runPostWorkBeforeSend` ミドルウェアがリクエストごとに `res.send` を差し替え、
@@ -69,6 +78,17 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   リダイレクトを含む**各ホップ**で名前解決した IP が unicast であることを検証する。
   DNS rebinding を防ぐため、検証済みの IP に固定した undici の `Agent` で接続する。
   レスポンスサイズ(5MB)・リダイレクト回数(5回)・タイムアウトにも上限を設ける。
+  外部 `@context` の取得(`jsonldContextLoader`)と配送(`apex.deliver`)も同じ検証と IP 固定を通る。
+  `@context` の取得失敗・JSON-LD 展開エラーは 400 で拒否し、送信側の再送を止める
+  (→ [ADR-0054](adr/0054-ssrf-safe-jsonld-context-loader.md))。配送のレスポンス本文は読まずに破棄する。
+- 受信時の参照解決(`resolveReferences`)は訪問済み IRI で循環を検出し、解決総数(既定 10 件)・
+  並行度(既定 2)・再帰深さ(既定 5)に上限を設ける。`Hashtag` は解決しない
+  (→ [ADR-0055](adr/0055-resolve-references-limits-and-cycle-detection.md))。
+- 受信アクティビティに埋め込まれたオブジェクトがローカル IRI または既存オブジェクトの場合、
+  apex はキャッシュとして再保存せず既存のものを使う。`Store#saveObject` も既存ドキュメントの
+  `_meta` を引き継ぎ、秘密鍵や非正規化カウンタが外部入力で上書きされない
+  (→ [ADR-0053](adr/0053-prevent-object-corruption-and-counter-underflow.md))。
+- ActivityPub C2S のプロキシエンドポイント(`/activitypub/proxy`、actor の `endpoints.proxyUrl`)は公開しない。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
   `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`)は
   `X-Hakatashi-Token` ヘッダで認証する。

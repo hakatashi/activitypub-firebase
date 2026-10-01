@@ -32,11 +32,14 @@ Firebase (Hosting + Cloud Functions + Firestore) 上に、ActivityPub と Mastod
   受信までを実インスタンス相手に確認済みです
   ([docs/runbooks/federation-testing.md](docs/runbooks/federation-testing.md))。
 
-現在は **Phase 2.5(`activitypub-express` のフォークを取り込み、回避コードを解消する /
-[#103](https://github.com/hakatashi/activitypub-firebase/issues/103)、
-[ADR-0040](docs/adr/0040-fork-activitypub-express.md))** と
-**Phase 3(Mastodon API / [#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**
-を並行して進めています。
+- **apex フォーク(Phase 2.5 / [#103](https://github.com/hakatashi/activitypub-firebase/issues/103))**:
+  `activitypub-express` を `functions/src/apex/` に取り込んで TypeScript 化し
+  ([ADR-0040](docs/adr/0040-fork-activitypub-express.md))、本体側にあった apex の回避コードを
+  すべてフォーク内へ移して撤去しました。あわせて上流由来の SSRF・署名検証の不備を塞ぎ、
+  移行後も dev 環境で連合が実地で動作することを確認済みです。
+
+現在は **Phase 3(Mastodon API / [#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**
+を進めています。
 
 **Mastodon API はまだ日常利用に耐えません**(投稿 API が未実装、タイムラインに
 ページネーションと公開範囲判定がないなど)。残っている不具合は
