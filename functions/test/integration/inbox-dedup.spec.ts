@@ -21,6 +21,7 @@ const wrapWithRawBody = (target: unknown) => {
 	wrapper.use(
 		express.raw({ type: () => true, limit: '10mb' }),
 		(req, res, next) => {
+			(req as { rawBody?: unknown }).rawBody = req.body;
 			req.body = (req.body as Buffer).toString('utf-8');
 			next();
 		},

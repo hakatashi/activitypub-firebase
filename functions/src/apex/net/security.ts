@@ -1,4 +1,4 @@
-import { verify } from 'node:crypto';
+import { createHash, timingSafeEqual, verify } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { first, isRecord } from '../values.js';
 import { getApex, getLocals } from './locals.js';
@@ -8,6 +8,8 @@ export interface SignatureHeader {
 	algorithm: string;
 	headers: string[];
 	signature: string;
+	created?: number | undefined;
+	expires?: number | undefined;
 }
 
 export const requireAuthorized = (_req: Request, res: Response, next: NextFunction): void => {
@@ -85,21 +87,47 @@ export const parseSignatureHeader = (rawHeader: unknown): SignatureHeader | null
 	}
 	const headersParam = params.get('headers');
 	const headers = headersParam ? headersParam.toLowerCase().split(/\s+/).filter(Boolean) : ['date'];
+	const createdParam = params.get('created');
+	const created =
+		createdParam !== undefined && /^\d+$/.test(createdParam)
+			? parseInt(createdParam, 10)
+			: undefined;
+	const expiresParam = params.get('expires');
+	const expires =
+		expiresParam !== undefined && /^\d+$/.test(expiresParam)
+			? parseInt(expiresParam, 10)
+			: undefined;
 	return {
 		keyId,
 		algorithm: (params.get('algorithm') || 'rsa-sha256').toLowerCase(),
 		headers,
 		signature,
+		created,
+		expires,
 	};
 };
 
-export const buildStringToSign = (req: Request, headerNames: string[]): string | null => {
+export const buildStringToSign = (
+	req: Request,
+	headerNames: string[],
+	sigHead?: SignatureHeader,
+): string | null => {
 	const lines = [];
 	for (const name of headerNames) {
 		const lowerName = name.toLowerCase();
 		if (lowerName === '(request-target)') {
 			const path = req.originalUrl || req.url;
 			lines.push(`(request-target): ${req.method.toLowerCase()} ${path}`);
+		} else if (lowerName === '(created)') {
+			if (sigHead?.created === undefined) {
+				return null;
+			}
+			lines.push(`(created): ${sigHead.created}`);
+		} else if (lowerName === '(expires)') {
+			if (sigHead?.expires === undefined) {
+				return null;
+			}
+			lines.push(`(expires): ${sigHead.expires}`);
 		} else if (lowerName === 'host') {
 			const host = req.get('host') ?? req.headers.host;
 			if (host === undefined) {
@@ -154,6 +182,9 @@ const publicKeyPemOf = (signer: unknown): string | undefined => {
 	return typeof pem === 'string' && pem ? pem : undefined;
 };
 
+const CLOCK_SKEW_MARGIN_MS = 60 * 60 * 1000; // 1 hour
+const EXPIRATION_WINDOW_LIMIT_MS = 12 * 60 * 60 * 1000; // 12 hours
+
 export const verifySignature = async (
 	req: Request,
 	res: Response,
@@ -187,11 +218,126 @@ export const verifySignature = async (
 		return;
 	}
 
-	const stringToSign = buildStringToSign(req, sigHead.headers);
+	const stringToSign = buildStringToSign(req, sigHead.headers, sigHead);
 	if (stringToSign === null) {
 		apex.logger.warn('Request rejected: signed headers missing from request');
 		res.status(403).send('Invalid http signature');
 		return;
+	}
+
+	const signedHeaders = sigHead.headers;
+	if (!signedHeaders.includes('date') && !signedHeaders.includes('(created)')) {
+		apex.logger.warn('Request rejected: signature must include date or (created) header');
+		res.status(403).send('Invalid http signature');
+		return;
+	}
+
+	if (req.method.toLowerCase() === 'post' && !signedHeaders.includes('digest')) {
+		apex.logger.warn('Request rejected: POST request signature must include digest header');
+		res.status(403).send('Invalid http signature');
+		return;
+	}
+
+	let requestTimeMs: number | undefined;
+	if (signedHeaders.includes('(created)') && sigHead.created !== undefined) {
+		requestTimeMs = sigHead.created * 1000;
+	} else {
+		const dateHeader = req.get('date') ?? req.headers.date;
+		if (typeof dateHeader === 'string') {
+			const parsed = Date.parse(dateHeader);
+			if (!Number.isNaN(parsed)) {
+				requestTimeMs = parsed;
+			}
+		}
+	}
+
+	if (requestTimeMs === undefined) {
+		apex.logger.warn('Request rejected: missing or invalid date in request');
+		res.status(403).send('Invalid http signature');
+		return;
+	}
+
+	const now = Date.now();
+	if (requestTimeMs > now + CLOCK_SKEW_MARGIN_MS) {
+		apex.logger.warn('Request rejected: request date is in the future');
+		res.status(403).send('Invalid http signature');
+		return;
+	}
+
+	const expiresTimeMs =
+		sigHead.expires === undefined
+			? requestTimeMs + EXPIRATION_WINDOW_LIMIT_MS
+			: Math.min(sigHead.expires * 1000, requestTimeMs + EXPIRATION_WINDOW_LIMIT_MS);
+
+	if (now > expiresTimeMs + CLOCK_SKEW_MARGIN_MS) {
+		apex.logger.warn('Request rejected: request date is outside acceptable time window');
+		res.status(403).send('Invalid http signature');
+		return;
+	}
+
+	if (signedHeaders.includes('digest')) {
+		const digestHeader = req.get('digest') ?? req.headers.digest;
+		if (typeof digestHeader !== 'string') {
+			apex.logger.warn('Request rejected: missing digest header');
+			res.status(403).send('Invalid http signature');
+			return;
+		}
+
+		let providedDigest: string | undefined;
+		const digestPairs = digestHeader.split(',').map((part) => {
+			const eqIdx = part.indexOf('=');
+			if (eqIdx === -1) {
+				return ['', part.trim()];
+			}
+			return [part.slice(0, eqIdx).trim().toLowerCase(), part.slice(eqIdx + 1).trim()];
+		});
+		const sha256Pair = digestPairs.find(([algo]) => algo === 'sha-256');
+		if (sha256Pair?.[1]) {
+			providedDigest = sha256Pair[1];
+		} else if (digestPairs.length === 1 && digestPairs[0]?.[0] === '' && digestPairs[0][1]) {
+			providedDigest = digestPairs[0][1];
+		}
+
+		if (!providedDigest) {
+			apex.logger.warn(
+				'Request rejected: digest header does not contain supported sha-256 algorithm',
+			);
+			res.status(403).send('Invalid http signature');
+			return;
+		}
+
+		const rawBody = (req as { rawBody?: unknown }).rawBody;
+		let bodyBuffer: Buffer | undefined;
+		if (Buffer.isBuffer(rawBody)) {
+			bodyBuffer = rawBody;
+		} else if (typeof rawBody === 'string') {
+			bodyBuffer = Buffer.from(rawBody, 'utf-8');
+		} else if (Buffer.isBuffer(req.body)) {
+			bodyBuffer = req.body;
+		} else if (typeof req.body === 'string') {
+			bodyBuffer = Buffer.from(req.body, 'utf-8');
+		} else if (isRecord(req.body)) {
+			bodyBuffer = Buffer.from(JSON.stringify(req.body), 'utf-8');
+		}
+
+		if (!bodyBuffer) {
+			apex.logger.warn('Request rejected: unable to verify digest without raw request body');
+			res.status(403).send('Invalid http signature');
+			return;
+		}
+
+		const computedDigest = createHash('sha256').update(bodyBuffer).digest('base64');
+		const providedBuffer = Buffer.from(providedDigest, 'base64');
+		const computedBuffer = Buffer.from(computedDigest, 'base64');
+		if (
+			providedBuffer.length !== 32 ||
+			computedBuffer.length !== 32 ||
+			!timingSafeEqual(providedBuffer, computedBuffer)
+		) {
+			apex.logger.warn('Request rejected: body digest mismatch');
+			res.status(403).send('Invalid http signature');
+			return;
+		}
 	}
 
 	const body: unknown = req.body;
