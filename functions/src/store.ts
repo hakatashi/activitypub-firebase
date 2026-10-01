@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import type { Firestore } from '@google-cloud/firestore';
+import type { DocumentReference, Firestore } from '@google-cloud/firestore';
 import type { APObject, ApexStore, SaveActivityResult } from './apex/index.js';
 import IApexStore from './apex/store/interface.js';
 import firebase from 'firebase-admin';
@@ -253,7 +253,7 @@ export default class Store extends IApexStore implements ApexStore {
 	override async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
 		const objectDoc = Objects.doc(escapeFirestoreKey(obj.id));
 		if (fullReplace) {
-			await objectDoc.set(obj);
+			await this.replaceKeepingMeta(objectDoc, obj);
 			await this.updateObjectCopies(obj);
 			return obj;
 		}
@@ -411,7 +411,7 @@ export default class Store extends IApexStore implements ApexStore {
 	override async updateActivity(activity: APObject, fullReplace: boolean) {
 		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
 		if (fullReplace) {
-			await activityRef.set(activity);
+			await this.replaceKeepingMeta(activityRef, activity);
 			await this.updateObjectCopies(activity);
 			return activity;
 		}
@@ -584,6 +584,21 @@ export default class Store extends IApexStore implements ApexStore {
 			},
 			{ merge: true },
 		);
+	}
+
+	// fullReplace でドキュメントを丸ごと置き換える際も、既存の _meta (秘密鍵・非正規化カウンタ・
+	// _meta.collection 等) は引き継ぐ。外部から取得・受信した表現は _meta を持たないため、
+	// そのまま set すると内部状態が失われる。saveObject と同じマージ規則を使う (→ ADR-0053、ADR-0059)。
+	private replaceKeepingMeta(ref: DocumentReference<APObject>, object: APObject) {
+		return this.db.runTransaction(async (transaction) => {
+			const existingMeta = (await transaction.get(ref)).data()?._meta;
+			transaction.set(
+				ref,
+				existingMeta === undefined
+					? object
+					: { ...object, _meta: { ...existingMeta, ...object._meta } },
+			);
+		});
 	}
 
 	private objectToUpdateDoc(object: APObject) {
