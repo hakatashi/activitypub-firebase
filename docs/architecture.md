@@ -123,6 +123,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
 | `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
+| `idempotencyKeys` | `sha256(actor IRI + キー)` | `POST /api/v1/statuses` の `Idempotency-Key` → Note IRI。`expiresAt` に TTL ポリシー(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md)) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 
 apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
@@ -198,6 +199,12 @@ API で露出する Status などの ID は AP IRI とは別に採番した、�
 Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [attributedTo +] _meta.published` の昇順・降順の複合インデックス)、
 可視性の判定と ID の厳密な比較は取得後にアプリケーション側で行う。followers のカーソルは Follow アクティビティの Mastodon ID
 (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。
+
+投稿(`POST /api/v1/statuses`)と管理者用の `/activitypub/createPost` は、どちらも `functions/src/notes.ts` の
+`publishNote` で Note を保存し、`Create` を `apex.addToOutbox` に渡して配送する。宛先は visibility から
+Mastodon と同じ規則で決め、リプライ先の投稿者を宛先に加える。`Idempotency-Key` は Note を作る前に
+`idempotencyKeys` へ予約し、1時間以内の再送には既存の Status を返す
+(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md))。
 
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
 未定義のルートは 501 にフォールバックする。

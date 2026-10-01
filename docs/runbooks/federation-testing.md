@@ -92,9 +92,9 @@ Elk 経由のログインは未対応 (#62) のため、OAuth フローを手で
 B=https://mastodon-dev.hakatashi.com
 # 1) アプリ登録 → client_id / client_secret を控える
 curl -s -X POST $B/api/v1/apps -d client_name=cli-test \
-  -d redirect_uris=urn:ietf:wg:oauth:2.0:oob -d "scopes=read"
+  -d redirect_uris=urn:ietf:wg:oauth:2.0:oob -d "scopes=read write"
 # 2) ブラウザでこの URL を開き、ログインして認可 → 表示された code を控える
-echo "$B/oauth/authorize?client_id=<CLIENT_ID>&response_type=code&redirect_uri=urn:ietf:wg:oauth:2.0:oob&scope=read"
+echo "$B/oauth/authorize?client_id=<CLIENT_ID>&response_type=code&redirect_uri=urn:ietf:wg:oauth:2.0:oob&scope=read%20write"
 # 3) code をトークンに交換 → access_token を .env の MASTODON_DEV_TOKEN に書く
 curl -s -X POST $B/oauth/token -d grant_type=authorization_code \
   -d client_id=<CLIENT_ID> -d client_secret=<CLIENT_SECRET> \
