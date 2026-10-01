@@ -121,6 +121,8 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `contexts` | エスケープした URL | JSON-LD コンテキストのキャッシュ |
 | `deliveries` | エスケープした `アクティビティ ID + 宛先` | 配送結果(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
+| `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
+| `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 
 apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
@@ -180,6 +182,13 @@ apex のストア抽象では集計ができないため、フォロワー数・
 | `oauth.ts` | OAuth2 のエンドポイント。認可画面に FirebaseUI を埋め込む |
 | `oauth2Model.ts` | `@node-oauth/oauth2-server` の Firestore バックエンド |
 | `instanceInformation.ts` | `/api/v1/instance` と `/api/v2/instance` のレスポンス |
+
+API で露出する Status などの ID は AP IRI とは別に採番した、時系列順の固定長(20 桁)数値文字列である
+(レイアウトは Mastodon と同じ `ミリ秒 << 16 | シーケンス`。→ [ADR-0006](adr/0006-mastodon-api-id-scheme.md)、
+[ADR-0058](adr/0058-mastodon-id-snowflake-layout.md))。`functions/src/mastodonId.ts` が採番と相互変換を担い、
+`Store#saveObject` / `Store#saveActivity` が保存と同じトランザクションで `published` を基準に採番する。
+読み出し時(`getMastodonIds`)に未採番の IRI があればその場で採番する。
+既存データのバックフィルは `functions/bin/assignMastodonIds.ts`。
 
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
 未定義のルートは 501 にフォールバックする。
