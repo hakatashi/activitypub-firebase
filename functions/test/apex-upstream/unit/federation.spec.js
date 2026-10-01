@@ -20,7 +20,11 @@ describe('federation', function () {
   beforeEach(function () {
     return global.resetDb(apex, client, testUser)
   })
-  describe('delivery queueing', function () {
+  // SKIP REASON (Issue #115 / ADR-0003 / ADR-0052):
+  // Delivery is handled via Cloud Tasks rather than apex's in-memory/MongoDB delivery queue.
+  // deliveryDequeue and deliveryRequeue are intentional stubs on Store, and queueing enqueues
+  // to Cloud Tasks instead of writing to a deliveryQueue DB collection.
+  describe.skip('delivery queueing', function () {
     let body
     let addresses
     beforeEach(async function () {
@@ -97,7 +101,10 @@ describe('federation', function () {
       }])
     })
   })
-  describe('background delivery process', function () {
+  // SKIP REASON (Issue #115 / ADR-0003 / ADR-0052):
+  // Background polling/timer delivery loop (runDelivery, offlineMode: false) is replaced
+  // by event-driven Cloud Tasks delivery in this serverless architecture.
+  describe.skip('background delivery process', function () {
     let body
     let bodyString
     let addresses
@@ -264,6 +271,7 @@ describe('federation', function () {
         .on('request', req => {
           // valid signature
           req.originalUrl = req.path
+          req.url = req.path
           const sigHead = httpSignature.parse(req)
           expect(httpSignature.verifySignature(sigHead, su.publicKey[0].publicKeyPem[0])).toBeTruthy()
           done()
@@ -349,7 +357,12 @@ describe('federation', function () {
     })
   })
   describe('security', function () {
-    it('blocks requests to localhost in production', async function () {
+    // SKIP REASON (Issue #115 / ADR-0050 / ADR-0052):
+    // Upstream apex checked isProductionEnv() directly to block localhost/loopback and returned null.
+    // In this fork (ADR-0050), SSRF protection was redesigned to use remoteFetchPolicy (policy-driven
+    // IP resolution validation in ssrf.ts), which returns undefined or throws on unsafe URLs.
+    // Modern SSRF behavior is tested comprehensively in test/unit/apex/ssrf.spec.ts.
+    it.skip('blocks requests to localhost in production', async function () {
       spyOn(apex, 'isProductionEnv').and.returnValue(true)
       const local = 'https://localhost/u/me'
       const loopback = 'http://127.0.0.1/root'

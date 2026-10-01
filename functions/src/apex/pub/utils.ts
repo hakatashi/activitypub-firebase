@@ -402,8 +402,8 @@ export const idToActivityCollectionsFactory = (
 ): ((id: string) => Record<ActivityStreamName, string>) => {
 	const colonParam = `:${activityParam}`;
 	return (id) => ({
-		shares: `${baseUrl}${routes.shares}`.replace(colonParam, id),
-		likes: `${baseUrl}${routes.likes}`.replace(colonParam, id),
+		shares: `${baseUrl}${routes.shares}`.replace(colonParam, id).toLowerCase(),
+		likes: `${baseUrl}${routes.likes}`.replace(colonParam, id).toLowerCase(),
 	});
 };
 

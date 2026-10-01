@@ -81,7 +81,7 @@ export const address = async function (
 			) {
 				return null;
 			}
-			return this.getCollection(t, Infinity, undefined, true).then((col) => {
+			return this.getAdded(sender, miscCol.id ?? '', Infinity, true).then((col) => {
 				col.orderedItems = toArray(col.orderedItems).flatMap((item) => {
 					if (!isRecord(item)) {
 						return [];

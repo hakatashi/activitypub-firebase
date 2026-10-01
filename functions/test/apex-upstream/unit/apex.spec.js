@@ -1,6 +1,5 @@
-/* global describe, it, expect */
-
-const ActivitypubExpress = require('../../index')
+import Store from '../../../src/store.js'
+import ActivitypubExpress from '../../../src/apex/index.js'
 
 const routes = {
   actor: '/u/:actor',
@@ -24,7 +23,8 @@ describe('apex', function () {
   it('should use base URL if set and no domain', function () {
     const apex = ActivitypubExpress({
       baseUrl: 'https://localhost',
-      routes
+      routes,
+      store: new Store()
     })
     expect(apex.domain).toBe('localhost')
     expect(apex.baseUrl).toBe('https://localhost')
@@ -33,7 +33,8 @@ describe('apex', function () {
   it('should use domain if set and no base URL', function () {
     const apex = ActivitypubExpress({
       domain: 'somedomain:4321',
-      routes
+      routes,
+      store: new Store()
     })
     expect(apex.domain).toBe('somedomain:4321')
     expect(apex.baseUrl).toBe('https://somedomain:4321')
@@ -43,7 +44,8 @@ describe('apex', function () {
     const apex = ActivitypubExpress({
       domain: 'somedomain',
       baseUrl: 'https://someotherdomain:9876',
-      routes
+      routes,
+      store: new Store()
     })
     expect(apex.domain).toBe('someotherdomain:9876')
     expect(apex.baseUrl).toBe('https://someotherdomain:9876')

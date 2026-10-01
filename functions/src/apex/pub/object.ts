@@ -18,10 +18,15 @@ export const resolveObject = async function (
 	} else {
 		const iri = new URL(String(id));
 		// remove any hash from url
-		cached = await this.store.getObject(
-			`${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`,
-			true,
-		);
+		cached =
+			(await this.store.getObject(
+				`${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`,
+				true,
+			)) ??
+			(await this.store.getActivity(
+				`${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`,
+				true,
+			));
 		if (cached && !refresh) {
 			return cached;
 		}
