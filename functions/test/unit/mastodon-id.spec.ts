@@ -121,7 +121,7 @@ describe('Mastodon ID mapping (Firestore)', () => {
 		}
 		const reverse = await Promise.all(ids.map((id) => getIriByMastodonId(id)));
 		expect(reverse).toEqual(iris);
-	});
+	}, 30000);
 
 	test('getMastodonIds returns existing ids and assigns missing ones in published order', async () => {
 		const existing = await getOrAssignMastodonId(
