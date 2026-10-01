@@ -10,7 +10,7 @@ import { db, escapeFirestoreKey } from './firebase.js';
 import { getOrAssignMastodonIdInTransaction } from './mastodonId.js';
 import { metaIndexPath } from './meta.js';
 import { Contexts, Deliveries, Objects, Streams } from './schema.js';
-import { toIdArray } from './utils.js';
+import { normalizePublished, toIdArray } from './utils.js';
 
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
 
@@ -186,7 +186,7 @@ export default class Store extends IApexStore implements ApexStore {
 
 	override async saveObject(object: APObject) {
 		const objectId = object.id ?? this.generateId();
-		const objectWithId = object.id ? object : { ...object, id: objectId };
+		const objectWithId = normalizePublished(object.id ? object : { ...object, id: objectId });
 		const docRef = Objects.doc(escapeFirestoreKey(objectId));
 		await this.db.runTransaction(async (transaction) => {
 			const doc = await transaction.get(docRef);
@@ -295,7 +295,8 @@ export default class Store extends IApexStore implements ApexStore {
 		return count.data().count;
 	}
 
-	override async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
+	override async updateObject(rawObj: APObject, actorId: string | null, fullReplace: boolean) {
+		const obj = normalizePublished(rawObj);
 		const objectDoc = Objects.doc(escapeFirestoreKey(obj.id));
 		if (fullReplace) {
 			await this.replaceKeepingMeta(objectDoc, obj);

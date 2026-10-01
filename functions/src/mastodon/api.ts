@@ -319,6 +319,8 @@ const STATUS_PAGE_LIMITS = { defaultLimit: 20, maxLimit: 40 };
 const FOLLOWERS_PAGE_LIMITS = { defaultLimit: 40, maxLimit: 80 };
 // 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
 const TIMELINE_FETCH_FACTOR = 3;
+// 小さい limit でも読み足しラウンドを使い切って空ページになりにくいよう、1回に読む件数の下限を設ける。
+const MIN_TIMELINE_FETCH_SIZE = 100;
 const MAX_TIMELINE_FETCH_ROUNDS = 10;
 // ID のタイムスタンプから求めた published の範囲に持たせる余裕。published の表記揺れ
 // (ミリ秒の有無など) で境界の Note を取りこぼさないよう広めに読み、ID で厳密に比較し直す (→ ADR-0062)。
@@ -380,7 +382,7 @@ const collectVisibleNotes = async ({
 		lowerId === undefined ? undefined : idToPublishedBound(lowerId, -ID_BOUND_MARGIN_MS);
 	const upper =
 		page.maxId === undefined ? undefined : idToPublishedBound(page.maxId, ID_BOUND_MARGIN_MS);
-	const fetchSize = page.limit * TIMELINE_FETCH_FACTOR;
+	const fetchSize = Math.max(page.limit * TIMELINE_FETCH_FACTOR, MIN_TIMELINE_FETCH_SIZE);
 
 	const collected: PagedNote[] = [];
 	let cursor: string | undefined;

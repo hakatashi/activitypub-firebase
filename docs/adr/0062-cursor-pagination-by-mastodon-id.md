@@ -23,4 +23,10 @@
   未来の `published` は採番時に丸められている (→ ADR-0058) ため、その Note はカーソル付きの範囲に入らないことがある。
 - `/accounts/:id/followers` のカーソルは Follow アクティビティの Mastodon ID とする (Mastodon の follow 行 ID に相当)。
   アカウント ID はリモートで共通のプレースホルダなので使えない。
-- 既存の複合インデックス (`type + published`、`type + attributedTo + published`) は逆順走査でも使える。追加は不要。
+- `min_id` は昇順で読むため、`type + published` と `type + attributedTo + published` の昇順の複合インデックスを追加する
+  (降順のものは昇順クエリに使われず、dev で `FAILED_PRECONDITION` になった)。
+- 可視性で落ちる分の読み足しは、1回 100 件以上 (limit の3倍と比較して大きい方) 読む。小さい limit で
+  非公開投稿が続くと、読み足しの上限で空ページになりカーソルが途切れるため。
+- `published` が1要素の文字列配列で保存されたオブジェクト (dev で実在した) は、Firestore の型ごとの比較により範囲指定から落ちて
+  ページから抜ける。保存時 (`saveObject` / `updateObject`) に文字列へ畳み (`normalizePublished`)、既存分は
+  `functions/bin/normalizePublished.ts` で直す。

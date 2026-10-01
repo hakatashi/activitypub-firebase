@@ -14,6 +14,7 @@ import {
 	toTypeArray,
 	objectToTypeArray,
 	parseApexLocals,
+	normalizePublished,
 } from '../../src/utils.js';
 
 describe('Counter', () => {
@@ -413,5 +414,20 @@ describe('parseApexLocals', () => {
 		expect(result.isRedundantDelivery).toBe(true);
 		expect(result.postWork).toEqual([postWorkFn]);
 		expect(result.customExtraField).toBe('preserved');
+	});
+});
+
+describe('normalizePublished', () => {
+	test('collapses a single-string array into the string', () => {
+		expect(normalizePublished({ published: ['2026-01-01T00:00:00Z'] }).published).toBe(
+			'2026-01-01T00:00:00Z',
+		);
+	});
+
+	test('leaves strings and missing values untouched', () => {
+		expect(normalizePublished({ published: '2026-01-01T00:00:00Z' }).published).toBe(
+			'2026-01-01T00:00:00Z',
+		);
+		expect(normalizePublished({}).published).toBeUndefined();
 	});
 });
