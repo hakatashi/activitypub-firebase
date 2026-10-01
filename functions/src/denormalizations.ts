@@ -1,5 +1,4 @@
 import assert from 'node:assert';
-import firebase from 'firebase-admin';
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { isEqual } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
@@ -36,8 +35,6 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 	}
 	assert(event.data?.ref !== undefined);
 
-	const batch = db.batch();
-
 	const objects = Array.isArray(stream.object)
 		? stream.object
 		: [stream.object].filter((object) => object !== undefined && object !== null);
@@ -45,26 +42,45 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 	// escapeFirestoreKey に渡す前に toIdArray でスカラー ID に正規化する(→ ADR-0020)。
 	const actorId = toIdArray(stream.actor)[0];
 
+	// 更新計画を収集 (ID ごとのデルタ)
+	const userInfoDeltas = new Map<string, { statusesDelta?: number; followersDelta?: number }>();
+	const objectDeltas = new Map<string, { likesDelta?: number; sharesDelta?: number }>();
+
+	const getUserInfoDelta = (id: string) => {
+		let delta = userInfoDeltas.get(id);
+		if (!delta) {
+			delta = {};
+			userInfoDeltas.set(id, delta);
+		}
+		return delta;
+	};
+
+	const getObjectDelta = (id: string) => {
+		let delta = objectDeltas.get(id);
+		if (!delta) {
+			delta = {};
+			objectDeltas.set(id, delta);
+		}
+		return delta;
+	};
+
 	// Denormalize userInfos.statuses_count
 	// stream.type が Create であることも確認する。apex 本体の activity.save は
 	// Like/Announce にも解決済みの object を埋め込んで保存するため、embed された object の
 	// 型だけで判定すると、投稿への Like/Announce のたびに「いいねした側」の
 	// statuses_count を誤って増やそうとしてしまう (存在しない UserInfos への
-	// batch.update() は例外になり、同じ batch の他の更新も巻き添えで失われる → ADR-0039)。
+	// update は例外になり、他の更新も巻き添えで失われる → ADR-0039)。
 	const isCreate = toTypeArray(stream.type).includes('Create');
 	const isNote = isCreate && objects.some(isAPNote);
 	if (isNote && actorId !== undefined) {
-		batch.update(UserInfos.doc(escapeFirestoreKey(actorId)), {
-			statuses_count: firebase.firestore.FieldValue.increment(1),
-		});
+		getUserInfoDelta(actorId).statusesDelta = 1;
 	}
 
 	// Denormalize userInfos.followers_count
 	if (toTypeArray(stream.type).includes('Follow')) {
 		for (const objectId of toIdArray(stream.object)) {
-			batch.update(UserInfos.doc(escapeFirestoreKey(objectId)), {
-				followers_count: firebase.firestore.FieldValue.increment(1),
-			});
+			getUserInfoDelta(objectId).followersDelta =
+				(getUserInfoDelta(objectId).followersDelta ?? 0) + 1;
 		}
 	}
 
@@ -74,17 +90,13 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 	// _meta に対して適用する。
 	if (toTypeArray(stream.type).includes('Like')) {
 		for (const objectId of toIdArray(stream.object)) {
-			batch.update(Objects.doc(escapeFirestoreKey(objectId)), {
-				'_meta.likesCount': firebase.firestore.FieldValue.increment(1),
-			});
+			getObjectDelta(objectId).likesDelta = (getObjectDelta(objectId).likesDelta ?? 0) + 1;
 		}
 	}
 
 	if (toTypeArray(stream.type).includes('Announce')) {
 		for (const objectId of toIdArray(stream.object)) {
-			batch.update(Objects.doc(escapeFirestoreKey(objectId)), {
-				'_meta.sharesCount': firebase.firestore.FieldValue.increment(1),
-			});
+			getObjectDelta(objectId).sharesDelta = (getObjectDelta(objectId).sharesDelta ?? 0) + 1;
 		}
 	}
 
@@ -92,27 +104,102 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 		for (const object of objects) {
 			if (isAPFollow(object)) {
 				for (const followObjectId of toIdArray(object.object)) {
-					batch.update(UserInfos.doc(escapeFirestoreKey(followObjectId)), {
-						followers_count: firebase.firestore.FieldValue.increment(-1),
-					});
+					getUserInfoDelta(followObjectId).followersDelta =
+						(getUserInfoDelta(followObjectId).followersDelta ?? 0) - 1;
 				}
 			}
 			if (isAPLike(object)) {
 				for (const likedObjectId of toIdArray(object.object)) {
-					batch.update(Objects.doc(escapeFirestoreKey(likedObjectId)), {
-						'_meta.likesCount': firebase.firestore.FieldValue.increment(-1),
-					});
+					getObjectDelta(likedObjectId).likesDelta =
+						(getObjectDelta(likedObjectId).likesDelta ?? 0) - 1;
 				}
 			}
 			if (isAPAnnounce(object)) {
 				for (const sharedObjectId of toIdArray(object.object)) {
-					batch.update(Objects.doc(escapeFirestoreKey(sharedObjectId)), {
-						'_meta.sharesCount': firebase.firestore.FieldValue.increment(-1),
-					});
+					getObjectDelta(sharedObjectId).sharesDelta =
+						(getObjectDelta(sharedObjectId).sharesDelta ?? 0) - 1;
 				}
 			}
 		}
 	}
 
-	await batch.commit();
+	if (userInfoDeltas.size === 0 && objectDeltas.size === 0) {
+		return;
+	}
+
+	// トランザクションで安全にアトミック更新し、0 未満へのアンダーフローを防ぐ (→ ADR-0053)。
+	// また対象ドキュメントが存在しない場合はスキップし、例外で処理が落ちないようにする (→ ADR-0039)。
+	await db.runTransaction(async (transaction) => {
+		const userInfoEntries = Array.from(userInfoDeltas.entries()).map(([id, delta]) => ({
+			ref: UserInfos.doc(escapeFirestoreKey(id)),
+			delta,
+		}));
+		const objectEntries = Array.from(objectDeltas.entries()).map(([id, delta]) => ({
+			ref: Objects.doc(escapeFirestoreKey(id)),
+			delta,
+		}));
+
+		const [userInfoEntriesWithDocs, objectEntriesWithDocs] = await Promise.all([
+			Promise.all(
+				userInfoEntries.map(async (entry) => ({
+					...entry,
+					doc: await transaction.get(entry.ref),
+				})),
+			),
+			Promise.all(
+				objectEntries.map(async (entry) => ({
+					...entry,
+					doc: await transaction.get(entry.ref),
+				})),
+			),
+		]);
+
+		userInfoEntriesWithDocs.forEach((entry) => {
+			if (!entry.doc.exists) {
+				return;
+			}
+			const data = entry.doc.data();
+			assert(data !== undefined);
+			const updates: Record<string, number> = {};
+			if (entry.delta.statusesDelta !== undefined) {
+				updates.statuses_count = Math.max(
+					0,
+					(data.statuses_count ?? 0) + entry.delta.statusesDelta,
+				);
+			}
+			if (entry.delta.followersDelta !== undefined) {
+				updates.followers_count = Math.max(
+					0,
+					(data.followers_count ?? 0) + entry.delta.followersDelta,
+				);
+			}
+			if (Object.keys(updates).length > 0) {
+				transaction.update(entry.ref, updates);
+			}
+		});
+
+		objectEntriesWithDocs.forEach((entry) => {
+			if (!entry.doc.exists) {
+				return;
+			}
+			const data = entry.doc.data();
+			assert(data !== undefined);
+			const updates: Record<string, number> = {};
+			if (entry.delta.likesDelta !== undefined) {
+				updates['_meta.likesCount'] = Math.max(
+					0,
+					(data._meta?.likesCount ?? 0) + entry.delta.likesDelta,
+				);
+			}
+			if (entry.delta.sharesDelta !== undefined) {
+				updates['_meta.sharesCount'] = Math.max(
+					0,
+					(data._meta?.sharesCount ?? 0) + entry.delta.sharesDelta,
+				);
+			}
+			if (Object.keys(updates).length > 0) {
+				transaction.update(entry.ref, updates);
+			}
+		});
+	});
 });

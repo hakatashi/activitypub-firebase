@@ -145,7 +145,22 @@ export default class Store extends IApexStore implements ApexStore {
 	override async saveObject(object: APObject) {
 		const objectId = object.id ?? this.generateId();
 		const objectWithId = object.id ? object : { ...object, id: objectId };
-		await Objects.doc(escapeFirestoreKey(objectId)).set(objectWithId);
+		const docRef = Objects.doc(escapeFirestoreKey(objectId));
+		await this.db.runTransaction(async (transaction) => {
+			const doc = await transaction.get(docRef);
+			if (doc.exists) {
+				const existingData = doc.data();
+				// 既存の _meta (非正規化カウンタ等) がある場合、新しい object に _meta が含まれていなければ
+				// 引き継ぎ、含まれている場合はマージして既存のカウンタを保護する (→ ADR-0053)。
+				if (existingData?._meta !== undefined) {
+					objectWithId._meta = {
+						...existingData._meta,
+						...objectWithId._meta,
+					};
+				}
+			}
+			transaction.set(docRef, objectWithId);
+		});
 		return true;
 	}
 

@@ -66,6 +66,28 @@ describe('Store', () => {
 			await store.saveObject(object);
 			expect(await store.getObject(object.id)).toEqual(object);
 		});
+
+		test('preserves existing _meta when saved again without _meta (ADR-0053)', async () => {
+			const objectWithMeta = {
+				id: 'https://example.com/objects/preserve-meta',
+				type: 'Note',
+				content: 'initial content',
+				_meta: { likesCount: 5, sharesCount: 3 },
+			};
+			await store.saveObject(objectWithMeta);
+
+			// _meta のない同じオブジェクトで上書き保存する
+			const objectWithoutMeta = {
+				id: 'https://example.com/objects/preserve-meta',
+				type: 'Note',
+				content: 'updated content',
+			};
+			await store.saveObject(objectWithoutMeta);
+
+			const saved = await store.getObject('https://example.com/objects/preserve-meta', true);
+			expect(saved?.content).toBe('updated content');
+			expect(saved?._meta).toEqual({ likesCount: 5, sharesCount: 3 });
+		});
 	});
 
 	describe('getObjects', () => {

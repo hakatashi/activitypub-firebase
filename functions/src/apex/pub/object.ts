@@ -1,5 +1,5 @@
 import type { Apex, APObject } from '../types.js';
-import { first, isAPObject, isRecord } from '../values.js';
+import { first, firstString, isAPObject, isRecord } from '../values.js';
 
 // find object in local DB or fetch from origin server
 export const resolveObject = async function (
@@ -15,6 +15,19 @@ export const resolveObject = async function (
 	if (isAPObject(id)) {
 		// already an object
 		object = id;
+		const objectId = typeof id.id === 'string' ? id.id : undefined;
+		if (objectId) {
+			cached =
+				(await this.store.getObject(objectId, true)) ??
+				(await this.store.getActivity(objectId, true));
+			// 自サーバー所有のオブジェクトで既に DB に存在する場合は、既存のものを返し上書きしない (→ ADR-0053)
+			if (cached && this.isLocalIRI(objectId)) {
+				return cached;
+			}
+			if (cached && !refresh) {
+				return cached;
+			}
+		}
 	} else {
 		const iri = new URL(String(id));
 		// remove any hash from url
@@ -73,6 +86,32 @@ export const resolveUnknown = async function (
 		 * to collections. Just have to make sure this doesn't get saved back to the object cache
 		 */
 		object = await this.requestObject(objectOrIRI);
+	} else if (isRecord(objectOrIRI) && objectOrIRI.id) {
+		const id = firstString(objectOrIRI.id);
+		if (id !== undefined) {
+			// 自サーバー所有のオブジェクトならローカル DB から返し、上書き保存しない (→ ADR-0053)
+			if (this.isLocalIRI(id)) {
+				const localActivity = await this.store.getActivity(id);
+				if (localActivity) {
+					return localActivity;
+				}
+				const localCached = await this.store.getObject(id);
+				if (localCached) {
+					return localCached;
+				}
+				return isAPObject(objectOrIRI) ? objectOrIRI : null;
+			}
+			// すでに DB にキャッシュされているオブジェクトならそれを返し、上書き保存しない (→ ADR-0053)
+			const activity = await this.store.getActivity(id);
+			if (activity) {
+				return activity;
+			}
+			const cached = await this.store.getObject(id);
+			if (cached) {
+				return cached;
+			}
+		}
+		object = objectOrIRI;
 	} else {
 		object = objectOrIRI;
 	}

@@ -78,3 +78,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0050](0050-ssrf-safe-request-object-in-apex.md) | SSRF セーフな `requestObject` を apex フォークに取り込む | Accepted |
 | [0051](0051-typescript-apex-fork.md) | apex フォークを TypeScript / ESM 化し、型を実装から導出する | Accepted |
 | [0052](0052-connect-apex-specs-to-firestore-store.md) | apex 同梱 spec を Firestore Store の適合テストとして繋ぎ直す | Accepted |
+| [0053](0053-prevent-object-corruption-and-counter-underflow.md) | 受信処理における既存オブジェクトの上書き防止と非正規化カウンタの保護 | Accepted |
