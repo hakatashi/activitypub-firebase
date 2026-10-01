@@ -1,6 +1,13 @@
-import { createHash, timingSafeEqual, verify } from 'node:crypto';
+import { constants, createHash, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
+import {
+	isSignatureError,
+	SignatureErrorCode,
+	verifySignature as verifyRfc9421Signature,
+} from 'http-message-sig';
+import type { RequestDescriptor, VerificationPolicy, Verifier } from 'http-message-sig';
 import { first, isRecord } from '../values.js';
+import type { APObject } from '../types.js';
 import { getApex, getLocals } from './locals.js';
 
 export interface SignatureHeader {
@@ -170,20 +177,363 @@ export const verifyHttpSignature = (
 	}
 };
 
-const publicKeyPemOf = (signer: unknown): string | undefined => {
+export const publicKeyPemOf = (signer: unknown, keyId?: string): string | undefined => {
 	if (!isRecord(signer)) {
 		return undefined;
 	}
-	const publicKey = first(signer.publicKey);
-	if (!isRecord(publicKey)) {
-		return undefined;
+	const keys: unknown[] = [];
+	if (Array.isArray(signer.publicKey)) {
+		keys.push(...signer.publicKey);
+	} else if (isRecord(signer.publicKey)) {
+		keys.push(signer.publicKey);
 	}
-	const pem = first(publicKey.publicKeyPem);
-	return typeof pem === 'string' && pem ? pem : undefined;
+	if (Array.isArray(signer.additionalPublicKeys)) {
+		keys.push(...signer.additionalPublicKeys);
+	}
+	if (keyId) {
+		for (const key of keys) {
+			if (isRecord(key) && (key.id === keyId || !key.id)) {
+				const pem = first(key.publicKeyPem);
+				if (typeof pem === 'string' && pem) {
+					return pem;
+				}
+			}
+		}
+	}
+	for (const key of keys) {
+		if (isRecord(key)) {
+			const pem = first(key.publicKeyPem);
+			if (typeof pem === 'string' && pem) {
+				return pem;
+			}
+		}
+	}
+	return undefined;
 };
 
-const CLOCK_SKEW_MARGIN_MS = 60 * 60 * 1000; // 1 hour
-const EXPIRATION_WINDOW_LIMIT_MS = 12 * 60 * 60 * 1000; // 12 hours
+const CLOCK_SKEW_MARGIN_SECONDS = 60 * 60; // 1 hour
+const EXPIRATION_WINDOW_LIMIT_SECONDS = 12 * 60 * 60; // 12 hours
+const CLOCK_SKEW_MARGIN_MS = CLOCK_SKEW_MARGIN_SECONDS * 1000;
+const EXPIRATION_WINDOW_LIMIT_MS = EXPIRATION_WINDOW_LIMIT_SECONDS * 1000;
+
+class TombstoneIgnoredError extends Error {}
+class KeyNotFoundError extends Error {}
+class InvalidComponentsError extends Error {}
+
+const buildRequestDescriptor = (req: Request): RequestDescriptor => {
+	let targetUri = req.originalUrl || req.url;
+	if (!targetUri.startsWith('http://') && !targetUri.startsWith('https://')) {
+		const host = req.get('host') ?? req.headers.host ?? 'localhost';
+		const protoHeader = req.get('x-forwarded-proto') ?? req.headers['x-forwarded-proto'];
+		let protocol = 'https';
+		if (typeof protoHeader === 'string') {
+			protocol = protoHeader.split(',')[0]?.trim() || 'https';
+		}
+		targetUri = `${protocol}://${host}${targetUri}`;
+	}
+	const urlObj = new URL(targetUri);
+	const requestTarget = `${urlObj.pathname}${urlObj.search}`;
+
+	const fields: { name: string; value: string }[] = [];
+	for (const [key, value] of Object.entries(req.headers)) {
+		if (value === undefined) {
+			continue;
+		}
+		if (Array.isArray(value)) {
+			for (const v of value) {
+				fields.push({ name: key.toLowerCase(), value: v });
+			}
+		} else {
+			fields.push({ name: key.toLowerCase(), value: String(value) });
+		}
+	}
+
+	return {
+		kind: 'request',
+		method: req.method.toUpperCase(),
+		targetUri,
+		requestTarget,
+		fields,
+	};
+};
+
+const verifyBodyDigest = (req: Request): boolean => {
+	const rawBody = (req as { rawBody?: unknown }).rawBody;
+	let bodyBuffer: Buffer | undefined;
+	if (Buffer.isBuffer(rawBody)) {
+		bodyBuffer = rawBody;
+	} else if (typeof rawBody === 'string') {
+		bodyBuffer = Buffer.from(rawBody, 'utf-8');
+	} else if (Buffer.isBuffer(req.body)) {
+		bodyBuffer = req.body;
+	} else if (typeof req.body === 'string') {
+		bodyBuffer = Buffer.from(req.body, 'utf-8');
+	} else if (isRecord(req.body)) {
+		bodyBuffer = Buffer.from(JSON.stringify(req.body), 'utf-8');
+	}
+
+	if (!bodyBuffer) {
+		return false;
+	}
+
+	const computedSha256 = createHash('sha256').update(bodyBuffer).digest();
+
+	// 1. content-digest header (RFC 9530 / RFC 9421)
+	const contentDigestHeader = req.get('content-digest') ?? req.headers['content-digest'];
+	if (typeof contentDigestHeader === 'string') {
+		const sha256Match = /sha-256\s*=\s*:(?<digest>[A-Za-z0-9+/=]+):/i.exec(contentDigestHeader);
+		if (sha256Match?.groups?.digest) {
+			const providedBuffer = Buffer.from(sha256Match.groups.digest, 'base64');
+			if (providedBuffer.length === 32 && timingSafeEqual(providedBuffer, computedSha256)) {
+				return true;
+			}
+		}
+	}
+
+	// 2. digest header (RFC 3230)
+	const digestHeader = req.get('digest') ?? req.headers.digest;
+	if (typeof digestHeader === 'string') {
+		const pairs = digestHeader.split(',').map((part) => {
+			const eqIdx = part.indexOf('=');
+			if (eqIdx === -1) {
+				return ['', part.trim()];
+			}
+			return [part.slice(0, eqIdx).trim().toLowerCase(), part.slice(eqIdx + 1).trim()];
+		});
+		const sha256Pair = pairs.find(([algo]) => algo === 'sha-256');
+		let providedBase64: string | undefined;
+		if (sha256Pair?.[1]) {
+			providedBase64 = sha256Pair[1];
+		} else if (pairs.length === 1 && pairs[0]?.[0] === '' && pairs[0][1]) {
+			providedBase64 = pairs[0][1];
+		}
+		if (providedBase64) {
+			const providedBuffer = Buffer.from(providedBase64, 'base64');
+			if (providedBuffer.length === 32 && timingSafeEqual(providedBuffer, computedSha256)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+};
+
+const createVerifierFromPem = (publicKeyPem: string, claimedAlg?: string): Verifier => {
+	let keyType: string | undefined;
+	try {
+		const keyObj = createPublicKey(publicKeyPem);
+		keyType = keyObj.asymmetricKeyType;
+	} catch {
+		// unable to parse key object
+	}
+
+	const algorithm = claimedAlg ?? (keyType === 'ed25519' ? 'ed25519' : 'rsa-v1_5-sha256');
+
+	return {
+		algorithm,
+		verify(data: Uint8Array, signature: Uint8Array): boolean {
+			try {
+				if (algorithm === 'rsa-v1_5-sha256') {
+					return verify('sha256', data, publicKeyPem, signature);
+				}
+				if (algorithm === 'rsa-pss-sha512') {
+					return verify(
+						'sha512',
+						data,
+						{
+							key: publicKeyPem,
+							padding: constants.RSA_PKCS1_PSS_PADDING,
+							saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+						},
+						signature,
+					);
+				}
+				if (algorithm === 'ed25519') {
+					return verify(null, data, publicKeyPem, signature);
+				}
+			} catch {
+				return false;
+			}
+			return false;
+		},
+	};
+};
+
+const verifyRfc9421 = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+	const apex = getApex(req);
+	const locals = getLocals(res);
+
+	if (req.method.toLowerCase() === 'post') {
+		const digestOk = verifyBodyDigest(req);
+		if (!digestOk) {
+			apex.logger.warn('Request rejected: invalid or missing body digest in RFC 9421 request');
+			res.status(403).send('Invalid http signature');
+			return;
+		}
+	}
+
+	const body: unknown = req.body;
+	const type =
+		isRecord(body) && typeof body.type === 'string' && body.type ? body.type.toLowerCase() : '';
+
+	const descriptor = buildRequestDescriptor(req);
+
+	let resolvedSigner: APObject | undefined;
+	let cachedKey = true;
+	let resolvedKeyId: string | undefined;
+
+	const resolveVerifier = async (untrustedCandidate: {
+		readonly algorithm?: string;
+		readonly components: readonly { readonly name: string }[];
+		readonly parameters: { readonly keyid?: string; readonly [key: string]: unknown };
+	}): Promise<Verifier> => {
+		const componentNames = untrustedCandidate.components.map((c) => c.name.toLowerCase());
+		if (!componentNames.includes('@method')) {
+			throw new InvalidComponentsError('Missing @method component');
+		}
+		const hasTarget =
+			componentNames.includes('@target-uri') ||
+			(componentNames.includes('@path') &&
+				(componentNames.includes('@authority') || componentNames.includes('host')));
+		if (!hasTarget) {
+			throw new InvalidComponentsError('Missing target component (@target-uri or @path)');
+		}
+		if (req.method.toLowerCase() === 'post') {
+			const hasDigest =
+				componentNames.includes('content-digest') || componentNames.includes('digest');
+			if (!hasDigest) {
+				throw new InvalidComponentsError('Missing digest component in POST request');
+			}
+		}
+
+		const keyId = untrustedCandidate.parameters.keyid;
+		if (typeof keyId !== 'string' || !keyId) {
+			throw new KeyNotFoundError('Missing or invalid keyid parameter');
+		}
+		resolvedKeyId = keyId;
+
+		let signer: APObject | undefined;
+		try {
+			signer = await apex.resolveObject(keyId, false, false, true);
+			if (
+				(type === 'delete' || type === 'update') &&
+				(!signer || (typeof signer.type === 'string' && signer.type.toLowerCase() === 'tombstone'))
+			) {
+				throw new TombstoneIgnoredError();
+			}
+			if (!signer) {
+				cachedKey = false;
+				signer = await apex.resolveObject(keyId);
+			}
+		} catch (err) {
+			if (err instanceof TombstoneIgnoredError) {
+				throw err;
+			}
+			apex.logger.warn('error resolving signer for signature verification', err);
+			throw err;
+		}
+
+		if (!signer) {
+			throw new KeyNotFoundError(`Could not resolve signer: ${keyId}`);
+		}
+		resolvedSigner = signer;
+
+		const publicKeyPem = publicKeyPemOf(signer, keyId);
+		if (!publicKeyPem) {
+			throw new KeyNotFoundError(`Could not find public key for ${keyId}`);
+		}
+
+		return createVerifierFromPem(publicKeyPem, untrustedCandidate.algorithm);
+	};
+
+	const policy: VerificationPolicy = {
+		algorithms: ['rsa-v1_5-sha256', 'rsa-pss-sha512', 'ed25519'],
+		requiredComponents: ['@method'],
+		requiredParameters: ['keyid'],
+		clockSkew: CLOCK_SKEW_MARGIN_SECONDS,
+		maxAge: EXPIRATION_WINDOW_LIMIT_SECONDS,
+	};
+
+	try {
+		try {
+			await verifyRfc9421Signature(descriptor, { policy, resolveVerifier });
+		} catch (firstErr) {
+			if (
+				cachedKey &&
+				resolvedKeyId &&
+				isSignatureError(firstErr) &&
+				firstErr.code === SignatureErrorCode.VerificationFailed
+			) {
+				apex.logger.info(`Refreshing key for ${resolvedKeyId}`);
+				try {
+					resolvedSigner = await apex.resolveObject(resolvedKeyId, false, true);
+				} catch (refreshErr) {
+					apex.logger.warn('error refreshing key for signature verification', refreshErr);
+					res.status(500).send();
+					return;
+				}
+				const refreshedKeyPem = publicKeyPemOf(resolvedSigner, resolvedKeyId);
+				if (!refreshedKeyPem) {
+					res.status(403).send('Invalid http signature');
+					return;
+				}
+				await verifyRfc9421Signature(descriptor, {
+					policy,
+					resolveVerifier: (candidate) =>
+						createVerifierFromPem(refreshedKeyPem, candidate.algorithm),
+				});
+			} else {
+				throw firstErr;
+			}
+		}
+
+		locals.sender = resolvedSigner;
+		next();
+	} catch (err) {
+		if (err instanceof TombstoneIgnoredError) {
+			console.log(
+				'Ignoring unverifiable %s from %s',
+				type,
+				isRecord(body) ? body.actor : undefined,
+			);
+			res.status(200).send();
+			return;
+		}
+		if (err instanceof KeyNotFoundError || err instanceof InvalidComponentsError) {
+			apex.logger.warn(`Request rejected: ${err.message}`);
+			res.status(403).send('Invalid http signature');
+			return;
+		}
+		if (isSignatureError(err)) {
+			if (err.code === SignatureErrorCode.ResolverFailed) {
+				if (err.cause instanceof TombstoneIgnoredError) {
+					console.log(
+						'Ignoring unverifiable %s from %s',
+						type,
+						isRecord(body) ? body.actor : undefined,
+					);
+					res.status(200).send();
+					return;
+				}
+				if (err.cause instanceof KeyNotFoundError || err.cause instanceof InvalidComponentsError) {
+					apex.logger.warn(`Request rejected: ${err.cause.message}`);
+					res.status(403).send('Invalid http signature');
+					return;
+				}
+				apex.logger.warn('Resolver failed during RFC 9421 signature verification', err.cause);
+				res.status(500).send();
+				return;
+			}
+			apex.logger.warn(
+				`Request rejected: RFC 9421 verification error (${err.code}): ${err.message}`,
+			);
+			res.status(403).send('Invalid http signature');
+			return;
+		}
+		apex.logger.warn('Unexpected error during RFC 9421 verification', err);
+		res.status(500).send();
+	}
+};
 
 export const verifySignature = async (
 	req: Request,
@@ -193,8 +543,9 @@ export const verifySignature = async (
 	const apex = getApex(req);
 	const locals = getLocals(res);
 	const signatureHeader = req.get('signature') || req.get('authorization');
+	const signatureInputHeader = req.get('signature-input');
 
-	if (!signatureHeader) {
+	if (!signatureHeader && !signatureInputHeader) {
 		if (req.app.get('env') !== 'development') {
 			apex.logger.warn('Request rejected: missing http signature');
 			res.status(401).send('Missing http signature');
@@ -208,6 +559,17 @@ export const verifySignature = async (
 			apex.logger.warn('error resolving actor in dev mode', err);
 			res.status(500).send();
 		}
+		return;
+	}
+
+	const isRfc9421 = Boolean(
+		signatureInputHeader ||
+		(typeof signatureHeader === 'string' &&
+			/^[A-Za-z0-9_-]+\s*=\s*:[A-Za-z0-9+/=]*:/.test(signatureHeader.trim())),
+	);
+
+	if (isRfc9421) {
+		await verifyRfc9421(req, res, next);
 		return;
 	}
 

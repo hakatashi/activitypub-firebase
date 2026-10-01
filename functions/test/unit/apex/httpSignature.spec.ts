@@ -136,3 +136,80 @@ describe('apex computeHttpSignatureHeaders', () => {
 		expect(isValid).toBe(false);
 	});
 });
+
+describe('apex computeRfc9421SignatureHeaders', () => {
+	const mockStore = {} as IApexStore;
+	const apex = ActivitypubExpress({
+		name: 'test-apex',
+		version: '1.0.0',
+		domain: 'example.com',
+		actorParam: 'actor',
+		objectParam: 'id',
+		activityParam: 'id',
+		routes: {
+			actor: '/u/:actor',
+			object: '/o/:id',
+			activity: '/s/:id',
+			inbox: '/u/:actor/inbox',
+			outbox: '/u/:actor/outbox',
+			followers: '/u/:actor/followers',
+			following: '/u/:actor/following',
+			liked: '/u/:actor/liked',
+			collections: '/u/:actor/c/:id',
+			blocked: '/u/:actor/blocked',
+			rejections: '/u/:actor/rejections',
+			rejected: '/u/:actor/rejected',
+			shares: '/s/:id/shares',
+			likes: '/s/:id/likes',
+		},
+		logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+		store: mockStore,
+		offlineMode: false,
+	});
+
+	const { publicKey: edPublicKey, privateKey: edPrivateKey } = generateKeyPairSync('ed25519');
+	const edPublicKeyPem = edPublicKey.export({ type: 'spki', format: 'pem' });
+	const edPrivateKeyPem = edPrivateKey.export({ type: 'pkcs8', format: 'pem' });
+
+	test('generates valid RFC 9421 signature headers for POST request with body', async () => {
+		const url = 'https://example.com/u/alice/inbox';
+		const body = { type: 'Create', actor: 'https://example.com/u/alice' };
+		const createdTime = 1700000000;
+
+		const headers = await apex.computeRfc9421SignatureHeaders({
+			method: 'POST',
+			url,
+			keyId: 'https://example.com/u/alice#main-key',
+			privateKey,
+			body,
+			created: createdTime,
+		});
+
+		expect(headers).toHaveProperty('signature-input');
+		expect(headers).toHaveProperty('signature');
+		expect(headers).toHaveProperty('content-digest');
+
+		expect(headers['signature-input']).toContain('sig1=("@method" "@target-uri" "content-digest")');
+		expect(headers['signature-input']).toContain('created=1700000000');
+		expect(headers['signature-input']).toContain('keyid="https://example.com/u/alice#main-key"');
+		expect(headers.signature).toMatch(/^sig1=:[A-Za-z0-9+/=]+:$/);
+		expect(headers['content-digest']).toMatch(/^sha-256=:[A-Za-z0-9+/=]+:$/);
+	});
+
+	test('generates valid Ed25519 signature headers when Ed25519 key is provided', async () => {
+		const url = 'https://example.com/u/alice/inbox';
+		const body = { type: 'Like', actor: 'https://example.com/u/alice' };
+
+		const headers = await apex.computeRfc9421SignatureHeaders({
+			method: 'POST',
+			url,
+			keyId: 'https://example.com/u/alice#ed25519-key',
+			privateKey: edPrivateKeyPem,
+			body,
+		});
+
+		expect(headers['signature-input']).toContain('alg="ed25519"');
+		expect(headers.signature).toMatch(/^sig1=:[A-Za-z0-9+/=]+:$/);
+		expect(edPublicKeyPem).toContain('PUBLIC KEY');
+	});
+});

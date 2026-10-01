@@ -82,4 +82,6 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0054](0054-ssrf-safe-jsonld-context-loader.md) | `jsonldContextLoader` での SSRF 防御と 4xx エラー応答 | Accepted |
 | [0055](0055-resolve-references-limits-and-cycle-detection.md) | `resolveReferences` での循環参照検出・探索数制限・タグ再帰抑止 | Accepted |
 | [0056](0056-verify-digest-and-date-window-in-http-signature.md) | HTTP 署名検証における Digest 検証と Date 有効期限チェックの追加 | Accepted |
+| [0057](0057-support-rfc-9421-via-standard-library.md) | RFC 9421 (HTTP Message Signatures) に標準ライブラリ http-message-sig で対応する | Accepted |
+
 
