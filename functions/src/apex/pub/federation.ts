@@ -1,4 +1,6 @@
-import { createHash, sign } from 'node:crypto';
+import { constants, createHash, createPrivateKey, sign } from 'node:crypto';
+import { createSignature } from 'http-message-sig';
+import type { RequestDescriptor } from 'http-message-sig';
 import { request } from 'undici';
 import type { Dispatcher } from 'undici';
 import type { Apex, APObject } from '../types.js';
@@ -82,6 +84,112 @@ export const computeHttpSignatureHeaders = ({
 		privateKey: privateKeyPem,
 	});
 	return digest === undefined ? { date, signature } : { date, signature, digest };
+};
+
+export const computeRfc9421SignatureHeaders = async ({
+	method = 'post',
+	url,
+	keyId,
+	privateKey,
+	body,
+	rawBody,
+	created = Math.floor(Date.now() / 1000),
+	expires,
+	alg,
+	components = ['@method', '@target-uri', 'content-digest'],
+}: {
+	method?: string;
+	url: URL | string;
+	keyId: string;
+	privateKey: string;
+	body?: unknown;
+	rawBody?: string | Buffer | undefined;
+	created?: number;
+	expires?: number;
+	alg?: string;
+	components?: string[];
+}): Promise<Record<string, string>> => {
+	const parsedUrl = typeof url === 'string' ? new URL(url) : url;
+	let privateKeyObj: ReturnType<typeof createPrivateKey>;
+	try {
+		privateKeyObj = createPrivateKey(privateKey);
+	} catch {
+		throw new Error('Invalid private key');
+	}
+	const keyType = privateKeyObj.asymmetricKeyType;
+	const signatureAlg = alg ?? (keyType === 'ed25519' ? 'ed25519' : 'rsa-v1_5-sha256');
+
+	const headers: Record<string, string> = {};
+	const fields: { name: string; value: string }[] = [{ name: 'host', value: parsedUrl.host }];
+
+	let payloadBuf: Buffer | undefined;
+	if (rawBody !== undefined) {
+		payloadBuf = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, 'utf-8');
+	} else if (body !== undefined) {
+		if (Buffer.isBuffer(body)) {
+			payloadBuf = body;
+		} else if (typeof body === 'string') {
+			payloadBuf = Buffer.from(body, 'utf-8');
+		} else {
+			payloadBuf = Buffer.from(JSON.stringify(body), 'utf-8');
+		}
+	}
+
+	if (payloadBuf !== undefined) {
+		const digestBase64 = createHash('sha256').update(payloadBuf).digest('base64');
+		const contentDigestVal = `sha-256=:${digestBase64}:`;
+		headers['content-digest'] = contentDigestVal;
+		fields.push({ name: 'content-digest', value: contentDigestVal });
+	}
+
+	const signer = {
+		algorithm: signatureAlg,
+		sign(data: Uint8Array): Uint8Array {
+			if (signatureAlg === 'ed25519') {
+				return sign(null, data, privateKey);
+			}
+			if (signatureAlg === 'rsa-pss-sha512') {
+				return sign('sha512', data, {
+					key: privateKey,
+					padding: constants.RSA_PKCS1_PSS_PADDING,
+					saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+				});
+			}
+			return sign('sha256', data, privateKey);
+		},
+	};
+
+	const reqDesc: RequestDescriptor = {
+		kind: 'request',
+		method: method.toUpperCase(),
+		targetUri: parsedUrl.href,
+		fields,
+	};
+
+	const params: Record<string, string | number> = {
+		created,
+		keyid: keyId,
+	};
+	if (expires !== undefined) {
+		params.expires = expires;
+	}
+	if (alg !== undefined) {
+		params.alg = alg;
+	} else if (keyType === 'ed25519') {
+		params.alg = 'ed25519';
+	}
+
+	const sigResult = await createSignature(reqDesc, {
+		label: 'sig1',
+		components,
+		parameters: params,
+		signer,
+	});
+
+	headers['signature-input'] = sigResult.signatureInput;
+	headers.signature = sigResult.signature;
+
+	return headers;
 };
 
 // SSRF セーフなリモートオブジェクト取得。URL の検証 (スキーム / DNS 解決結果のアドレス範囲) を

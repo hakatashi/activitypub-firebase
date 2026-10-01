@@ -842,4 +842,532 @@ describe('apex net/security verifySignature', () => {
 			expect(next).not.toHaveBeenCalled();
 		});
 	});
+
+	describe('RFC 9421 signature verification', () => {
+		const { publicKey: edPublicKey, privateKey: edPrivateKey } = generateKeyPairSync('ed25519');
+		const edPublicKeyPem = edPublicKey.export({ type: 'spki', format: 'pem' });
+		const edPrivateKeyPem = edPrivateKey.export({ type: 'pkcs8', format: 'pem' });
+
+		const ED_KEY_ID = 'https://remote.example/u/alice#ed25519-key';
+
+		test('successfully verifies valid RFC 9421 request with RSA-v1_5-SHA256 signature', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+			});
+
+			const signer = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [publicKey] }],
+			};
+			apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(next).toHaveBeenCalledOnce();
+			expect(res.locals.apex.sender).toEqual(signer);
+		});
+
+		test('successfully verifies valid RFC 9421 request with RSA-PSS-SHA512 signature', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				alg: 'rsa-pss-sha512',
+				body,
+			});
+
+			const signer = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [publicKey] }],
+			};
+			apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(next).toHaveBeenCalledOnce();
+			expect(res.locals.apex.sender).toEqual(signer);
+		});
+
+		test('successfully verifies valid RFC 9421 request with Ed25519 signature', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: ED_KEY_ID,
+				privateKey: edPrivateKeyPem,
+				body,
+			});
+
+			const signer = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: ED_KEY_ID, owner: ACTOR_ID, publicKeyPem: [edPublicKeyPem] }],
+			};
+			apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(next).toHaveBeenCalledOnce();
+			expect(res.locals.apex.sender).toEqual(signer);
+		});
+
+		test('successfully verifies RFC 9421 GET request without body digest', async () => {
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'GET',
+				url: 'https://example.com/u/hakatashi/outbox',
+				keyId: KEY_ID,
+				privateKey,
+				components: ['@method', '@target-uri'],
+			});
+
+			const signer = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [publicKey] }],
+			};
+			apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+			const req = makeReq({
+				method: 'GET',
+				url: '/u/hakatashi/outbox',
+				originalUrl: '/u/hakatashi/outbox',
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(next).toHaveBeenCalledOnce();
+			expect(res.locals.apex.sender).toEqual(signer);
+		});
+
+		test('resolves correct public key by keyId when actor has multiple public keys (additionalPublicKeys)', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: ED_KEY_ID,
+				privateKey: edPrivateKeyPem,
+				body,
+			});
+
+			const signer = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [publicKey] }],
+				additionalPublicKeys: [{ id: ED_KEY_ID, owner: ACTOR_ID, publicKeyPem: [edPublicKeyPem] }],
+			};
+			apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(next).toHaveBeenCalledOnce();
+			expect(res.locals.apex.sender).toEqual(signer);
+		});
+
+		test('refreshes cached key and succeeds when cached key verification fails', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+			});
+
+			const staleSigner = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [otherPublicKey] }],
+			};
+			const refreshedSigner = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [publicKey] }],
+			};
+
+			apex.resolveObject = vi.fn().mockImplementation((_id, _sub, force) => {
+				return Promise.resolve(force ? refreshedSigner : staleSigner);
+			});
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(next).toHaveBeenCalledOnce();
+			expect(res.locals.apex.sender).toEqual(refreshedSigner);
+		});
+
+		test('returns 403 when signature cryptographic verification fails', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey: otherPrivateKey,
+				body,
+			});
+
+			const signer = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [publicKey] }],
+			};
+			apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when POST body digest does not match raw request body', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+			});
+
+			const signer = {
+				id: ACTOR_ID,
+				type: 'Person',
+				publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [publicKey] }],
+			};
+			apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body: { type: 'Create', actor: ACTOR_ID, tampered: true },
+				rawBody: JSON.stringify({ type: 'Create', actor: ACTOR_ID, tampered: true }),
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when POST request omits digest/content-digest component', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					'signature-input': `sig1=("@method" "@target-uri");created=1700000000;keyid="${KEY_ID}"`,
+					signature: 'sig1=:PkejmApqXS4Yt5p6KfubWCPiglDYQXa9NY7oOyGO2r7R5GdotPDepwig==:',
+					'content-digest': 'sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:',
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when Signature-Input omits @method component', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					'signature-input': `sig1=("@target-uri" "content-digest");created=1700000000;keyid="${KEY_ID}"`,
+					signature: 'sig1=:PkejmApqXS4Yt5p6KfubWCPiglDYQXa9NY7oOyGO2r7R5GdotPDepwig==:',
+					'content-digest': 'sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:',
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when Signature-Input omits target component (@target-uri and @path)', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					'signature-input': `sig1=("@method" "content-digest");created=1700000000;keyid="${KEY_ID}"`,
+					signature: 'sig1=:PkejmApqXS4Yt5p6KfubWCPiglDYQXa9NY7oOyGO2r7R5GdotPDepwig==:',
+					'content-digest': 'sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:',
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when created timestamp is in the future beyond clock skew', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const futureTime = Math.floor(Date.now() / 1000) + 2 * 3600;
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+				created: futureTime,
+			});
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when created timestamp is older than 13 hours', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const oldTime = Math.floor(Date.now() / 1000) - 14 * 3600;
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+				created: oldTime,
+			});
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when expires timestamp is in the past beyond clock skew margin', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const createdTime = Math.floor(Date.now() / 1000) - 3 * 3600;
+			const expiresTime = Math.floor(Date.now() / 1000) - 2 * 3600;
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+				created: createdTime,
+				expires: expiresTime,
+			});
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('returns 403 when signer cannot be resolved', async () => {
+			const body = { type: 'Create', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+			});
+
+			apex.resolveObject = vi.fn().mockResolvedValue(null);
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(403);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('ignores unverifiable Delete from tombstoned actor (returns 200)', async () => {
+			const body = { type: 'Delete', actor: ACTOR_ID };
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+			});
+
+			apex.resolveObject = vi.fn().mockResolvedValue({ type: 'Tombstone' });
+
+			const req = makeReq({
+				headers: {
+					host: 'example.com',
+					...rfcHeaders,
+				},
+				body,
+			});
+			const res = makeRes();
+			const next = vi.fn();
+
+			await apex.net.security.verifySignature(req, res, next);
+
+			expect(res.status).toHaveBeenCalledWith(200);
+			expect(next).not.toHaveBeenCalled();
+		});
+
+		test('successfully verifies Mastodon reference test vector end-to-end', async () => {
+			vi.useFakeTimers();
+			vi.setSystemTime(new Date('2023-12-20T10:00:00Z'));
+			try {
+				const mastodonPublicKey = `-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqIAYvNFGbZ5g4iiK6feS\ndXD4bDStFM58A7tHycYXaYtzZQpIeHXAmaXuZzXIwtrP4N0gIk8JNwZvXj2UPS+S\n07t0V9wNK94he01LV5EMz/GN4eNnFmDL64HIEuKLvV8TvgjbUPRD6Y5X0UpKi2ZI\nFLSb96Q5w0Z/k7ntpVKV52y8kz5Fjr/O/0JuHryZe0yItzJh8kzFfeMf0EXzfSna\nKvT7P9jhgC6uTre+jXyvVZjiHDrnqvvucdI3I7DRfXo1OqARBrLjy+TdseUAjNYJ\n+OuPRI1URIWQI01DCHqcohVu9+Ar+BiCjFp3ua+XMuJvrvbD61d1Fvig/9nbBRR+\n8QIDAQAB\n-----END PUBLIC KEY-----`;
+
+				const bobActorId = 'https://remote.domain/users/bob';
+				const bobKeyId = 'https://remote.domain/users/bob#main-key';
+				const signer = {
+					id: bobActorId,
+					type: 'Person',
+					publicKey: [{ id: bobKeyId, owner: bobActorId, publicKeyPem: [mastodonPublicKey] }],
+				};
+				apex.resolveObject = vi.fn().mockResolvedValue(signer);
+
+				const req = makeReq({
+					url: 'https://www.example.com/activitypub/success',
+					originalUrl: 'https://www.example.com/activitypub/success',
+					method: 'POST',
+					headers: {
+						host: 'www.example.com',
+						'content-digest': 'sha-256=:ZOyIygCyaOW6GjVnihtTFtIS9PNmskdyMlNKiuyjfzw=:',
+						'signature-input':
+							'sig1=("@method" "@target-uri" "content-digest");created=1703066400;keyid="https://remote.domain/users/bob#main-key"',
+						signature:
+							'sig1=:c4jGY/PnOV4CwyvNnAmY6NLX0sf6EtbKu7kYseNARRZaq128PrP0GNQ4cd3XsX9cbMfJMw1ntI4zuEC81ncW8g+90OHP02bX0LkT57RweUtN4CSA01hRqSVe/MW32tjGixCiItvWqjNHoIZnZApu1bd+M3zMR+VCEue4/8a0D2eRrvfQxJUUBXZR1ZTRFlf1LNFDW3U7cuTbAKYr2zWVr7on+h2vA+vzEND9WE8z1SHd6SIFFgP0QRqrCXYx+vsTs3aLusTsamRWissoycJGexb64mI9iqiD8SD+uN1xk6iRU3nkUmhUquugjlOFyjxbbLo5ZnYjsECMt/BW+Catxw==:',
+					},
+					body: 'Hello world',
+					rawBody: 'Hello world',
+				});
+				const res = makeRes();
+				const next = vi.fn();
+
+				await apex.net.security.verifySignature(req, res, next);
+
+				expect(next).toHaveBeenCalledOnce();
+				expect(res.locals.apex.sender).toEqual(signer);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+	});
 });
