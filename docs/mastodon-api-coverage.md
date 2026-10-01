@@ -38,7 +38,7 @@
 | PATCH | `/api/v1/accounts/update_credentials` | ⬜ | プロフィール編集 |
 | GET | `/api/v1/accounts/lookup` | 🟡 | 他ドメインの acct は `Not implemented` を throw |
 | GET | `/api/v1/accounts/:id` | ⬜ | |
-| GET | `/api/v1/accounts/:id/statuses` | 🟡 | **`:id` を無視して全 Note を返す** |
+| GET | `/api/v1/accounts/:id/statuses` | 🟡 | actor 絞り込みと可視性判定済み。ページネーション(`max_id` 等)は未対応 |
 | GET | `/api/v1/accounts/:id/followers` | ✅ | ページネーションなし |
 | GET | `/api/v1/accounts/:id/following` | ⬜ | |
 | GET | `/api/v1/accounts/relationships` | ⬜ | プロフィール表示に必須 |
@@ -62,8 +62,8 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| GET | `/api/v1/timelines/public` | 🟡 | 全 Note を返す。ページネーションなし |
-| GET | `/api/v1/timelines/home` | 🟡 | public と同一実装 |
+| GET | `/api/v1/timelines/public` | 🟡 | public のみ。ページネーション未対応 |
+| GET | `/api/v1/timelines/home` | 🟡 | 自分 + フォロー中、閲覧可能なもののみ。ページネーション未対応 |
 | GET | `/api/v1/timelines/tag/:hashtag` | ⬜ | |
 | — | ページネーション + `Link` ヘッダ | ⬜ | `max_id`/`since_id`/`min_id`/`limit`。`Access-Control-Expose-Headers: Link` も必要 |
 

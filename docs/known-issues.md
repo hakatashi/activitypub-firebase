@@ -14,14 +14,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 ## Mastodon API
 
-### タイムラインが全 Note を無条件に返す
-
-`functions/src/mastodon/api.ts` の `getAllNotes()` は `type == 'Note'` の全オブジェクトを
-上限なしで取得して返す。actor フィルタも公開範囲(visibility)判定もページネーションもない。
-`/v1/timelines/public`、`/v1/timelines/home`、`/v1/accounts/:id/statuses` がすべてこれを呼んでいる。
-
-→ [ADR-0005](adr/0005-single-user-multi-ready-data-model.md)
-
 ### 投稿できない
 
 `POST /api/v1/statuses` が未実装。投稿は管理者トークン付きで `/activitypub/createPost` を
