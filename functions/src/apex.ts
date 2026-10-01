@@ -48,9 +48,6 @@ export const apex = ActivitypubExpress({
 	store: new Store(),
 	offlineMode: true,
 	remoteFetchPolicy,
-	endpoints: {
-		proxyUrl: `https://${domain}/activitypub/proxy`,
-	},
 	nodeInfoMetadata: {
 		nodeName: '博多市',
 		name: '博多市',

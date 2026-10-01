@@ -101,7 +101,6 @@ app.get(routes.likes, apex.net.likes.get);
 app.get('/.well-known/webfinger', apex.net.webfinger.get);
 app.get('/.well-known/nodeinfo', nodeinfoCors, apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', nodeinfoCors, apex.net.nodeInfo.get);
-app.post('/activitypub/proxy', apex.net.proxy.post);
 app.get(
 	'/activitypub/createAdmin',
 	adminOnly,
