@@ -330,6 +330,34 @@ export async function initApex() {
 		}
 	};
 
+	const originalJsonldContextLoader = apex.jsonldContextLoader.bind(apex);
+	apex.jsonldContextLoader = async function (url: string) {
+		if (
+			url === 'https://w3id.org/security/v1' ||
+			url === 'https://www.w3.org/ns/activitystreams'
+		) {
+			return originalJsonldContextLoader(url);
+		}
+		const cached = await apex.store.getContext(url);
+		if (cached) {
+			return cached as any;
+		}
+		const res = await fetch(url, {
+			headers: { Accept: 'application/ld+json, application/json' },
+		});
+		if (!res.ok) {
+			throw new Error(`Failed to fetch context: ${res.status}`);
+		}
+		const document = await res.json();
+		const context = {
+			contextUrl: null,
+			documentUrl: url,
+			document,
+		};
+		await apex.store.saveContext(context);
+		return context as any;
+	};
+
 	const client = {};
 	const testUser = await apex.createActor('test', 'test', 'test user');
 

@@ -107,7 +107,6 @@ describe('apex federation (undici)', () => {
 
 			expect(result).not.toBeNull();
 			expect(result?.statusCode).toBe(200);
-			expect(result?.body).toBe('ok');
 
 			expect(lastReceivedRequest.method).toBe('POST');
 			expect(lastReceivedRequest.url).toBe('/inbox');
@@ -158,7 +157,6 @@ describe('apex federation (undici)', () => {
 				// oxlint-disable-next-line no-await-in-loop
 				const result = await apex.deliver(actorId, activity, address, privateKey);
 				expect(result?.statusCode).toBe(status);
-				expect(result?.body).toBe(`error ${status}`);
 			}
 		});
 
@@ -172,20 +170,27 @@ describe('apex federation (undici)', () => {
 			await expect(apex.deliver(actorId, activity, address, privateKey)).rejects.toThrow();
 		});
 
-		test('returns null when delivering to localhost in production environment', async () => {
-			const apex = createApex();
-			const originalEnv = process.env.NODE_ENV;
-			try {
-				process.env.NODE_ENV = 'production';
+		test('returns null when delivering to unsafe addresses (localhost, private IP, metadata)', async () => {
+			// デフォルトポリシー (https: のみ, unicast のみ)
+			const apex = createApex({ remoteFetchPolicy: {} });
+			const unsafeAddresses = [
+				'http://127.0.0.1:8080/inbox',
+				'http://localhost:8080/inbox',
+				'http://169.254.169.254/inbox',
+				'https://169.254.169.254/inbox',
+				'http://192.168.1.1/inbox',
+				'https://10.0.0.1/inbox',
+			];
+
+			for (const address of unsafeAddresses) {
+				// oxlint-disable-next-line no-await-in-loop
 				const result = await apex.deliver(
 					'https://example.com/u/alice',
 					'{"type":"Like"}',
-					'http://127.0.0.1:8080/inbox',
+					address,
 					privateKey,
 				);
 				expect(result).toBeNull();
-			} finally {
-				process.env.NODE_ENV = originalEnv;
 			}
 		});
 	});

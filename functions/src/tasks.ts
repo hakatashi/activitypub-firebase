@@ -147,7 +147,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			throw new Error(error.message);
 		}
 
-		// 本番環境で address が localhost の場合、apex.deliver は null を返す
+		// address が安全でない (localhost や SSRF 対象など) 場合、apex.deliver は null を返す
 		if (result === null) {
 			logger.info({ type: 'deliveryTaskSkippedLocalAddress', actorId, address });
 			return;
