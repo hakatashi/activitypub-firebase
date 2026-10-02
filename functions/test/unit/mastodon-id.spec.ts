@@ -8,6 +8,7 @@ import {
 	mastodonIdToTimestamp,
 	MAX_SEQUENCE,
 	toIdTimestamp,
+	toPublishedSortKey,
 } from '../../src/mastodonId.js';
 import Store from '../../src/store.js';
 
@@ -169,5 +170,23 @@ describe('Mastodon ID mapping (Firestore)', () => {
 		expect(await getMastodonIds([{ iri: note.id, published: undefined }])).toEqual(
 			new Map([[note.id, noteId]]),
 		);
+	});
+});
+
+describe('toPublishedSortKey', () => {
+	const now = Date.parse('2026-01-01T00:00:00.000Z');
+
+	test('normalizes strings and single-element arrays to millisecond ISO format', () => {
+		expect(toPublishedSortKey('2023-07-20T05:35:03Z', now)).toBe('2023-07-20T05:35:03.000Z');
+		expect(toPublishedSortKey(['2023-07-20T05:35:03.5Z'], now)).toBe('2023-07-20T05:35:03.500Z');
+	});
+
+	test('clamps the future to now, matching the Mastodon ID timestamp', () => {
+		expect(toPublishedSortKey('2099-01-01T00:00:00Z', now)).toBe('2026-01-01T00:00:00.000Z');
+	});
+
+	test('returns undefined when published is missing or unparseable', () => {
+		expect(toPublishedSortKey(undefined, now)).toBeUndefined();
+		expect(toPublishedSortKey('yesterday', now)).toBeUndefined();
 	});
 });

@@ -7,7 +7,7 @@ import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
-import { getOrAssignMastodonIdInTransaction } from './mastodonId.js';
+import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from './mastodonId.js';
 import { metaIndexPath } from './meta.js';
 import { Contexts, Deliveries, Objects, Streams } from './schema.js';
 import { toIdArray } from './utils.js';
@@ -15,6 +15,9 @@ import { toIdArray } from './utils.js';
 // const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
 
 // tasks.ts の配送タスクが記録する配送結果 (→ ADR-0012)
+// タイムラインの並べ替え・範囲指定に使うフィールド (→ ADR-0062)。
+const PUBLISHED_KEY = '_meta.published';
+
 export interface DeliveryResult {
 	activityId: string;
 	actorId: string;
@@ -132,19 +135,26 @@ export default class Store extends IApexStore implements ApexStore {
 		});
 	}
 
-	// タイムライン用に Note を新しい順に取得する。`actors` を渡すとその attributedTo のものだけに
-	// 絞る (Firestore の `in` 制約により 30 件まで)。`before` は published のカーソル (排他)。
+	// タイムライン用に Note を `_meta.published` 順に取得する。`actors` を渡すとその attributedTo のものだけに
+	// 絞る (Firestore の `in` 制約により 30 件まで)。`lower` / `upper` は `_meta.published` の範囲 (両端を含む)。
+	// `cursor` は読み足し用の `_meta.published` のカーソル (排他。`order` の進行方向の先)。
 	// 可視性の判定は呼び出し側 (statusAttributes.ts の isNoteVisibleTo) の責務。
 	async getNotes({
 		actors,
 		limit,
-		before,
+		order = 'desc',
+		lower,
+		upper,
+		cursor,
 	}: {
 		actors?: string[] | undefined;
 		limit: number;
-		before?: string | undefined;
+		order?: 'asc' | 'desc';
+		lower?: string | undefined;
+		upper?: string | undefined;
+		cursor?: string | undefined;
 	}): Promise<APObject[]> {
-		logger.info({ type: 'getNotes', actors, limit, before });
+		logger.info({ type: 'getNotes', actors, limit, order, lower, upper, cursor });
 		if (actors !== undefined && actors.length === 0) {
 			return [];
 		}
@@ -152,9 +162,15 @@ export default class Store extends IApexStore implements ApexStore {
 		if (actors !== undefined) {
 			query = query.where('attributedTo', 'in', actors);
 		}
-		query = query.orderBy('published', 'desc');
-		if (before !== undefined) {
-			query = query.startAfter(before);
+		if (lower !== undefined) {
+			query = query.where(PUBLISHED_KEY, '>=', lower);
+		}
+		if (upper !== undefined) {
+			query = query.where(PUBLISHED_KEY, '<=', upper);
+		}
+		query = query.orderBy(PUBLISHED_KEY, order);
+		if (cursor !== undefined) {
+			query = query.startAfter(cursor);
 		}
 		const docs = await query.limit(limit).get();
 		return docs.docs.map((doc) => doc.data());
@@ -174,6 +190,10 @@ export default class Store extends IApexStore implements ApexStore {
 	override async saveObject(object: APObject) {
 		const objectId = object.id ?? this.generateId();
 		const objectWithId = object.id ? object : { ...object, id: objectId };
+		const publishedKey = toPublishedSortKey(objectWithId.published);
+		if (publishedKey !== undefined) {
+			objectWithId._meta = { ...objectWithId._meta, published: publishedKey };
+		}
 		const docRef = Objects.doc(escapeFirestoreKey(objectId));
 		await this.db.runTransaction(async (transaction) => {
 			const doc = await transaction.get(docRef);
@@ -284,12 +304,22 @@ export default class Store extends IApexStore implements ApexStore {
 
 	override async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
 		const objectDoc = Objects.doc(escapeFirestoreKey(obj.id));
+		const publishedKey = toPublishedSortKey(obj.published);
 		if (fullReplace) {
-			await this.replaceKeepingMeta(objectDoc, obj);
+			await this.replaceKeepingMeta(
+				objectDoc,
+				publishedKey === undefined
+					? obj
+					: { ...obj, _meta: { ...obj._meta, published: publishedKey } },
+			);
 			await this.updateObjectCopies(obj);
 			return obj;
 		}
-		await objectDoc.update(this.objectToUpdateDoc(obj));
+		await objectDoc.update({
+			...this.objectToUpdateDoc(obj),
+			// `_meta` はドット記法で更新し、既存のカウンタなどを消さない。
+			...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
+		});
 		await this.updateObjectCopies(obj);
 		return objectDoc.get().then((doc) => {
 			const data = doc.data();

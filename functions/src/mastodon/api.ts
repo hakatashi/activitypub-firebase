@@ -17,7 +17,7 @@ import {
 	toFirestoreKey,
 	unescapeFirestoreKey,
 } from '../firebase.js';
-import { getMastodonIds } from '../mastodonId.js';
+import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
@@ -25,6 +25,15 @@ import type { CamelToSnake } from '../utils.js';
 import { isAPActor, isAPFollow, isAPNote, isAPUndo, toIdArray, toStringValue } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
+import type { PageParams } from './pagination.js';
+import {
+	buildLinkHeader,
+	isAscending,
+	isIdInRange,
+	lowerBoundId,
+	parsePageParams,
+	takePage,
+} from './pagination.js';
 import {
 	noteToCounts,
 	noteToEditedAt,
@@ -306,15 +315,20 @@ const getInboxId = (actor: APActor) => {
 	throw new Error('inbox is not string');
 };
 
-const DEFAULT_TIMELINE_LIMIT = 20;
-const MAX_TIMELINE_LIMIT = 40;
+const STATUS_PAGE_LIMITS = { defaultLimit: 20, maxLimit: 40 };
+const FOLLOWERS_PAGE_LIMITS = { defaultLimit: 40, maxLimit: 80 };
 // 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
 const TIMELINE_FETCH_FACTOR = 3;
+// 小さい limit でも読み足しラウンドを使い切って空ページになりにくいよう、1回に読む件数の下限を設ける。
+const MIN_TIMELINE_FETCH_SIZE = 100;
 const MAX_TIMELINE_FETCH_ROUNDS = 10;
+// ID のタイムスタンプ部は `_meta.published` (→ ADR-0062) と同じ規則で決まるので、そのまま範囲の端にできる。
+const idToPublishedBound = (id: string) => new Date(mastodonIdToTimestamp(id)).toISOString();
 
-export const timelineQuerySchema = z.object({
-	limit: z.coerce.number().int().min(1).default(DEFAULT_TIMELINE_LIMIT),
-});
+interface PagedNote {
+	id: string;
+	note: NoteObject;
+}
 
 // viewer がフォロー中 (相手が Accept 済み) の actor IRI を返す。
 export const getFollowing = async (actor: APActor): Promise<string[]> => {
@@ -347,88 +361,101 @@ export const getFollowing = async (actor: APActor): Promise<string[]> => {
 	);
 };
 
-// 新しい順に Note を読み、`isVisible` を通ったものを limit 件集める。
+// `page` のカーソルに沿って Note を読み、`isVisible` を通ったものを limit 件集めて新しい順に返す。
 // 可視性の判定は Firestore のクエリでは表現できないため、足りなければカーソルを進めて読み足す。
 const collectVisibleNotes = async ({
 	actors,
-	limit,
+	page,
 	isVisible,
 }: {
 	actors?: string[] | undefined;
-	limit: number;
+	page: PageParams;
 	isVisible: (note: NoteObject) => boolean;
-}): Promise<NoteObject[]> => {
-	const collected: NoteObject[] = [];
-	let before: string | undefined;
-	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < limit; round++) {
-		const fetchSize = limit * TIMELINE_FETCH_FACTOR;
-		const page = await apex.store.getNotes({ actors, limit: fetchSize, before });
-		for (const note of page.filter(isAPNote)) {
-			if (getAttributedTo(note) !== undefined && isVisible(note)) {
-				collected.push(note);
+}): Promise<PagedNote[]> => {
+	const ascending = isAscending(page);
+	const lowerId = lowerBoundId(page);
+	const lower = lowerId === undefined ? undefined : idToPublishedBound(lowerId);
+	const upper = page.maxId === undefined ? undefined : idToPublishedBound(page.maxId);
+	const fetchSize = Math.max(page.limit * TIMELINE_FETCH_FACTOR, MIN_TIMELINE_FETCH_SIZE);
+
+	const collected: PagedNote[] = [];
+	let cursor: string | undefined;
+	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < page.limit; round++) {
+		const rows = await apex.store.getNotes({
+			actors,
+			limit: fetchSize,
+			order: ascending ? 'asc' : 'desc',
+			lower,
+			upper,
+			cursor,
+		});
+		const visible = rows
+			.filter(isAPNote)
+			.filter((note) => getAttributedTo(note) !== undefined && isVisible(note));
+		const ids = await getMastodonIds(
+			visible.map((note) => ({ iri: note.id, published: note.published })),
+		);
+		for (const note of visible) {
+			const id = ids.get(note.id);
+			if (id !== undefined && isIdInRange(id, page)) {
+				collected.push({ id, note });
 			}
 		}
-		if (page.length < fetchSize) {
+		const lastPublished = rows.at(-1)?._meta?.published;
+		if (rows.length < fetchSize || lastPublished === undefined) {
 			break;
 		}
-		const lastPublished = page.at(-1)?.published;
-		if (lastPublished === undefined) {
-			break;
-		}
-		before = String(lastPublished);
+		cursor = lastPublished;
 	}
-	return collected.slice(0, limit);
-};
-
-const parseLimit = (query: unknown) => {
-	const parsed = timelineQuerySchema.safeParse(query);
-	return Math.min(parsed.success ? parsed.data.limit : DEFAULT_TIMELINE_LIMIT, MAX_TIMELINE_LIMIT);
+	return takePage(collected, (entry) => entry.id, page);
 };
 
 // actor の投稿一覧。viewer に見えるものだけを返す。
 export const getAccountStatuses = async (
 	actorId: string,
 	viewer: APActor | undefined,
-	limit: number,
+	page: PageParams,
 ) => {
 	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
 	const notes = await collectVisibleNotes({
 		actors: [actorId],
-		limit,
+		page,
 		isVisible: (note) => isNoteVisibleTo(note, viewer?.id, viewerFollowing),
 	});
-	return notesToStatuses(notes);
+	return notesToStatuses(notes.map((entry) => entry.note));
 };
 
 // 公開タイムライン。public な投稿のみ (unlisted / private / direct は載せない)。
-export const getPublicTimeline = async (limit: number) => {
-	const notes = await collectVisibleNotes({ limit, isVisible: isNotePublicTimelineEligible });
-	return notesToStatuses(notes);
+export const getPublicTimeline = async (page: PageParams) => {
+	const notes = await collectVisibleNotes({ page, isVisible: isNotePublicTimelineEligible });
+	return notesToStatuses(notes.map((entry) => entry.note));
 };
 
 // ホームタイムライン。自分の投稿 + フォロー中の相手の投稿のうち、閲覧権限のあるもの。
-export const getHomeTimeline = async (viewer: APActor, limit: number) => {
+export const getHomeTimeline = async (viewer: APActor, page: PageParams) => {
 	assert(viewer.id !== undefined, 'viewer.id is undefined');
 	const viewerFollowing = new Set(await getFollowing(viewer));
 	const authors = [viewer.id, ...viewerFollowing];
-	const notes = (
+	const entries = (
 		await Promise.all(
 			chunk(authors, FIRESTORE_IN_QUERY_LIMIT).map((actors) =>
 				collectVisibleNotes({
 					actors,
-					limit,
+					page,
 					isVisible: (note) => isNoteVisibleTo(note, viewer.id, viewerFollowing),
 				}),
 			),
 		)
-	)
-		.flat()
-		.sort((a, b) => String(b.published).localeCompare(String(a.published)))
-		.slice(0, limit);
-	return notesToStatuses(notes);
+	).flat();
+	return notesToStatuses(takePage(entries, (entry) => entry.id, page).map((entry) => entry.note));
 };
 
-export const getFollowers = async (actor: APActor) => {
+// カーソルは Follow アクティビティの Mastodon ID (Mastodon の follow 行 ID に相当。→ ADR-0062)。
+// 返す `cursorIds` は `accounts` と同じ並び (新しい順)。
+export const getFollowersPage = async (
+	actor: APActor,
+	page: PageParams = { limit: FOLLOWERS_PAGE_LIMITS.defaultLimit },
+) => {
 	assert(actor.id !== undefined, 'actor.id is undefined');
 
 	// object/actor は IRI 文字列・Link・埋め込みオブジェクトのいずれにもなりうるため、生の
@@ -458,7 +485,7 @@ export const getFollowers = async (actor: APActor) => {
 		}),
 	);
 
-	const followerIds = new Set<string>();
+	const followers = new Map<string, { followIri: string; published: unknown }>();
 
 	for (const followStream of followStreams.docs) {
 		const follow = followStream.data();
@@ -466,13 +493,31 @@ export const getFollowers = async (actor: APActor) => {
 			continue;
 		}
 		const followActor = toIdArray(follow.actor)[0];
-		if (followActor !== undefined) {
-			followerIds.add(followActor);
+		if (followActor !== undefined && !followers.has(followActor)) {
+			followers.set(followActor, { followIri: follow.id, published: follow.published });
 		}
 	}
 
-	return userIdsToAcconts(Array.from(followerIds));
+	const followIds = await getMastodonIds(
+		Array.from(followers.values(), ({ followIri, published }) => ({ iri: followIri, published })),
+	);
+	const entries = Array.from(followers, ([actorIri, { followIri }]) => ({
+		actorIri,
+		cursorId: followIds.get(followIri),
+	})).filter(
+		(entry): entry is { actorIri: string; cursorId: string } =>
+			entry.cursorId !== undefined && isIdInRange(entry.cursorId, page),
+	);
+	const pageEntries = takePage(entries, (entry) => entry.cursorId, page);
+
+	return {
+		accounts: await userIdsToAcconts(pageEntries.map((entry) => entry.actorIri)),
+		cursorIds: pageEntries.map((entry) => entry.cursorId),
+	};
 };
+
+export const getFollowers = async (actor: APActor, page?: PageParams) =>
+	(await getFollowersPage(actor, page)).accounts;
 
 // OAuth トークンから、ログイン中のローカル actor の IRI と UserInfo を引く。
 const resolveAuth = async (req: express.Request, res: express.Response) => {
@@ -547,6 +592,31 @@ const getAccount = (acct: string) => {
 	return actorUsernameToAccount(username);
 };
 
+// 絶対 URL の Link ヘッダを組み立てて付ける。`ids` は応答の並び (新しい順)。
+const setLinkHeader = (req: express.Request, res: express.Response, ids: string[]) => {
+	const link = buildLinkHeader(
+		`https://${mastodonDomain}${req.baseUrl}${req.path}`,
+		req.query,
+		ids,
+	);
+	if (link !== undefined) {
+		res.set('Link', link);
+	}
+};
+
+const respondWithStatuses = (
+	req: express.Request,
+	res: express.Response,
+	statuses: StatusEntity[],
+) => {
+	setLinkHeader(
+		req,
+		res,
+		statuses.map((status) => status.id),
+	);
+	res.json(statuses);
+};
+
 const router = express.Router();
 
 router.use(
@@ -555,6 +625,8 @@ router.use(
 		origin: true,
 		methods: ['GET', 'POST'],
 		allowedHeaders: ['Authorization', 'Content-Type'],
+		// これがないとブラウザ上のクライアントが Link ヘッダを読めずページネーションできない。
+		exposedHeaders: ['Link'],
 	}),
 );
 
@@ -632,7 +704,11 @@ router.get('/v1/accounts/:id/statuses', async (req, res) => {
 
 	// 認証は任意。トークンがあれば閲覧者として可視性を判定する。
 	const viewer = await getOptionalViewer(req, res);
-	res.json(await getAccountStatuses(actorId, viewer, parseLimit(req.query)));
+	respondWithStatuses(
+		req,
+		res,
+		await getAccountStatuses(actorId, viewer, parsePageParams(req.query, STATUS_PAGE_LIMITS)),
+	);
 });
 
 router.get('/v1/accounts/:id/followers', async (req, res) => {
@@ -665,7 +741,12 @@ router.get('/v1/accounts/:id/followers', async (req, res) => {
 	}
 	assertIsAPActor(actorObject);
 
-	res.json(await getFollowers(actorObject));
+	const { accounts, cursorIds } = await getFollowersPage(
+		actorObject,
+		parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
+	);
+	setLinkHeader(req, res, cursorIds);
+	res.json(accounts);
 });
 
 router.get('/v1/accounts/verify_credentials', authRequired, (req, res) => {
@@ -689,12 +770,20 @@ router.get('/v1/push/subscription', authRequired, (req, res) => {
 });
 
 router.get('/v1/timelines/public', async (req, res) => {
-	res.json(await getPublicTimeline(parseLimit(req.query)));
+	respondWithStatuses(
+		req,
+		res,
+		await getPublicTimeline(parsePageParams(req.query, STATUS_PAGE_LIMITS)),
+	);
 });
 
 router.get('/v1/timelines/home', authRequired, async (req, res) => {
 	const viewer = await getLocalActor(res.locals.actorId as string);
-	res.json(await getHomeTimeline(viewer, parseLimit(req.query)));
+	respondWithStatuses(
+		req,
+		res,
+		await getHomeTimeline(viewer, parsePageParams(req.query, STATUS_PAGE_LIMITS)),
+	);
 });
 
 router.post('/v1/apps', async (req, res) => {

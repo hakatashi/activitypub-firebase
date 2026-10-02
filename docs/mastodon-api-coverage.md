@@ -38,8 +38,8 @@
 | PATCH | `/api/v1/accounts/update_credentials` | ⬜ | プロフィール編集 |
 | GET | `/api/v1/accounts/lookup` | 🟡 | 他ドメインの acct は `Not implemented` を throw |
 | GET | `/api/v1/accounts/:id` | ⬜ | |
-| GET | `/api/v1/accounts/:id/statuses` | 🟡 | actor 絞り込みと可視性判定済み。ページネーション(`max_id` 等)は未対応 |
-| GET | `/api/v1/accounts/:id/followers` | ✅ | ページネーションなし |
+| GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ページネーション対応 |
+| GET | `/api/v1/accounts/:id/followers` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/:id/following` | ⬜ | |
 | GET | `/api/v1/accounts/relationships` | ⬜ | プロフィール表示に必須 |
 | POST | `/api/v1/accounts/:id/follow` / `unfollow` | ⬜ | unfollow は Store の未実装メソッドを踏む |
@@ -62,10 +62,10 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| GET | `/api/v1/timelines/public` | 🟡 | public のみ。ページネーション未対応 |
-| GET | `/api/v1/timelines/home` | 🟡 | 自分 + フォロー中、閲覧可能なもののみ。ページネーション未対応 |
+| GET | `/api/v1/timelines/public` | ✅ | public のみ。ページネーション対応 |
+| GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ページネーション対応 |
 | GET | `/api/v1/timelines/tag/:hashtag` | ⬜ | |
-| — | ページネーション + `Link` ヘッダ | ⬜ | `max_id`/`since_id`/`min_id`/`limit`。`Access-Control-Expose-Headers: Link` も必要 |
+| — | ページネーション + `Link` ヘッダ | ✅ | `max_id`/`since_id`/`min_id`/`limit`、`Access-Control-Expose-Headers: Link`(→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md)) |
 
 ## 通知・その他
 

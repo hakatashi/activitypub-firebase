@@ -110,7 +110,7 @@ describe('Mastodon timelines (Issue #58)', () => {
 		await saveNote(REMOTE_A, 'unlisted');
 		await saveNote(REMOTE_A, 'private');
 		await saveNote(REMOTE_A, 'direct');
-		const statuses = await getPublicTimeline(20);
+		const statuses = await getPublicTimeline({ limit: 20 });
 		expect(statuses.map((s) => s.uri)).toEqual([publicId]);
 		expect(statuses.every((s) => s.visibility === 'public')).toBe(true);
 	});
@@ -122,7 +122,7 @@ describe('Mastodon timelines (Issue #58)', () => {
 		for (let i = 0; i < 20; i++) {
 			await saveNote(REMOTE_A, 'private');
 		}
-		const statuses = await getPublicTimeline(3);
+		const statuses = await getPublicTimeline({ limit: 3 });
 		expect(statuses).toHaveLength(3);
 		expect(statuses.every((s) => s.visibility === 'public')).toBe(true);
 	});
@@ -134,11 +134,11 @@ describe('Mastodon timelines (Issue #58)', () => {
 		await saveNote(REMOTE_A, 'direct');
 		await saveNote(REMOTE_B, 'public');
 
-		const anonymous = await getAccountStatuses(REMOTE_A, undefined, 20);
+		const anonymous = await getAccountStatuses(REMOTE_A, undefined, { limit: 20 });
 		expect(anonymous.map((s) => s.uri).sort()).toEqual([a1, a2].sort());
 
 		await follow(REMOTE_A, true);
-		const asFollower = await getAccountStatuses(REMOTE_A, me, 20);
+		const asFollower = await getAccountStatuses(REMOTE_A, me, { limit: 20 });
 		expect(asFollower.map((s) => s.visibility).sort()).toEqual(['private', 'public', 'unlisted']);
 	});
 
@@ -156,9 +156,82 @@ describe('Mastodon timelines (Issue #58)', () => {
 		await saveNote(REMOTE_B, 'public');
 		await follow(REMOTE_A, true);
 
-		const statuses = await getHomeTimeline(me, 20);
+		const statuses = await getHomeTimeline(me, { limit: 20 });
 		expect(statuses.map((s) => s.uri).sort()).toEqual(
 			[mine, followedPublic, followedPrivate].sort(),
 		);
+	});
+
+	describe('pagination (Issue #59)', () => {
+		const seed = async (count: number) => {
+			const uris: string[] = [];
+			for (let i = 0; i < count; i++) {
+				uris.push(await saveNote(REMOTE_A, 'public'));
+			}
+			return uris; // 古い順
+		};
+
+		test('max_id walks back through the timeline without overlap', async () => {
+			const uris = await seed(5);
+			const first = await getPublicTimeline({ limit: 2 });
+			expect(first.map((s) => s.uri)).toEqual([uris[4], uris[3]]);
+			const second = await getPublicTimeline({ limit: 2, maxId: first.at(-1)?.id });
+			expect(second.map((s) => s.uri)).toEqual([uris[2], uris[1]]);
+			const third = await getPublicTimeline({ limit: 2, maxId: second.at(-1)?.id });
+			expect(third.map((s) => s.uri)).toEqual([uris[0]]);
+			expect(await getPublicTimeline({ limit: 2, maxId: third.at(-1)?.id })).toEqual([]);
+		});
+
+		test('since_id fills from the newest side, min_id from the cursor side', async () => {
+			const uris = await seed(5);
+			const all = await getPublicTimeline({ limit: 5 });
+			const oldestId = all.at(-1)?.id;
+			const since = await getPublicTimeline({ limit: 2, sinceId: oldestId });
+			expect(since.map((s) => s.uri)).toEqual([uris[4], uris[3]]);
+			const min = await getPublicTimeline({ limit: 2, minId: oldestId });
+			expect(min.map((s) => s.uri)).toEqual([uris[2], uris[1]]);
+		});
+
+		test('account statuses and home timeline honor the cursors', async () => {
+			const uris = await seed(4);
+			await follow(REMOTE_A, true);
+			const all = await getAccountStatuses(REMOTE_A, me, { limit: 4 });
+			const page = await getAccountStatuses(REMOTE_A, me, { limit: 2, maxId: all[1]?.id });
+			expect(page.map((s) => s.uri)).toEqual([uris[1], uris[0]]);
+			const home = await getHomeTimeline(me, { limit: 2, minId: all[3]?.id });
+			expect(home.map((s) => s.uri)).toEqual([uris[2], uris[1]]);
+		});
+
+		test('notes with array-valued published are paged like any other (_meta.published)', async () => {
+			const uris = await seed(2);
+			const arrayId = `${REMOTE_A}/notes/array`;
+			await apex.store.saveObject({
+				id: arrayId,
+				type: 'Note',
+				attributedTo: REMOTE_A,
+				content: 'array',
+				published: [new Date(Date.UTC(2026, 0, 1, 0, 1, 30)).toISOString()],
+				to: [PUBLIC],
+				cc: [],
+			} as unknown as APObject);
+
+			const all = await getPublicTimeline({ limit: 10 });
+			expect(all.map((s) => s.uri)).toEqual([uris[1], arrayId, uris[0]]);
+			const older = await getPublicTimeline({ limit: 10, maxId: all[0]?.id });
+			expect(older.map((s) => s.uri)).toEqual([arrayId, uris[0]]);
+			const newer = await getPublicTimeline({ limit: 10, minId: all[2]?.id });
+			expect(newer.map((s) => s.uri)).toEqual([uris[1], arrayId]);
+		});
+
+		test('pages keep filling past non-visible notes', async () => {
+			const publicUris = await seed(3);
+			for (let i = 0; i < 10; i++) {
+				await saveNote(REMOTE_A, 'private');
+			}
+			const page = await getPublicTimeline({ limit: 2 });
+			expect(page.map((s) => s.uri)).toEqual([publicUris[2], publicUris[1]]);
+			const next = await getPublicTimeline({ limit: 2, maxId: page.at(-1)?.id });
+			expect(next.map((s) => s.uri)).toEqual([publicUris[0]]);
+		});
 	});
 });

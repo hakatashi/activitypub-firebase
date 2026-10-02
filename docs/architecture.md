@@ -143,6 +143,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.privateKey` | `objects` | `string` | ローカルアクターの HTTP 署名用 RSA 秘密鍵 (PEM)。アクター作成時 (`createActor`) に生成・保存され、連合配信時の署名およびローカルユーザー判定 (`getUserCount`) に使用される。 |
 | `_meta.isPublic` | `streams` | `boolean` | apex の `isPublic()` (`pub/utils.ts`) が `to`/`cc` の `as:Public` と並んで読む宛先判定のショートカット。`Follow` は `to`/`cc` を持たないため、承認時に `Store#markActivityPublic` (`activitypub.ts` の Follow 自動承認処理) が明示的に `true` を書き込み、匿名の `/followers` コレクションに表示されるようにする (→ [ADR-0035](adr/0035-mark-accepted-follow-as-public.md))。 |
 | `_meta.likesCount` / `_meta.sharesCount` | `objects` | `number` | `Like` / `Announce` の受信カウント。apex 本体の likes/shares コレクション機構は activity (streams) 専用で Note のような object を対象にすると機能しないため使わず、`onStreamCreated` トリガーが対象オブジェクトへ直接インクリメント/デクリメントする (→ [ADR-0037](adr/0037-denormalize-like-announce-counts.md))。 |
+| `_meta.published` | `objects` | `string` | タイムラインの並べ替え・範囲指定用の `published`。ミリ秒つき ISO 8601 (UTC) で、Mastodon ID のタイムスタンプと同じ規則で決める(未来は現在時刻に丸める)。AP の `published` は apex の `fromJSONLD` が配列に展開する (`compactArrays: false`) ため Firestore のクエリには使えず、`Store#saveObject` / `updateObject` が非正規化して書く。既存データの再計算は `functions/bin/backfillPublishedMeta.ts` (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
 
@@ -179,6 +180,7 @@ apex のストア抽象では集計ができないため、フォロワー数・
 |---|---|
 | `index.ts` | express アプリ、`beforeUserCreate` |
 | `api.ts` | `/api/**` のルーティングと AP オブジェクト → Mastodon エンティティの変換 |
+| `pagination.ts` | `max_id` / `since_id` / `min_id` / `limit` の解釈と `Link` ヘッダの生成(Firestore には触らない) |
 | `oauth.ts` | OAuth2 のエンドポイント。認可画面に FirebaseUI を埋め込む |
 | `oauth2Model.ts` | `@node-oauth/oauth2-server` の Firestore バックエンド |
 | `instanceInformation.ts` | `/api/v1/instance` と `/api/v2/instance` のレスポンス |
@@ -189,6 +191,13 @@ API で露出する Status などの ID は AP IRI とは別に採番した、�
 `Store#saveObject` / `Store#saveActivity` が保存と同じトランザクションで `published` を基準に採番する。
 読み出し時(`getMastodonIds`)に未採番の IRI があればその場で採番する。
 既存データのバックフィルは `functions/bin/assignMastodonIds.ts`。
+
+コレクション系エンドポイント(`timelines/public`・`timelines/home`・`accounts/:id/statuses`・`accounts/:id/followers`)は
+`max_id` / `since_id` / `min_id` / `limit` でページングし、`Link` ヘッダ(`next` / `prev`)で次のページを示す
+(`Access-Control-Expose-Headers: Link` を付ける)。カーソルは Mastodon ID で、応答は常に新しい順。
+Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [attributedTo +] _meta.published` の昇順・降順の複合インデックス)、
+可視性の判定と ID の厳密な比較は取得後にアプリケーション側で行う。followers のカーソルは Follow アクティビティの Mastodon ID
+(→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。
 
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
 未定義のルートは 501 にフォールバックする。

@@ -87,3 +87,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0059](0059-never-refetch-local-objects.md) | ローカルオブジェクトを HTTP で取り直さず、fullReplace でも _meta を引き継ぐ | Accepted |
 | [0060](0060-derive-status-attributes-from-note.md) | Status エンティティの属性を Note の実データから導出する | Accepted |
 | [0061](0061-timeline-actor-filter-and-visibility.md) | タイムラインは actor で絞り、可視性を1箇所で判定する | Accepted |
+| [0062](0062-cursor-pagination-by-mastodon-id.md) | ページネーションは Mastodon ID のカーソルで行い、Firestore は published で範囲を絞る | Accepted |
