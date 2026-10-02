@@ -2,6 +2,7 @@ import type { APActor, APNote } from 'activitypub-types';
 import type { mastodon } from 'masto';
 import { describe, expect, test } from 'vitest';
 import { actorObjectToAccount, noteObjectToStatus } from '../../src/mastodon/api.js';
+import { isNoteVisibleTo } from '../../src/mastodon/statusAttributes.js';
 import { domain } from '../../src/firebase.js';
 import type { UserInfo } from '../../src/schema.js';
 import type { CamelToSnake } from '../../src/utils.js';
@@ -246,5 +247,33 @@ describe('noteObjectToStatus attribute derivation', () => {
 		expect(noteObjectToStatus(local, account, '1').application).toMatchObject({
 			name: 'activitypub-firebase',
 		});
+	});
+});
+
+describe('isNoteVisibleTo', () => {
+	const author = 'https://remote.example/u/alice';
+	const viewer = 'https://example.com/activitypub/u/hakatashi';
+	const PUBLIC = 'https://www.w3.org/ns/activitystreams#Public';
+	const note = (to: string[], cc: string[]) =>
+		({ id: `${author}/n`, type: 'Note', attributedTo: author, to, cc }) as unknown as APNote;
+
+	test('public / unlisted are visible to anyone', () => {
+		expect(isNoteVisibleTo(note([PUBLIC], []), undefined)).toBe(true);
+		expect(isNoteVisibleTo(note([], [PUBLIC]), undefined)).toBe(true);
+	});
+
+	test('followers-only is hidden from anonymous and non-followers', () => {
+		const n = note([`${author}/followers`], []);
+		expect(isNoteVisibleTo(n, undefined)).toBe(false);
+		expect(isNoteVisibleTo(n, viewer, new Set())).toBe(false);
+		expect(isNoteVisibleTo(n, viewer, new Set([author]))).toBe(true);
+	});
+
+	test('direct is visible only to author and recipients', () => {
+		const n = note([viewer], []);
+		expect(isNoteVisibleTo(n, undefined)).toBe(false);
+		expect(isNoteVisibleTo(n, viewer)).toBe(true);
+		expect(isNoteVisibleTo(n, 'https://example.com/other')).toBe(false);
+		expect(isNoteVisibleTo(note([], []), author)).toBe(true);
 	});
 });

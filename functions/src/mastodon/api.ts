@@ -33,6 +33,8 @@ import {
 	noteToLanguage,
 	noteToMentions,
 	noteToVisibility,
+	isNotePublicTimelineEligible,
+	isNoteVisibleTo,
 } from './statusAttributes.js';
 
 const validScopes = [
@@ -250,9 +252,10 @@ const userIdsToAcconts = async (
 	);
 };
 
-const getAllNotes = async () => {
-	// `_meta` の非正規化カウンタ (likesCount / sharesCount) を読むため includeMeta で取得する。
-	const notes = (await apex.store.getObjectsByFieldValue('type', 'Note', true)).filter(isAPNote);
+// Note を Status エンティティへ変換する。可視性の絞り込みは呼び出し側で済ませておくこと。
+type NoteObject = ApexObject & APNote;
+
+const notesToStatuses = async (notes: NoteObject[]) => {
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
 
 	// リプライ先は手元に保存済みのものだけ解決する (リモートへは取りに行かない → ADR-0059)。
@@ -303,6 +306,128 @@ const getInboxId = (actor: APActor) => {
 	throw new Error('inbox is not string');
 };
 
+const DEFAULT_TIMELINE_LIMIT = 20;
+const MAX_TIMELINE_LIMIT = 40;
+// 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
+const TIMELINE_FETCH_FACTOR = 3;
+const MAX_TIMELINE_FETCH_ROUNDS = 10;
+
+export const timelineQuerySchema = z.object({
+	limit: z.coerce.number().int().min(1).default(DEFAULT_TIMELINE_LIMIT),
+});
+
+// viewer がフォロー中 (相手が Accept 済み) の actor IRI を返す。
+export const getFollowing = async (actor: APActor): Promise<string[]> => {
+	assert(actor.id !== undefined, 'actor.id is undefined');
+	const actorKey = escapeFirestoreKey(actor.id);
+
+	const followStreams = await Streams.where('type', '==', 'Follow')
+		.where(metaIndexPath('actors', actorKey), '==', true)
+		.get();
+	if (followStreams.empty) {
+		return [];
+	}
+	const acceptStreams = await Streams.where(
+		metaIndexPath('collections', escapeFirestoreKey(getInboxId(actor))),
+		'==',
+		true,
+	)
+		.where('type', '==', 'Accept')
+		.get();
+	const acceptedFollowIds = new Set(
+		acceptStreams.docs.flatMap((doc) => toIdArray(doc.data().object)),
+	);
+
+	return uniq(
+		followStreams.docs.flatMap((doc) => {
+			const follow = doc.data();
+			const target = toIdArray(follow.object)[0];
+			return target !== undefined && acceptedFollowIds.has(follow.id) ? [target] : [];
+		}),
+	);
+};
+
+// 新しい順に Note を読み、`isVisible` を通ったものを limit 件集める。
+// 可視性の判定は Firestore のクエリでは表現できないため、足りなければカーソルを進めて読み足す。
+const collectVisibleNotes = async ({
+	actors,
+	limit,
+	isVisible,
+}: {
+	actors?: string[] | undefined;
+	limit: number;
+	isVisible: (note: NoteObject) => boolean;
+}): Promise<NoteObject[]> => {
+	const collected: NoteObject[] = [];
+	let before: string | undefined;
+	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < limit; round++) {
+		const fetchSize = limit * TIMELINE_FETCH_FACTOR;
+		const page = await apex.store.getNotes({ actors, limit: fetchSize, before });
+		for (const note of page.filter(isAPNote)) {
+			if (getAttributedTo(note) !== undefined && isVisible(note)) {
+				collected.push(note);
+			}
+		}
+		if (page.length < fetchSize) {
+			break;
+		}
+		const lastPublished = page.at(-1)?.published;
+		if (lastPublished === undefined) {
+			break;
+		}
+		before = String(lastPublished);
+	}
+	return collected.slice(0, limit);
+};
+
+const parseLimit = (query: unknown) => {
+	const parsed = timelineQuerySchema.safeParse(query);
+	return Math.min(parsed.success ? parsed.data.limit : DEFAULT_TIMELINE_LIMIT, MAX_TIMELINE_LIMIT);
+};
+
+// actor の投稿一覧。viewer に見えるものだけを返す。
+export const getAccountStatuses = async (
+	actorId: string,
+	viewer: APActor | undefined,
+	limit: number,
+) => {
+	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+	const notes = await collectVisibleNotes({
+		actors: [actorId],
+		limit,
+		isVisible: (note) => isNoteVisibleTo(note, viewer?.id, viewerFollowing),
+	});
+	return notesToStatuses(notes);
+};
+
+// 公開タイムライン。public な投稿のみ (unlisted / private / direct は載せない)。
+export const getPublicTimeline = async (limit: number) => {
+	const notes = await collectVisibleNotes({ limit, isVisible: isNotePublicTimelineEligible });
+	return notesToStatuses(notes);
+};
+
+// ホームタイムライン。自分の投稿 + フォロー中の相手の投稿のうち、閲覧権限のあるもの。
+export const getHomeTimeline = async (viewer: APActor, limit: number) => {
+	assert(viewer.id !== undefined, 'viewer.id is undefined');
+	const viewerFollowing = new Set(await getFollowing(viewer));
+	const authors = [viewer.id, ...viewerFollowing];
+	const notes = (
+		await Promise.all(
+			chunk(authors, FIRESTORE_IN_QUERY_LIMIT).map((actors) =>
+				collectVisibleNotes({
+					actors,
+					limit,
+					isVisible: (note) => isNoteVisibleTo(note, viewer.id, viewerFollowing),
+				}),
+			),
+		)
+	)
+		.flat()
+		.sort((a, b) => String(b.published).localeCompare(String(a.published)))
+		.slice(0, limit);
+	return notesToStatuses(notes);
+};
+
 export const getFollowers = async (actor: APActor) => {
 	assert(actor.id !== undefined, 'actor.id is undefined');
 
@@ -349,11 +474,8 @@ export const getFollowers = async (actor: APActor) => {
 	return userIdsToAcconts(Array.from(followerIds));
 };
 
-const authRequired = async (
-	req: express.Request,
-	res: express.Response,
-	next: express.NextFunction,
-) => {
+// OAuth トークンから、ログイン中のローカル actor の IRI と UserInfo を引く。
+const resolveAuth = async (req: express.Request, res: express.Response) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 	const token = await oauth.authenticate(request, response);
@@ -368,10 +490,47 @@ const authRequired = async (
 	const userInfoDoc = userInfoDocs.docs[0];
 	assert(userInfoDoc !== undefined);
 
+	return {
+		userInfo: userInfoDoc.data(),
+		actorId: unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id)),
+	};
+};
+
+const authRequired = async (
+	req: express.Request,
+	res: express.Response,
+	next: express.NextFunction,
+) => {
+	const { userInfo, actorId } = await resolveAuth(req, res);
 	// eslint-disable-next-line require-atomic-updates
-	res.locals.auth = userInfoDoc.data();
+	res.locals.auth = userInfo;
+	// eslint-disable-next-line require-atomic-updates
+	res.locals.actorId = actorId;
 
 	next();
+};
+
+const getLocalActor = async (actorId: string): Promise<APActor> => {
+	const actor = await apex.store.getObject(actorId);
+	assert(actor !== undefined, 'actor is undefined');
+	assertIsAPActor(actor);
+	return actor;
+};
+
+// 認証は任意のエンドポイント用。トークンが無い・無効なら未認証の閲覧者として扱う。
+const getOptionalViewer = async (
+	req: express.Request,
+	res: express.Response,
+): Promise<APActor | undefined> => {
+	if (req.headers.authorization === undefined) {
+		return undefined;
+	}
+	try {
+		const { actorId } = await resolveAuth(req, res);
+		return await getLocalActor(actorId);
+	} catch {
+		return undefined;
+	}
 };
 
 const getAccount = (acct: string) => {
@@ -461,7 +620,19 @@ router.get('/v1/accounts/:id/statuses', async (req, res) => {
 		return;
 	}
 
-	res.json(await getAllNotes());
+	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
+	const userInfoDoc = userInfo.docs[0];
+	if (userInfoDoc === undefined) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+	const actorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+
+	// 認証は任意。トークンがあれば閲覧者として可視性を判定する。
+	const viewer = await getOptionalViewer(req, res);
+	res.json(await getAccountStatuses(actorId, viewer, parseLimit(req.query)));
 });
 
 router.get('/v1/accounts/:id/followers', async (req, res) => {
@@ -518,11 +689,12 @@ router.get('/v1/push/subscription', authRequired, (req, res) => {
 });
 
 router.get('/v1/timelines/public', async (req, res) => {
-	res.json(await getAllNotes());
+	res.json(await getPublicTimeline(parseLimit(req.query)));
 });
 
 router.get('/v1/timelines/home', authRequired, async (req, res) => {
-	res.json(await getAllNotes());
+	const viewer = await getLocalActor(res.locals.actorId as string);
+	res.json(await getHomeTimeline(viewer, parseLimit(req.query)));
 });
 
 router.post('/v1/apps', async (req, res) => {

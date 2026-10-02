@@ -132,6 +132,34 @@ export default class Store extends IApexStore implements ApexStore {
 		});
 	}
 
+	// タイムライン用に Note を新しい順に取得する。`actors` を渡すとその attributedTo のものだけに
+	// 絞る (Firestore の `in` 制約により 30 件まで)。`before` は published のカーソル (排他)。
+	// 可視性の判定は呼び出し側 (statusAttributes.ts の isNoteVisibleTo) の責務。
+	async getNotes({
+		actors,
+		limit,
+		before,
+	}: {
+		actors?: string[] | undefined;
+		limit: number;
+		before?: string | undefined;
+	}): Promise<APObject[]> {
+		logger.info({ type: 'getNotes', actors, limit, before });
+		if (actors !== undefined && actors.length === 0) {
+			return [];
+		}
+		let query = Objects.where('type', '==', 'Note');
+		if (actors !== undefined) {
+			query = query.where('attributedTo', 'in', actors);
+		}
+		query = query.orderBy('published', 'desc');
+		if (before !== undefined) {
+			query = query.startAfter(before);
+		}
+		const docs = await query.limit(limit).get();
+		return docs.docs.map((doc) => doc.data());
+	}
+
 	async getObjectsCount(field: string, value: unknown) {
 		logger.info({
 			type: 'countObjects',
