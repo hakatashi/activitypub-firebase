@@ -6,7 +6,7 @@ import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
 import firebase from 'firebase-admin';
-import { chunk, last, zip } from 'lodash-es';
+import { chunk, last, uniq, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { z } from 'zod';
 import { apex } from '../activitypub.js';
@@ -25,6 +25,15 @@ import type { CamelToSnake } from '../utils.js';
 import { isAPActor, isAPFollow, isAPNote, isAPUndo, toIdArray, toStringValue } from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
+import {
+	noteToCounts,
+	noteToEditedAt,
+	noteToEmojis,
+	noteToHashtags,
+	noteToLanguage,
+	noteToMentions,
+	noteToVisibility,
+} from './statusAttributes.js';
 
 const validScopes = [
 	'follow',
@@ -130,29 +139,48 @@ const actorUsernameToAccount = async (
 
 // `id` には AP IRI ではなく、時系列順に採番した Mastodon ID を渡す (→ ADR-0006、ADR-0058)。
 // 取得は `getMastodonIds` で行う。
+// Status の各属性は Note の実データから導出する (→ ADR-0060)。
+export interface StatusContext {
+	// 投稿者の followers コレクションの IRI。可視性の判定に使う。
+	followersIri?: string;
+	// リプライ先の Mastodon ID とその投稿者のアカウント ID。解決できなければ未指定。
+	inReplyTo?: { id: string; accountId: string } | undefined;
+	// `_meta` の非正規化カウンタ (→ ADR-0037)。
+	meta?: { likesCount?: number; sharesCount?: number } | undefined;
+}
+
+// masto の型は `application` を non-null としているが、Mastodon 本体はリモート投稿で null を返す。
+export type StatusEntity = Omit<CamelToSnake<mastodon.v1.Status>, 'application'> & {
+	application: CamelToSnake<mastodon.v1.Status>['application'] | null;
+};
+
+const isLocalIri = (iri: string) => iri.startsWith(`https://${domain}/`);
+
+// oxlint-disable-next-line max-params -- 属性の導出元 (note/account/id) と外部参照の文脈を別引数に保つ
 export const noteObjectToStatus = (
 	note: APNote,
 	account: CamelToSnake<mastodon.v1.Account>,
 	id: string,
-): CamelToSnake<mastodon.v1.Status> => {
+	context: StatusContext = {},
+): StatusEntity => {
 	assert(note.id !== undefined, 'note.id is undefined');
 	assert(note.published !== undefined, 'note.published is undefined');
+	const noteId = note.id;
 	return {
 		id,
 		created_at: note.published.toString(),
-		edited_at: null,
-		in_reply_to_id: null,
-		in_reply_to_account_id: null,
-		sensitive: false,
-		spoiler_text: '',
-		visibility: 'public',
-		language: 'ja',
+		edited_at: noteToEditedAt(note),
+		in_reply_to_id: context.inReplyTo?.id ?? null,
+		in_reply_to_account_id: context.inReplyTo?.accountId ?? null,
+		sensitive: (note as { sensitive?: unknown }).sensitive === true,
+		spoiler_text: toStringValue(note.summary) ?? '',
+		visibility: noteToVisibility(note, context.followersIri),
+		language: noteToLanguage(note),
 		// Mastodon の `uri` は連合で使う ActivityPub の IRI。
-		uri: note.id,
-		url: `https://${domain}/@${account.username}@${domain}/${id}`,
-		replies_count: 0,
-		reblogs_count: 0,
-		favourites_count: 0,
+		uri: noteId,
+		// `url` は人間向けの URL。Note の `url` があればそれ、無ければ IRI。
+		url: toIdArray(note.url)[0] ?? noteId,
+		...noteToCounts(note, context.meta),
 		reblogged: false,
 		favourited: false,
 		muted: false,
@@ -160,15 +188,19 @@ export const noteObjectToStatus = (
 		pinned: false,
 		content: toStringValue(note.content) ?? '',
 		reblog: null,
-		application: {
-			name: 'activitypub-firebase',
-			website: `https://${domain}`,
-		},
+		// application はこのサーバーの投稿のみ。リモート投稿では不明なので null。
+		application: isLocalIri(noteId)
+			? {
+					name: 'activitypub-firebase',
+					website: `https://${domain}`,
+				}
+			: null,
 		account,
+		// メディアは Phase 4 (メディア) で実装するまで空配列のままにする。
 		media_attachments: [],
-		mentions: [],
-		tags: [],
-		emojis: [],
+		mentions: noteToMentions(note),
+		tags: noteToHashtags(note),
+		emojis: noteToEmojis(note),
 		card: null,
 		poll: null,
 	};
@@ -219,18 +251,26 @@ const userIdsToAcconts = async (
 };
 
 const getAllNotes = async () => {
-	const notes = (await apex.store.getObjectsByFieldValue('type', 'Note')).filter(isAPNote);
+	// `_meta` の非正規化カウンタ (likesCount / sharesCount) を読むため includeMeta で取得する。
+	const notes = (await apex.store.getObjectsByFieldValue('type', 'Note', true)).filter(isAPNote);
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
-	const userIds = validNotes.map((note) => {
-		const attributedTo = getAttributedTo(note);
-		assert(attributedTo !== undefined, 'attributedTo is undefined');
-		return attributedTo;
-	});
+
+	// リプライ先は手元に保存済みのものだけ解決する (リモートへは取りに行かない → ADR-0059)。
+	const replyTargetIris = uniq(validNotes.flatMap((note) => toIdArray(note.inReplyTo).slice(0, 1)));
+	const replyTargets = (await apex.store.getObjects(replyTargetIris)).filter(isAPNote);
+	const replyTargetMap = new Map(replyTargets.map((target) => [target.id, target]));
+
+	const authorIris = uniq([
+		...validNotes.map((note) => getAttributedTo(note)),
+		...replyTargets.map((target) => getAttributedTo(target)),
+	]).filter((iri): iri is string => iri !== undefined);
 	const [accounts, mastodonIds] = await Promise.all([
-		userIdsToAcconts(userIds),
-		getMastodonIds(validNotes.map((note) => ({ iri: note.id, published: note.published }))),
+		userIdsToAcconts(authorIris),
+		getMastodonIds(
+			[...validNotes, ...replyTargets].map((note) => ({ iri: note.id, published: note.published })),
+		),
 	]);
-	const accountsMap = new Map(zip(userIds, accounts));
+	const accountsMap = new Map(zip(authorIris, accounts));
 
 	return validNotes.map((note) => {
 		const attributedTo = getAttributedTo(note);
@@ -242,7 +282,16 @@ const getAllNotes = async () => {
 		const mastodonId = mastodonIds.get(note.id);
 		assert(mastodonId !== undefined, 'mastodonId is undefined');
 
-		return noteObjectToStatus(note, account, mastodonId);
+		const replyTarget = replyTargetMap.get(toIdArray(note.inReplyTo)[0] ?? '');
+		const replyTargetAuthor = replyTarget && getAttributedTo(replyTarget);
+		const replyTargetId = replyTarget && mastodonIds.get(replyTarget.id);
+		const replyTargetAccount = replyTargetAuthor ? accountsMap.get(replyTargetAuthor) : undefined;
+		const inReplyTo =
+			replyTargetId !== undefined && replyTargetAccount !== undefined
+				? { id: replyTargetId, accountId: replyTargetAccount.id }
+				: undefined;
+
+		return noteObjectToStatus(note, account, mastodonId, { inReplyTo, meta: note._meta });
 	});
 };
 
