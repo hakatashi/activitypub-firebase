@@ -13,13 +13,13 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| POST | `/api/v1/apps` | 🟡 | `redirect_uris` の配列形式に未対応。`id` の採番が `count()+1` で競合しうる |
-| GET | `/api/v1/apps/verify_credentials` | ⬜ | |
-| GET | `/oauth/authorize` | ✅ | FirebaseUI による Google ログイン画面を返す |
-| POST | `/oauth/authorize` | ✅ | ID トークン検証後に認可コードを発行 |
-| POST | `/oauth/token` | ✅ | Elk が JSON を送る不具合への workaround あり |
-| POST | `/oauth/revoke` | ⬜ | 501 固定。`revokeToken` 自体が未実装 |
-| — | PKCE (`code_challenge`) | ⬜ | 対応状況未確認 |
+| POST | `/api/v1/apps` | ✅ | 文字列・配列形式の `redirect_uris` に対応。トランザクション内で採番 |
+| GET | `/api/v1/apps/verify_credentials` | ✅ | Bearer トークンによる認証、機密情報を除外したアプリ情報を返却 |
+| GET | `/oauth/authorize` | ✅ | FirebaseUI による Google ログイン画面を返す。PKCE / state 引継ぎ対応 |
+| POST | `/oauth/authorize` | ✅ | ID トークン検証後に認可コードを発行。PKCE / state に対応 |
+| POST | `/oauth/token` | ✅ | Elk が JSON を送る不具合への workaround あり。refresh_token grant と PKCE 検証に対応 |
+| POST | `/oauth/revoke` | ✅ | RFC 7009 準拠。トークン所有者検証、失効および冪等な 200 応答 |
+| — | PKCE (`code_challenge`) | ✅ | S256 / plain に対応。認可画面経由での値の保持とトークン交換時の検証 |
 
 ## インスタンス情報
 

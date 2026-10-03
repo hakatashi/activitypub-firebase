@@ -2,6 +2,7 @@ import type {
 	AuthorizationCodeModel,
 	PasswordModel,
 	ClientCredentialsModel,
+	RefreshTokenModel,
 	Token,
 	AuthorizationCode,
 	Client,
@@ -13,16 +14,36 @@ import { AccessTokens, AuthorizationCodes, Clients, RefreshTokens, Users } from 
 
 export type { MastodonClient } from '../schema.js';
 
+const toDate = (timestamp: unknown): Date | undefined => {
+	if (timestamp instanceof Date) {
+		return timestamp;
+	}
+	if (
+		typeof timestamp === 'object' &&
+		timestamp !== null &&
+		'toDate' in timestamp &&
+		typeof (timestamp as { toDate: () => unknown }).toDate === 'function'
+	) {
+		const date = (timestamp as { toDate: () => unknown }).toDate();
+		if (date instanceof Date) {
+			return date;
+		}
+	}
+	return undefined;
+};
+
 // クエリを実行し、最初の1件(なければ undefined)を返す。
 // 各メソッドがそれぞれ独自に `results.docs[0]` を取り出して乖離するのを避ける。
-const getFirstDoc = async <T extends FirebaseFirestore.DocumentData>(
+export const getFirstDoc = async <T extends FirebaseFirestore.DocumentData>(
 	query: FirebaseFirestore.Query<T>,
 ): Promise<FirebaseFirestore.QueryDocumentSnapshot<T> | undefined> => {
-	const results = await query.get();
+	const results = await query.limit(1).get();
 	return results.docs[0];
 };
 
-export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, ClientCredentialsModel {
+export class Oauth2Model
+	implements AuthorizationCodeModel, PasswordModel, ClientCredentialsModel, RefreshTokenModel
+{
 	async getAccessToken(accessToken: string): Promise<Token | false> {
 		const doc = await getFirstDoc(AccessTokens.where('accessToken', '==', accessToken));
 		if (!doc) {
@@ -31,10 +52,8 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		const accessTokenData = doc.data();
 		return {
 			...accessTokenData,
-			// @ts-expect-error: Return type is different from the interface
-			accessTokenExpiresAt: accessTokenData.accessTokenExpiresAt.toDate(),
-			// @ts-expect-error: Return type is different from the interface
-			refreshTokenExpiresAt: accessTokenData.refreshTokenExpiresAt.toDate(),
+			accessTokenExpiresAt: toDate(accessTokenData.accessTokenExpiresAt),
+			refreshTokenExpiresAt: toDate(accessTokenData.refreshTokenExpiresAt),
 		};
 	}
 
@@ -48,8 +67,7 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		const authorizationCodeData = doc.data();
 		return {
 			...authorizationCodeData,
-			// @ts-expect-error: Return type is different from the interface
-			expiresAt: authorizationCodeData.expiresAt.toDate(),
+			expiresAt: toDate(authorizationCodeData.expiresAt) ?? new Date(0),
 		};
 	}
 
@@ -66,8 +84,15 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		client: Client,
 		user: User,
 	): Promise<AuthorizationCode | false> {
-		const authorizationCode = {
-			...code,
+		const authorizationCode: AuthorizationCode = {
+			authorizationCode: code.authorizationCode,
+			expiresAt: code.expiresAt,
+			redirectUri: code.redirectUri,
+			...(code.scope === undefined ? {} : { scope: code.scope }),
+			...(code.codeChallenge === undefined ? {} : { codeChallenge: code.codeChallenge }),
+			...(code.codeChallengeMethod === undefined
+				? {}
+				: { codeChallengeMethod: code.codeChallengeMethod }),
 			client,
 			user,
 		};
@@ -100,7 +125,18 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 			return false;
 		}
 
-		return doc.data();
+		const clientData = doc.data();
+		let redirectUris: string[] = [];
+		if (Array.isArray(clientData.redirectUris)) {
+			redirectUris = clientData.redirectUris;
+		} else if (typeof clientData.redirectUris === 'string' && clientData.redirectUris.length > 0) {
+			redirectUris = [clientData.redirectUris];
+		}
+
+		return {
+			...clientData,
+			redirectUris,
+		};
 	}
 
 	async saveToken(token: Token, client: Client, user: User): Promise<Token | false> {
@@ -125,6 +161,55 @@ export class Oauth2Model implements AuthorizationCodeModel, PasswordModel, Clien
 		}
 
 		return accessToken;
+	}
+
+	async getRefreshToken(refreshToken: string): Promise<RefreshToken | false> {
+		const doc = await getFirstDoc(RefreshTokens.where('refreshToken', '==', refreshToken));
+		if (!doc) {
+			return false;
+		}
+		const refreshTokenData = doc.data();
+		return {
+			...refreshTokenData,
+			refreshTokenExpiresAt: toDate(refreshTokenData.refreshTokenExpiresAt),
+		};
+	}
+
+	revokeToken(token: RefreshToken | Token): Promise<boolean> {
+		return db.runTransaction(async (transaction) => {
+			const docsToDelete: FirebaseFirestore.DocumentReference[] = [];
+
+			if ('refreshToken' in token && typeof token.refreshToken === 'string') {
+				const refreshResults = await transaction.get(
+					RefreshTokens.where('refreshToken', '==', token.refreshToken),
+				);
+				for (const doc of refreshResults.docs) {
+					docsToDelete.push(doc.ref);
+				}
+
+				const accessResultsWithRefresh = await transaction.get(
+					AccessTokens.where('refreshToken', '==', token.refreshToken),
+				);
+				for (const doc of accessResultsWithRefresh.docs) {
+					docsToDelete.push(doc.ref);
+				}
+			}
+
+			if ('accessToken' in token && typeof token.accessToken === 'string') {
+				const accessResults = await transaction.get(
+					AccessTokens.where('accessToken', '==', token.accessToken),
+				);
+				for (const doc of accessResults.docs) {
+					docsToDelete.push(doc.ref);
+				}
+			}
+
+			for (const ref of docsToDelete) {
+				transaction.delete(ref);
+			}
+
+			return docsToDelete.length > 0;
+		});
 	}
 
 	async getUserFromClient(client: Client): Promise<User | false> {

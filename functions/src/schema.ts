@@ -51,6 +51,7 @@ export interface MastodonClient extends Client {
 	name: string;
 	scopes: string[];
 	userId?: string;
+	website?: string;
 }
 
 export const AccessTokens = db.collection('accessTokens') as CollectionReference<Token>;

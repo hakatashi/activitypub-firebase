@@ -93,4 +93,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0065](0065-account-endpoints-and-follow-unfollow.md) | アカウント系エンドポイントとフォロー・アンフォローの ActivityPub 連携 | Accepted |
 | [0066](0066-self-hosted-clients-driven-by-playwright.md) | クライアント互換性の検証に Elk / Phanpy を自前ホストし Playwright で操作する | Accepted |
 | [0067](0067-stubs-markers-and-instance-info.md) | クライアント起動用スタブ・既読マーカー・インスタンス情報の整備 | Accepted |
+| [0068](0068-app-registration-oauth-revocation-and-pkce.md) | アプリ登録の配列対応・トランザクション採番・OAuth トークン失効と PKCE | Accepted |
 

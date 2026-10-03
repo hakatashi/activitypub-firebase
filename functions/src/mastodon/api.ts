@@ -24,6 +24,7 @@ import { getIriByMastodonId, getMastodonIds, mastodonIdToTimestamp } from '../ma
 import { metaIndexPath } from '../meta.js';
 import { deleteNote, htmlToPlainText, plainTextToHtml, publishNote } from '../notes.js';
 import { Clients, Markers, Streams, UserInfo, UserInfos } from '../schema.js';
+import type { MastodonClient } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
 import {
@@ -1276,8 +1277,8 @@ export const updateCredentialsBodySchema = z.object({
 });
 
 export const createAppBodySchema = z.object({
-	client_name: z.string().min(1),
-	redirect_uris: z.string().min(1),
+	client_name: z.string().trim().min(1),
+	redirect_uris: z.union([z.string().trim().min(1), z.array(z.string().trim().min(1)).min(1)]),
 	scopes: z
 		.string()
 		.default('read')
@@ -2024,35 +2025,86 @@ router.post('/v1/apps', async (req, res) => {
 		return;
 	}
 
-	const { client_name: clientName, redirect_uris: redirectUris, scopes, website } = parsedBody.data;
+	const { client_name: clientName, redirect_uris: redirectUrisRaw, scopes } = parsedBody.data;
+	const website = parsedBody.data.website?.trim() ? parsedBody.data.website.trim() : null;
+
+	const redirectUrisArray =
+		typeof redirectUrisRaw === 'string'
+			? redirectUrisRaw.trim().split(/\s+/)
+			: redirectUrisRaw.map((uri) => uri.trim());
+	const redirectUriString =
+		typeof redirectUrisRaw === 'string'
+			? redirectUrisRaw.trim()
+			: redirectUrisRaw.map((uri) => uri.trim()).join('\n');
 
 	const scopeSet = new Set<string>(scopes.split(' '));
 
-	const id = (await Clients.count().get()).data().count + 1;
 	const clientId = crypto.randomBytes(32).toString('hex');
 	const clientSecret = crypto.randomBytes(32).toString('hex');
 	const vapidKey = crypto.randomBytes(32).toString('hex');
 
-	await Clients.add({
-		id: id.toString(),
-		name: clientName,
-		redirectUris,
-		grants: ['authorization_code', 'refresh_token'],
-		clientId,
-		clientSecret,
-		scopes: Array.from(scopeSet),
-		vapidKey,
+	const client = await db.runTransaction(async (transaction) => {
+		const countSnapshot = await transaction.get(Clients.count());
+		const id = (countSnapshot.data().count + 1).toString();
+		const docRef = Clients.doc();
+		const clientData: MastodonClient = {
+			id,
+			name: clientName,
+			redirectUris: redirectUrisArray,
+			grants: ['authorization_code', 'refresh_token'],
+			clientId,
+			clientSecret,
+			scopes: Array.from(scopeSet),
+			vapidKey,
+			...(website ? { website } : {}),
+		};
+		transaction.set(docRef, clientData);
+		return clientData;
 	});
 
 	res.json({
-		id: id.toString(),
+		id: client.id,
+		name: client.name,
+		website,
+		scopes: Array.from(scopeSet),
+		redirect_uri: redirectUriString,
+		redirect_uris: redirectUrisArray,
 		client_id: clientId,
 		client_secret: clientSecret,
-		redirect_uri: redirectUris,
-		name: clientName,
-		website,
+		client_secret_expires_at: 0,
 		vapid_key: vapidKey,
 	});
+});
+
+router.get('/v1/apps/verify_credentials', async (req, res) => {
+	try {
+		const request = new OauthRequest(req);
+		const response = new OauthResponse(res);
+		const token = await oauth.authenticate(request, response);
+		const client = token.client as MastodonClient;
+
+		let redirectUris: string[] = [];
+		if (Array.isArray(client.redirectUris)) {
+			redirectUris = client.redirectUris;
+		} else if (typeof client.redirectUris === 'string' && client.redirectUris.length > 0) {
+			redirectUris = client.redirectUris.split(/\s+/);
+		}
+
+		res.json({
+			id: client.id,
+			name: client.name,
+			website: client.website ?? null,
+			scopes: client.scopes ?? [],
+			redirect_uri: redirectUris[0] ?? '',
+			redirect_uris: redirectUris,
+			vapid_key: client.vapidKey,
+		});
+	} catch (error) {
+		const status = (error as { statusCode?: number }).statusCode ?? 401;
+		res.status(status).json({
+			error: toError(error).message,
+		});
+	}
 });
 
 // fallback all /api routes to 404 (→ ADR-0067)

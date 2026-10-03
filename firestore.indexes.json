@@ -167,6 +167,24 @@
       "fieldPath": "expiresAt",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "collectionGroup": "authorizationCodes",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "accessTokens",
+      "fieldPath": "accessTokenExpiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "refreshTokens",
+      "fieldPath": "refreshTokenExpiresAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }
