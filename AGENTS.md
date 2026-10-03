@@ -21,7 +21,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 
 `third_party/` には仕様書と参考実装が submodule として置かれている
 (`activitypub` = W3C 仕様、`mastodon` / `mastodon_documentation` = Mastodon 本体とドキュメント、
-`minidon` / `minipub` = サーバーレス寄りの軽量実装、`rfc/` = WebFinger と acct URI の RFC)。
+`minidon` / `minipub` = サーバーレス寄りの軽量実装、`elk` / `phanpy` = フロントエンドとして使うクライアントのソース、`rfc/` = WebFinger と acct URI の RFC)。
 **仕様の確認は推測ではなくこれらを読んで行うこと。**
 
 ## 作業のルール
@@ -51,6 +51,9 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 - **dev 環境で検証可能な変更は、PR を作成する前に積極的に dev 環境へデプロイして検証する。**
   連合が絡む変更は [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md)
   の手順に従い、外部インスタンスとの疎通まで確認する(連合の不具合はローカルでは再現しない)。
+- **Mastodon API などクライアントから見える挙動が絡む変更のうち必要なものは、PR を作成する前に
+  [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) の手順に従って検証する**
+  (federation-testing.md と同様)。
 - **dev 環境は検証用のデプロイ環境であり、検証のために既存データを破壊してよい。**
   本番相当のデータを維持する必要はない。
 - デプロイ手順(dev 限定の手動デプロイ、バックフィルスクリプトの実行方法を含む)は
