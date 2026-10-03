@@ -3,11 +3,11 @@
 `functions/src/mastodon/api.ts` および `oauth.ts` の実装状況。
 **エンドポイントを実装したらこの表を更新する。**
 
-未定義のルートは `api.ts` 末尾のフォールバックで 501 を返す。
+未定義のルートは `api.ts` 末尾のフォールバックで 404 を返す(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md))。
 クライアントによっては 501 で起動に失敗するため、当面使わないものも
 **空配列を返すスタブを置く**方針(→ [ADR-0004](adr/0004-no-custom-ui-use-elk.md))。
 
-凡例: ✅ 実装済み / 🟡 部分的・要修正 / ⬜ 未実装(501)
+凡例: ✅ 実装済み / 🟡 部分的・要修正 / ⬜ 未実装(404)
 
 ## 認証・アプリ登録
 
@@ -25,10 +25,10 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| GET | `/api/v1/instance` | 🟡 | `v2` から機械的に導出。`urls.streaming_api` を空にする必要あり |
-| GET | `/api/v2/instance` | 🟡 | `version` が `4.0.0` のまま。`api_versions` がない。サンプル値が残存 |
+| GET | `/api/v1/instance` | ✅ | `urls.streaming_api` は空文字、`UserInfos` 実データを反映 |
+| GET | `/api/v2/instance` | ✅ | `version: 4.3.0`、`api_versions`、`urls.streaming` は空文字、`UserInfos` 実データを反映 |
 | GET | `/.well-known/nodeinfo`, `/nodeinfo/:version` | ✅ | apex のハンドラを再利用 |
-| GET | `/api/v1/streaming` | ⬜ | **404 を返すようにする**(→ [ADR-0007](adr/0007-no-streaming-api.md)) |
+| GET | `/api/v1/streaming` | ✅ | **404 を返す**(→ [ADR-0007](adr/0007-no-streaming-api.md)) |
 
 ## アカウント
 
@@ -73,7 +73,7 @@
 |---|---|---|---|
 | GET | `/api/v1/notifications` | ⬜ | |
 | GET | `/api/v1/notifications/unread_count` | ⬜ | |
-| GET | `/api/v1/markers`, POST | ⬜ | `409 Conflict` を返す楽観ロックが必要 |
+| GET, POST | `/api/v1/markers` | ✅ | `home` / `notifications` の既読位置、`version` による楽観ロック (競合時は 409 Conflict) (→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | GET | `/api/v2/search` | ⬜ | |
 | GET | `/api/v1/push/subscription` | ✅ | 404 を返す(Web Push 非対応) |
 
@@ -85,7 +85,8 @@
 `/api/v1/custom_emojis`, `/api/v1/filters`, `/api/v2/filters`, `/api/v1/announcements`,
 `/api/v1/lists`, `/api/v1/followed_tags`, `/api/v1/conversations`,
 `/api/v1/blocks`, `/api/v1/mutes`, `/api/v1/domain_blocks`, `/api/v1/bookmarks`,
-`/api/v1/favourites`, `/api/v1/follow_requests`, `/api/v1/featured_tags`
+`/api/v1/favourites`, `/api/v1/follow_requests`, `/api/v1/featured_tags`,
+`/api/v1/accounts/:id/featured_tags`
 
 ## 実装しないもの
 

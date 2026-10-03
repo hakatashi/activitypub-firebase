@@ -1,11 +1,29 @@
+import firebase from 'firebase-admin';
 import request from 'supertest';
-import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { apex } from '../../src/activitypub.js';
+import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
+import { AccessTokens, UserInfos } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
 
+const UID_ME = 'uid-hakatashi';
+
 describe('mastodon', () => {
+	const addToken = async (token: string, scope: string, uid = UID_ME) => {
+		const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
+		await AccessTokens.add({
+			accessToken: token,
+			accessTokenExpiresAt: farFuture,
+			refreshTokenExpiresAt: farFuture,
+			scope,
+			client: { id: '1', grants: [] },
+			user: { userId: uid },
+		} as never);
+	};
+
 	beforeEach(() => {
 		if (firestoreHost === undefined || projectId === undefined) {
 			throw new Error('Firestore emulator is not running');
@@ -27,22 +45,272 @@ describe('mastodon', () => {
 		expect(response.status).toBe(404);
 	});
 
+	test('Unknown route falls back to 404 with JSON error', async () => {
+		const response = await request(mastodon).get('/api/v1/unknown_route');
+		expect(response.status).toBe(404);
+		expect(response.body.error).toBe('Record not found');
+	});
+
 	describe('/api', () => {
+		describe('/api/v1/streaming', () => {
+			test('returns 404 for streaming endpoint (ADR-0007)', async () => {
+				const response = await request(mastodon).get('/api/v1/streaming');
+				expect(response.status).toBe(404);
+				expect(response.body.error).toBe('Record not found');
+			});
+
+			test('returns 404 for streaming subpath', async () => {
+				const response = await request(mastodon).get('/api/v1/streaming/user');
+				expect(response.status).toBe(404);
+				expect(response.body.error).toBe('Record not found');
+			});
+		});
+
 		describe('/api/v1/instance', () => {
-			test('Returns instance information', async () => {
+			test('Returns instance information with empty streaming_api and stats', async () => {
 				const response = await request(mastodon).get('/api/v1/instance');
 				expect(response.status).toBe(200);
 				expect(response.body.uri).toBe('mastodon-dev.hakatashi.com');
 				expect(response.body.title).toBe('HakataFediverse');
+				expect(response.body.version).toBe('4.3.0');
+				expect(response.body.urls.streaming_api).toBe('');
+				expect(response.body.stats.domain_count).toBeGreaterThanOrEqual(1);
+			});
+
+			test('Reflects user info when available', async () => {
+				const actorKey = escapeFirestoreKey(`https://${domain}/activitypub/u/hakatashi`);
+				await UserInfos.doc(actorKey).set({
+					id: '1',
+					uid: UID_ME,
+					locked: false,
+					bot: false,
+					created_at: '2026-01-01T00:00:00.000Z',
+					followers_count: 42,
+					following_count: 10,
+					statuses_count: 100,
+					last_status_at: '2026-10-04T00:00:00.000Z',
+					emojis: [],
+					fields: [],
+					roles: [],
+				});
+
+				const response = await request(mastodon).get('/api/v1/instance');
+				expect(response.status).toBe(200);
+				expect(response.body.contact_account.followers_count).toBe(42);
+				expect(response.body.contact_account.following_count).toBe(10);
+				expect(response.body.contact_account.statuses_count).toBe(100);
+				expect(response.body.contact_account.last_status_at).toBe('2026-10-04T00:00:00.000Z');
+				expect(response.body.stats.status_count).toBe(100);
 			});
 		});
 
 		describe('/api/v2/instance', () => {
-			test('Returns instance information', async () => {
+			test('Returns instance information with 4.3.0 version and api_versions', async () => {
 				const response = await request(mastodon).get('/api/v2/instance');
 				expect(response.status).toBe(200);
 				expect(response.body.domain).toBe('mastodon-dev.hakatashi.com');
 				expect(response.body.title).toBe('HakataFediverse');
+				expect(response.body.version).toBe('4.3.0');
+				expect(response.body.api_versions).toEqual({ mastodon: 1 });
+				expect(response.body.configuration.urls.streaming).toBe('');
+				expect(response.body.configuration.statuses.max_characters).toBe(500);
+				expect(response.body.thumbnail.url).toContain('githubusercontent.com');
+				expect(response.body.contact.account.url).toContain('elk.zone');
+			});
+
+			test('Reflects user info when available', async () => {
+				const actorKey = escapeFirestoreKey(`https://${domain}/activitypub/u/hakatashi`);
+				await UserInfos.doc(actorKey).set({
+					id: '1',
+					uid: UID_ME,
+					locked: false,
+					bot: false,
+					created_at: '2026-01-01T00:00:00.000Z',
+					followers_count: 42,
+					following_count: 10,
+					statuses_count: 100,
+					last_status_at: '2026-10-04T00:00:00.000Z',
+					emojis: [],
+					fields: [],
+					roles: [],
+				});
+
+				const response = await request(mastodon).get('/api/v2/instance');
+				expect(response.status).toBe(200);
+				expect(response.body.contact.account.followers_count).toBe(42);
+				expect(response.body.contact.account.following_count).toBe(10);
+				expect(response.body.contact.account.statuses_count).toBe(100);
+				expect(response.body.contact.account.last_status_at).toBe('2026-10-04T00:00:00.000Z');
+			});
+		});
+
+		describe('Empty array stubs (ADR-0004, ADR-0067)', () => {
+			test('/api/v1/custom_emojis returns empty array without auth', async () => {
+				const response = await request(mastodon).get('/api/v1/custom_emojis');
+				expect(response.status).toBe(200);
+				expect(response.body).toEqual([]);
+			});
+
+			test('/api/v1/accounts/:id/featured_tags returns empty array without auth', async () => {
+				const response = await request(mastodon).get('/api/v1/accounts/1/featured_tags');
+				expect(response.status).toBe(200);
+				expect(response.body).toEqual([]);
+			});
+
+			describe('Authenticated empty array stubs', () => {
+				beforeEach(async () => {
+					const me = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
+					await apex.store.saveObject(me);
+					await UserInfos.doc(escapeFirestoreKey(me.id)).set({
+						id: '1',
+						uid: UID_ME,
+						locked: false,
+						bot: false,
+						created_at: '2026-01-01T00:00:00.000Z',
+						followers_count: 0,
+						following_count: 0,
+						statuses_count: 0,
+						last_status_at: '',
+						emojis: [],
+						fields: [],
+						roles: [],
+					});
+					await addToken('test-token', 'read write follow');
+				});
+
+				const endpoints = [
+					'/api/v1/filters',
+					'/api/v2/filters',
+					'/api/v1/announcements',
+					'/api/v1/lists',
+					'/api/v1/followed_tags',
+					'/api/v1/conversations',
+					'/api/v1/blocks',
+					'/api/v1/mutes',
+					'/api/v1/domain_blocks',
+					'/api/v1/bookmarks',
+					'/api/v1/favourites',
+					'/api/v1/follow_requests',
+					'/api/v1/featured_tags',
+				];
+
+				for (const endpoint of endpoints) {
+					test(`${endpoint} returns empty array when authenticated`, async () => {
+						const response = await request(mastodon)
+							.get(endpoint)
+							.set('Authorization', 'Bearer test-token');
+						expect(response.status).toBe(200);
+						expect(response.body).toEqual([]);
+					});
+
+					test(`${endpoint} returns 401 when unauthorized`, async () => {
+						const response = await request(mastodon).get(endpoint);
+						expect(response.status).toBe(401);
+					});
+				}
+			});
+		});
+
+		describe('/api/v1/markers', () => {
+			beforeEach(async () => {
+				const me = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
+				await apex.store.saveObject(me);
+				await UserInfos.doc(escapeFirestoreKey(me.id)).set({
+					id: '1',
+					uid: UID_ME,
+					locked: false,
+					bot: false,
+					created_at: '2026-01-01T00:00:00.000Z',
+					followers_count: 0,
+					following_count: 0,
+					statuses_count: 0,
+					last_status_at: '',
+					emojis: [],
+					fields: [],
+					roles: [],
+				});
+				await addToken('test-token', 'read write follow');
+			});
+
+			test('returns 401 when unauthorized', async () => {
+				const response = await request(mastodon).get('/api/v1/markers');
+				expect(response.status).toBe(401);
+			});
+
+			test('returns empty object when no timeline specified', async () => {
+				const response = await request(mastodon)
+					.get('/api/v1/markers')
+					.set('Authorization', 'Bearer test-token');
+				expect(response.status).toBe(200);
+				expect(response.body).toEqual({});
+			});
+
+			test('saves and retrieves markers with version increment', async () => {
+				// Create home and notifications marker
+				const postRes1 = await request(mastodon)
+					.post('/api/v1/markers')
+					.set('Authorization', 'Bearer test-token')
+					.send({
+						home: { last_read_id: '100' },
+						notifications: { last_read_id: '200' },
+					});
+				expect(postRes1.status).toBe(200);
+				expect(postRes1.body.home).toMatchObject({
+					last_read_id: '100',
+					version: 1,
+				});
+				expect(postRes1.body.home.updated_at).toEqual(expect.any(String));
+				expect(postRes1.body.notifications).toMatchObject({
+					last_read_id: '200',
+					version: 1,
+				});
+
+				// Update home marker
+				const postRes2 = await request(mastodon)
+					.post('/api/v1/markers')
+					.set('Authorization', 'Bearer test-token')
+					.send({
+						home: { last_read_id: '105' },
+					});
+				expect(postRes2.status).toBe(200);
+				expect(postRes2.body.home).toMatchObject({
+					last_read_id: '105',
+					version: 2,
+				});
+
+				// GET markers
+				const getRes = await request(mastodon)
+					.get('/api/v1/markers')
+					.query({ timeline: ['home', 'notifications'] })
+					.set('Authorization', 'Bearer test-token');
+				expect(getRes.status).toBe(200);
+				expect(getRes.body.home).toMatchObject({
+					last_read_id: '105',
+					version: 2,
+				});
+				expect(getRes.body.notifications).toMatchObject({
+					last_read_id: '200',
+					version: 1,
+				});
+			});
+
+			test('returns 409 conflict when version does not match', async () => {
+				await request(mastodon)
+					.post('/api/v1/markers')
+					.set('Authorization', 'Bearer test-token')
+					.send({
+						home: { last_read_id: '100' },
+					});
+
+				// Attempt to update with mismatched version
+				const conflictRes = await request(mastodon)
+					.post('/api/v1/markers')
+					.set('Authorization', 'Bearer test-token')
+					.send({
+						home: { last_read_id: '105', version: 99 },
+					});
+				expect(conflictRes.status).toBe(409);
+				expect(conflictRes.body.error).toBe('Conflict during update, please try again');
 			});
 		});
 

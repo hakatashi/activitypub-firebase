@@ -1,21 +1,39 @@
 import type { mastodon } from 'masto';
-import { mastodonDomain } from '../firebase.js';
+import { domain, escapeFirestoreKey, mastodonDomain } from '../firebase.js';
+import { UserInfos } from '../schema.js';
 import type { CamelToSnake } from '../utils.js';
 
-const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
+export type ExtendedInstanceV2 = Omit<CamelToSnake<mastodon.v2.Instance>, 'configuration'> & {
+	api_versions: {
+		mastodon: number;
+		[key: string]: number | undefined;
+	};
+	configuration: Omit<CamelToSnake<mastodon.v2.Instance>['configuration'], 'urls'> & {
+		urls: {
+			streaming: string;
+			status?: string;
+			about?: string;
+			privacy_policy?: string;
+			terms_of_service?: string | null;
+		};
+	};
+};
+
+const instanceV2: ExtendedInstanceV2 = {
 	domain: mastodonDomain,
 	title: 'HakataFediverse',
 	description: 'HakataFediverse is the only instance created for hakatashi',
-	version: '4.0.0',
+	version: '4.3.0',
 	source_url: 'https://github.com/hakatashi/activitypub-firebase',
+	api_versions: {
+		mastodon: 1,
+	},
 	thumbnail: {
-		url: 'https://files.mastodon.social/site_uploads/files/000/000/001/@1x/57c12f441d083cde.png',
-		blurhash: 'UeKUpFxuo~R%0nW;WCnhF6RjaJt757oJodS$',
+		url: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+		blurhash: '',
 		versions: {
-			'@1x':
-				'https://files.mastodon.social/site_uploads/files/000/000/001/@1x/57c12f441d083cde.png',
-			'@2x':
-				'https://files.mastodon.social/site_uploads/files/000/000/001/@2x/57c12f441d083cde.png',
+			'@1x': 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+			'@2x': 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
 		},
 	},
 	languages: ['ja'],
@@ -26,7 +44,7 @@ const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
 	},
 	configuration: {
 		statuses: {
-			max_characters: 140,
+			max_characters: 500,
 			max_media_attachments: 0,
 			characters_reserved_per_url: 23,
 		},
@@ -45,7 +63,7 @@ const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
 			max_expiration: 0,
 		},
 		urls: {
-			streaming_api: '',
+			streaming: '',
 		},
 		accounts: {
 			max_featured_tags: 0,
@@ -66,17 +84,17 @@ const instanceV2: CamelToSnake<mastodon.v2.Instance> = {
 			discoverable: true,
 			created_at: '2016-03-16T00:00:00.000Z',
 			note: '博多市です。',
-			url: 'https://mastodon.social/@Gargron',
+			url: `https://elk.zone/${mastodonDomain}/@hakatashi@${domain}`,
 			avatar: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
 			avatar_static:
 				'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
 			header: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
 			header_static:
 				'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-			followers_count: 1,
-			following_count: 1,
+			followers_count: 0,
+			following_count: 0,
 			statuses_count: 0,
-			last_status_at: '2022-08-24',
+			last_status_at: '',
 			emojis: [],
 			fields: [],
 			roles: [],
@@ -105,11 +123,13 @@ const instanceV1: CamelToSnake<mastodon.v1.Instance> = {
 	languages: instanceV2.languages,
 	registrations: instanceV2.registrations.enabled,
 	approval_required: instanceV2.registrations.approval_required,
-	urls: instanceV2.configuration.urls,
+	urls: {
+		streaming_api: '',
+	},
 	stats: {
 		user_count: instanceV2.usage.users.active_month,
 		status_count: 0,
-		domain_count: 0,
+		domain_count: 1,
 	},
 	invites_enabled: instanceV2.registrations.enabled,
 	configuration: {
@@ -124,6 +144,62 @@ const instanceV1: CamelToSnake<mastodon.v1.Instance> = {
 	},
 	contact_account: instanceV2.contact.account,
 	rules: instanceV2.rules,
+};
+
+const getLocalUserInfo = async () => {
+	try {
+		const doc = await UserInfos.doc(
+			escapeFirestoreKey(`https://${domain}/activitypub/u/hakatashi`),
+		).get();
+		if (doc.exists) {
+			return doc.data();
+		}
+	} catch {
+		// Firestore に接続できない等の場合は無視
+	}
+	return undefined;
+};
+
+export const getInstanceV2 = async (): Promise<ExtendedInstanceV2> => {
+	const userInfo = await getLocalUserInfo();
+	if (!userInfo) {
+		return instanceV2;
+	}
+	return {
+		...instanceV2,
+		contact: {
+			...instanceV2.contact,
+			account: {
+				...instanceV2.contact.account,
+				followers_count: userInfo.followers_count,
+				following_count: userInfo.following_count,
+				statuses_count: userInfo.statuses_count,
+				last_status_at: userInfo.last_status_at,
+			},
+		},
+	};
+};
+
+export const getInstanceV1 = async (): Promise<CamelToSnake<mastodon.v1.Instance>> => {
+	const userInfo = await getLocalUserInfo();
+	if (!userInfo) {
+		return instanceV1;
+	}
+	const updatedAccount = {
+		...instanceV2.contact.account,
+		followers_count: userInfo.followers_count,
+		following_count: userInfo.following_count,
+		statuses_count: userInfo.statuses_count,
+		last_status_at: userInfo.last_status_at,
+	};
+	return {
+		...instanceV1,
+		stats: {
+			...instanceV1.stats,
+			status_count: userInfo.statuses_count,
+		},
+		contact_account: updatedAccount,
+	};
 };
 
 export { instanceV1, instanceV2 };

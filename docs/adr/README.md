@@ -92,3 +92,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0064](0064-get-delete-statuses-and-context.md) | GET / DELETE /api/v1/statuses/:id と /context のスレッド走査・削除仕様 | Accepted |
 | [0065](0065-account-endpoints-and-follow-unfollow.md) | アカウント系エンドポイントとフォロー・アンフォローの ActivityPub 連携 | Accepted |
 | [0066](0066-self-hosted-clients-driven-by-playwright.md) | クライアント互換性の検証に Elk / Phanpy を自前ホストし Playwright で操作する | Accepted |
+| [0067](0067-stubs-markers-and-instance-info.md) | クライアント起動用スタブ・既読マーカー・インスタンス情報の整備 | Accepted |
+

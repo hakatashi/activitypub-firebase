@@ -119,3 +119,15 @@ export interface IdempotencyKeyRecord {
 export const IdempotencyKeys = db.collection(
 	'idempotencyKeys',
 ) as CollectionReference<IdempotencyKeyRecord>;
+
+// `/api/v1/markers` の既読位置マーカー (→ ADR-0067)。ドキュメント ID は
+// `${escapeFirestoreKey(actorId)}_${timeline}`。
+export interface MarkerRecord {
+	actorId: string;
+	timeline: 'home' | 'notifications';
+	lastReadId: string;
+	version: number;
+	updatedAt: Timestamp;
+}
+
+export const Markers = db.collection('markers') as CollectionReference<MarkerRecord>;

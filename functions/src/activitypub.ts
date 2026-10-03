@@ -64,8 +64,6 @@ app.use(
 app.route(routes.inbox).get(apex.net.inbox.get).post(apex.net.inbox.post);
 app.route(routes.outbox).get(apex.net.outbox.get).post(apex.net.outbox.post);
 
-app.get(routes.actor, apex.net.actor.get);
-
 export const actorParamsSchema = z.object({
 	actor: z.string().min(1),
 });
@@ -83,14 +81,26 @@ export const resendDeliveryBodySchema = z.object({
 	inbox: z.string().min(1),
 });
 
-app.get(routes.actor, (req: express.Request, res: express.Response) => {
-	const parsedParams = actorParamsSchema.safeParse(req.params);
-	if (!parsedParams.success) {
-		res.status(400).send('Actor is not specified');
-		return;
-	}
-	res.redirect(`https://elk.zone/${mastodonDomain}/@${parsedParams.data.actor}@${domain}`);
-});
+app.get(
+	routes.actor,
+	(req: express.Request, res: express.Response, next: express.NextFunction) => {
+		res.vary('Accept');
+		// Content negotiation (ADR-0004, ADR-0067):
+		// ブラウザ等、text/html を優先するクライアントは Elk へリダイレクトする。
+		// ActivityPub (application/activity+json, application/ld+json) や Accept なしのクライアントは apex へ渡す。
+		if (req.accepts(['application/activity+json', 'application/ld+json', 'html']) === 'html') {
+			const parsedParams = actorParamsSchema.safeParse(req.params);
+			if (!parsedParams.success) {
+				res.status(400).send('Actor is not specified');
+				return;
+			}
+			res.redirect(`https://elk.zone/${mastodonDomain}/@${parsedParams.data.actor}@${domain}`);
+			return;
+		}
+		next();
+	},
+	apex.net.actor.get,
+);
 
 app.get(routes.followers, apex.net.followers.get);
 app.get(routes.following, apex.net.following.get);
