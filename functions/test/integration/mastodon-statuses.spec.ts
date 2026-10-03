@@ -500,4 +500,92 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			expect(stored?.inReplyTo).toEqual([root.id]);
 		});
 	});
+
+	describe('Status account ID and mentions resolution (Issue #154, ADR-0069)', () => {
+		test('assigns real Snowflake ID to remote account in status.account.id', async () => {
+			const published = '2026-03-01T12:00:00.000Z';
+			const remoteNoteId = 'https://remote.example/notes/1';
+			await apex.store.saveObject({
+				id: remoteNoteId,
+				type: 'Note',
+				attributedTo: REMOTE_BOB,
+				content: '<p>Hello from Bob</p>',
+				to: 'as:Public',
+				published,
+			} as unknown as APObject);
+
+			const ids = await getMastodonIds([
+				{ iri: remoteNoteId, published },
+				{ iri: REMOTE_BOB, published: undefined },
+			]);
+			const statusId = ids.get(remoteNoteId)!;
+			const bobAccountId = ids.get(REMOTE_BOB)!;
+
+			const res = await getStatus(statusId);
+			expect(res.status).toBe(200);
+			expect(res.body.account.id).toBe(bobAccountId);
+			expect(res.body.account.username).toBe('bob');
+			expect(res.body.account.acct).toBe('bob@remote.example');
+			expect(res.body.account.id).not.toBe('1');
+		});
+
+		test('resolves mentions[].id to local user ID and remote user Snowflake IDs', async () => {
+			const REMOTE_CAROL = 'https://remote.example/u/carol';
+			await apex.store.saveObject({
+				id: REMOTE_CAROL,
+				type: 'Person',
+				preferredUsername: 'carol',
+				inbox: `${REMOTE_CAROL}/inbox`,
+				outbox: `${REMOTE_CAROL}/outbox`,
+			} as unknown as APObject);
+
+			const published = '2026-03-01T13:00:00.000Z';
+			const noteWithMentionsId = 'https://remote.example/notes/2';
+			await apex.store.saveObject({
+				id: noteWithMentionsId,
+				type: 'Note',
+				attributedTo: REMOTE_BOB,
+				content: '<p>@hakatashi @carol hello!</p>',
+				to: 'as:Public',
+				published,
+				tag: [
+					{
+						type: 'Mention',
+						href: me.id,
+						name: '@hakatashi',
+					},
+					{
+						type: 'Mention',
+						href: REMOTE_CAROL,
+						name: '@carol@remote.example',
+					},
+				],
+			} as unknown as APObject);
+
+			const ids = await getMastodonIds([
+				{ iri: noteWithMentionsId, published },
+				{ iri: REMOTE_CAROL, published: undefined },
+			]);
+			const statusId = ids.get(noteWithMentionsId)!;
+			const carolAccountId = ids.get(REMOTE_CAROL)!;
+
+			const res = await getStatus(statusId);
+			expect(res.status).toBe(200);
+			expect(res.body.mentions).toEqual([
+				{
+					id: '1',
+					username: 'hakatashi',
+					acct: 'hakatashi',
+					url: me.id,
+				},
+				{
+					id: carolAccountId,
+					username: 'carol',
+					acct: 'carol@remote.example',
+					url: REMOTE_CAROL,
+				},
+			]);
+			expect(carolAccountId).not.toBe('1');
+		});
+	});
 });

@@ -20,7 +20,12 @@ import {
 	unescapeFirestoreKey,
 } from '../firebase.js';
 import { reserveIdempotencyKey } from '../idempotency.js';
-import { getIriByMastodonId, getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
+import {
+	getIriByMastodonId,
+	getMastodonIds,
+	getOrAssignMastodonId,
+	mastodonIdToTimestamp,
+} from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
 import { deleteNote, htmlToPlainText, plainTextToHtml, publishNote } from '../notes.js';
 import { Clients, Markers, Streams, UserInfo, UserInfos } from '../schema.js';
@@ -48,6 +53,7 @@ import {
 	takePage,
 } from './pagination.js';
 import {
+	getMentionIris,
 	noteToCounts,
 	noteToEditedAt,
 	noteToEmojis,
@@ -120,7 +126,8 @@ const externalUserInfo: UserInfo = {
 
 export const actorObjectToAccount = async (
 	actorObject: APActor,
-	userInfo: UserInfo = externalUserInfo,
+	userInfo?: UserInfo,
+	id?: string,
 ): Promise<CamelToSnake<mastodon.v1.Account>> => {
 	// activitypub-types の APActor は icon/image を IconField|ImageField の union として定義するなど
 	// ここでの緩いプロパティアクセスと厳密には一致しない。この不整合の解消は ADR-0022 の対象外
@@ -130,8 +137,13 @@ export const actorObjectToAccount = async (
 	const actorDomain = new URL(actor.id).host;
 	const isLocal = actorDomain === domain;
 
+	const baseUserInfo = userInfo ?? externalUserInfo;
+	const accountId =
+		id ?? userInfo?.id ?? (await getOrAssignMastodonId(actor.id, actorObject.published));
+
 	return {
-		...userInfo,
+		...baseUserInfo,
+		id: accountId,
 		username,
 		acct: isLocal ? username : `${username}@${actorDomain}`,
 		display_name: actor.name ?? '',
@@ -222,6 +234,8 @@ export interface StatusContext {
 	inReplyTo?: { id: string; accountId: string } | undefined;
 	// `_meta` の非正規化カウンタ (→ ADR-0037)。
 	meta?: { likesCount?: number; sharesCount?: number } | undefined;
+	// メンション先の actor IRI とそのアカウント ID のマップ (→ ADR-0069)。
+	mentionIds?: Map<string, string> | Record<string, string> | undefined;
 }
 
 // masto の型は `application` を non-null としているが、Mastodon 本体はリモート投稿で null を返す。
@@ -275,7 +289,7 @@ export const noteObjectToStatus = (
 		account,
 		// メディアは Phase 4 (メディア) で実装するまで空配列のままにする。
 		media_attachments: [],
-		mentions: noteToMentions(note),
+		mentions: noteToMentions(note, context.mentionIds),
 		tags: noteToHashtags(note),
 		emojis: noteToEmojis(note),
 		card: null,
@@ -285,20 +299,60 @@ export const noteObjectToStatus = (
 
 const getAttributedTo = (object: APObject): string | undefined => toIdArray(object.attributedTo)[0];
 
-const userIdsToAcconts = async (
+// アカウント IRI (ローカル/リモート) の配列を受け取り、IRI → Account ID の Map を返す (→ ADR-0069)。
+// ローカルアカウント (UserInfos があるもの) は UserInfo.id ('1' 等) を返し、
+// リモートアカウント (UserInfos がないもの) は mastodonIdsByIri の Snowflake ID を返す (未採番なら採番する)。
+export const resolveAccountIds = async (iris: string[]): Promise<Map<string, string>> => {
+	const uniqIris = uniq(iris).filter((iri) => iri.length > 0);
+	const result = new Map<string, string>();
+	if (uniqIris.length === 0) {
+		return result;
+	}
+
+	const idChunks = chunk(uniqIris.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
+	const userInfoDocsChunks = await Promise.all(
+		idChunks.map((idChunk) =>
+			UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+		),
+	);
+
+	for (const chunkSnap of userInfoDocsChunks) {
+		for (const doc of chunkSnap.docs) {
+			const data = doc.data();
+			const actorId = unescapeFirestoreKey(toFirestoreKey(doc.id));
+			result.set(actorId, data.id);
+		}
+	}
+
+	const remoteIris = uniqIris.filter((iri) => !result.has(iri));
+	if (remoteIris.length > 0) {
+		const mastodonIds = await getMastodonIds(
+			remoteIris.map((iri) => ({ iri, published: undefined })),
+		);
+		for (const [iri, id] of mastodonIds) {
+			result.set(iri, id);
+		}
+	}
+
+	return result;
+};
+
+const userIdsToAccounts = async (
 	userIds: string[],
+	knownAccountIds?: Map<string, string>,
 ): Promise<CamelToSnake<mastodon.v1.Account>[]> => {
 	if (userIds.length === 0) {
 		return [];
 	}
 
-	const [actorObjects, userInfoDocsChunks] = await Promise.all([
+	const [actorObjects, userInfoDocsChunks, accountIds] = await Promise.all([
 		apex.store.getObjects(userIds),
 		Promise.all(
 			chunk(userIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
 				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
 			),
 		),
+		knownAccountIds ?? resolveAccountIds(userIds),
 	]);
 
 	const actorMap = new Map<string, APActor>(
@@ -321,8 +375,9 @@ const userIdsToAcconts = async (
 			assert(actor !== undefined, 'actor is undefined');
 
 			const userInfo = userInfoMap.get(userId);
+			const accountId = accountIds.get(userId);
 
-			return actorObjectToAccount(actor, userInfo);
+			return actorObjectToAccount(actor, userInfo, accountId);
 		}),
 	);
 };
@@ -342,12 +397,17 @@ const notesToStatuses = async (notes: NoteObject[]) => {
 		...validNotes.map((note) => getAttributedTo(note)),
 		...replyTargets.map((target) => getAttributedTo(target)),
 	]).filter((iri): iri is string => iri !== undefined);
-	const [accounts, mastodonIds] = await Promise.all([
-		userIdsToAcconts(authorIris),
+
+	const mentionIris = uniq(validNotes.flatMap((note) => getMentionIris(note)));
+	const allAccountIris = uniq([...authorIris, ...mentionIris]);
+
+	const [accountIds, mastodonIds] = await Promise.all([
+		resolveAccountIds(allAccountIris),
 		getMastodonIds(
 			[...validNotes, ...replyTargets].map((note) => ({ iri: note.id, published: note.published })),
 		),
 	]);
+	const accounts = await userIdsToAccounts(authorIris, accountIds);
 	const accountsMap = new Map(zip(authorIris, accounts));
 
 	return validNotes.map((note) => {
@@ -369,7 +429,11 @@ const notesToStatuses = async (notes: NoteObject[]) => {
 				? { id: replyTargetId, accountId: replyTargetAccount.id }
 				: undefined;
 
-		return noteObjectToStatus(note, account, mastodonId, { inReplyTo, meta: note._meta });
+		return noteObjectToStatus(note, account, mastodonId, {
+			inReplyTo,
+			meta: note._meta,
+			mentionIds: accountIds,
+		});
 	});
 };
 
@@ -577,7 +641,7 @@ export const getFollowersPage = async (
 	const pageEntries = takePage(entries, (entry) => entry.cursorId, page);
 
 	return {
-		accounts: await userIdsToAcconts(pageEntries.map((entry) => entry.actorIri)),
+		accounts: await userIdsToAccounts(pageEntries.map((entry) => entry.actorIri)),
 		cursorIds: pageEntries.map((entry) => entry.cursorId),
 	};
 };
@@ -728,7 +792,7 @@ export const getFollowingPage = async (
 	const pageEntries = takePage(entries, (entry) => entry.cursorId, page);
 
 	return {
-		accounts: await userIdsToAcconts(pageEntries.map((entry) => entry.actorIri)),
+		accounts: await userIdsToAccounts(pageEntries.map((entry) => entry.actorIri)),
 		cursorIds: pageEntries.map((entry) => entry.cursorId),
 	};
 };
@@ -1670,11 +1734,12 @@ router.get('/v1/accounts/:id', async (req, res) => {
 		return;
 	}
 
-	const account = await actorObjectToAccount(resolved.actor, resolved.userInfo);
-	res.json({
-		...account,
-		id: parsedParams.data.id,
-	});
+	const account = await actorObjectToAccount(
+		resolved.actor,
+		resolved.userInfo,
+		parsedParams.data.id,
+	);
+	res.json(account);
 });
 
 router.get('/v1/preferences', authRequired, (req, res) => {

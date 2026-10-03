@@ -1,12 +1,17 @@
 import type { APActor, APNote } from 'activitypub-types';
 import type { mastodon } from 'masto';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
 	accountToCredentialAccount,
 	actorObjectToAccount,
 	noteObjectToStatus,
 } from '../../src/mastodon/api.js';
-import { isNoteVisibleTo } from '../../src/mastodon/statusAttributes.js';
+import * as mastodonIdModule from '../../src/mastodonId.js';
+import {
+	getMentionIris,
+	isNoteVisibleTo,
+	noteToMentions,
+} from '../../src/mastodon/statusAttributes.js';
 import { domain } from '../../src/firebase.js';
 import type { UserInfo } from '../../src/schema.js';
 import type { CamelToSnake } from '../../src/utils.js';
@@ -96,6 +101,37 @@ describe('actorObjectToAccount', () => {
 		const account = await actorObjectToAccount(actor, userInfo);
 
 		expect(account.acct).toBe('hakatashi');
+	});
+
+	test('uses explicitly specified id over userInfo.id', async () => {
+		const actor = {
+			id: 'https://example.com/activitypub/u/bob',
+			type: 'Person',
+			preferredUsername: 'bob',
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(actor, userInfo, 'custom-id-999');
+
+		expect(account.id).toBe('custom-id-999');
+	});
+
+	test('resolves id from getOrAssignMastodonId when neither id nor userInfo is provided', async () => {
+		const actor = {
+			id: 'https://remote.example/users/remoteuser',
+			type: 'Person',
+			preferredUsername: 'remoteuser',
+		} as unknown as APActor;
+
+		const spy = vi
+			.spyOn(mastodonIdModule, 'getOrAssignMastodonId')
+			.mockResolvedValueOnce('00109547043225600042');
+
+		const account = await actorObjectToAccount(actor);
+
+		expect(spy).toHaveBeenCalledWith('https://remote.example/users/remoteuser', undefined);
+		expect(account.id).toBe('00109547043225600042');
+		expect(account.username).toBe('remoteuser');
+		expect(account.acct).toBe('remoteuser@remote.example');
 	});
 });
 
@@ -289,6 +325,39 @@ describe('noteObjectToStatus attribute derivation', () => {
 		]);
 	});
 
+	test('builds mentions with resolved IDs when mentionIds are provided in context', () => {
+		const status = noteObjectToStatus(
+			make({
+				tag: [
+					{ type: 'Mention', href: 'https://remote.example/users/a', name: '@a@remote.example' },
+					{ type: 'Mention', href: 'https://remote.example/users/b', name: '@b@remote.example' },
+				],
+			}),
+			account,
+			'1',
+			{
+				mentionIds: new Map([
+					['https://remote.example/users/a', '00109547043225600001'],
+					['https://remote.example/users/b', '00109547043225600002'],
+				]),
+			},
+		);
+		expect(status.mentions).toEqual([
+			{
+				id: '00109547043225600001',
+				username: 'a',
+				acct: 'a@remote.example',
+				url: 'https://remote.example/users/a',
+			},
+			{
+				id: '00109547043225600002',
+				username: 'b',
+				acct: 'b@remote.example',
+				url: 'https://remote.example/users/b',
+			},
+		]);
+	});
+
 	test('sets application only for local notes', () => {
 		expect(noteObjectToStatus(make({}), account, '1').application).toBeNull();
 		const local = make({ id: `https://${domain}/activitypub/o/1` });
@@ -323,5 +392,94 @@ describe('isNoteVisibleTo', () => {
 		expect(isNoteVisibleTo(n, viewer)).toBe(true);
 		expect(isNoteVisibleTo(n, 'https://example.com/other')).toBe(false);
 		expect(isNoteVisibleTo(note([], []), author)).toBe(true);
+	});
+});
+
+describe('getMentionIris', () => {
+	test('extracts hrefs of Mention tags from note', () => {
+		const note = {
+			tag: [
+				{
+					type: 'Mention',
+					href: 'https://remote.example/users/alice',
+					name: '@alice@remote.example',
+				},
+				{ type: 'Hashtag', href: 'https://example.com/tags/foo', name: '#foo' },
+				{ type: 'Mention', href: 'https://remote.example/users/bob', name: '@bob@remote.example' },
+			],
+		} as unknown as APNote;
+
+		expect(getMentionIris(note)).toEqual([
+			'https://remote.example/users/alice',
+			'https://remote.example/users/bob',
+		]);
+	});
+
+	test('returns empty array when note has no Mention tags', () => {
+		const note = {
+			tag: [{ type: 'Hashtag', href: 'https://example.com/tags/foo', name: '#foo' }],
+		} as unknown as APNote;
+
+		expect(getMentionIris(note)).toEqual([]);
+	});
+});
+
+describe('noteToMentions', () => {
+	test('resolves mention IDs using provided map', () => {
+		const note = {
+			tag: [
+				{
+					type: 'Mention',
+					href: 'https://remote.example/users/alice',
+					name: '@alice@remote.example',
+				},
+				{ type: 'Mention', href: 'https://remote.example/users/bob', name: '@bob' },
+			],
+		} as unknown as APNote;
+
+		const mentions = noteToMentions(
+			note,
+			new Map([
+				['https://remote.example/users/alice', '00109547043225600001'],
+				['https://remote.example/users/bob', '00109547043225600002'],
+			]),
+		);
+
+		expect(mentions).toEqual([
+			{
+				id: '00109547043225600001',
+				username: 'alice',
+				acct: 'alice@remote.example',
+				url: 'https://remote.example/users/alice',
+			},
+			{
+				id: '00109547043225600002',
+				username: 'bob',
+				acct: 'bob',
+				url: 'https://remote.example/users/bob',
+			},
+		]);
+	});
+
+	test('falls back to "1" when mention ID is unmapped', () => {
+		const note = {
+			tag: [
+				{
+					type: 'Mention',
+					href: 'https://remote.example/users/alice',
+					name: '@alice@remote.example',
+				},
+			],
+		} as unknown as APNote;
+
+		const mentions = noteToMentions(note);
+		expect(mentions).toEqual([
+			{
+				id: '1',
+				username: 'alice',
+				acct: 'alice@remote.example',
+				url: 'https://remote.example/users/alice',
+			},
+		]);
 	});
 });

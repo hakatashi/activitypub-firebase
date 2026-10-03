@@ -329,5 +329,45 @@ describe('Mastodon Accounts API (Issue #62)', () => {
 			expect(res.status).toBe(200);
 			expect(res.body).toEqual([]);
 		});
+
+		test('returns remote account with real Snowflake ID in following list (Issue #154, ADR-0069)', async () => {
+			const bob = await apex.createActor('bob', 'bob', '', '', 'Person');
+			bob.id = 'https://remote.example/users/bob';
+			await apex.store.saveObject(bob);
+			const bobMastodonId = await getOrAssignMastodonId(bob.id, undefined);
+
+			const follow = await apex.buildActivity('Follow', me.id, bob.id, {
+				object: bob.id,
+			});
+			follow._meta = {
+				...follow._meta,
+				actors: [me.id],
+				index: {
+					actors: { [escapeFirestoreKey(me.id)]: true },
+				},
+			};
+			await apex.store.saveActivity(follow);
+
+			const accept = await apex.buildActivity('Accept', bob.id, me.id, {
+				object: follow.id,
+			});
+			const meInbox = `${me.id}/inbox`;
+			accept._meta = {
+				...accept._meta,
+				collection: [meInbox],
+				index: {
+					collections: { [escapeFirestoreKey(meInbox)]: true },
+				},
+			};
+			await apex.store.saveActivity(accept);
+
+			const res = await request(mastodon).get('/api/v1/accounts/1/following');
+			expect(res.status).toBe(200);
+			expect(res.body.length).toBe(1);
+			expect(res.body[0].id).toBe(bobMastodonId);
+			expect(res.body[0].username).toBe('bob');
+			expect(res.body[0].acct).toBe('bob@remote.example');
+			expect(res.body[0].id).not.toBe('1');
+		});
 	});
 });
