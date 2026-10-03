@@ -3,6 +3,8 @@ import {
 	accountLookupQuerySchema,
 	accountParamsSchema,
 	createAppBodySchema,
+	relationshipsQuerySchema,
+	updateCredentialsBodySchema,
 } from '../../src/mastodon/api.js';
 
 describe('mastodon api schemas', () => {
@@ -73,6 +75,63 @@ describe('mastodon api schemas', () => {
 				false,
 			);
 			expect(createAppBodySchema.safeParse({ client_name: 'My App' }).success).toBe(false);
+		});
+	});
+
+	describe('relationshipsQuerySchema', () => {
+		test('parses single id string into array', () => {
+			const result = relationshipsQuerySchema.safeParse({ id: '123' });
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.data.id).toEqual(['123']);
+			}
+		});
+
+		test('parses array of ids', () => {
+			const result = relationshipsQuerySchema.safeParse({ id: ['123', '456'] });
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.data.id).toEqual(['123', '456']);
+			}
+		});
+
+		test('rejects missing id', () => {
+			expect(relationshipsQuerySchema.safeParse({}).success).toBe(false);
+		});
+	});
+
+	describe('updateCredentialsBodySchema', () => {
+		test('parses valid credentials update', () => {
+			const result = updateCredentialsBodySchema.safeParse({
+				display_name: 'New Name',
+				note: 'New bio',
+				locked: 'true',
+				bot: false,
+				fields_attributes: [{ name: 'Website', value: 'https://example.com' }],
+				source: {
+					privacy: 'unlisted',
+					sensitive: 'true',
+					language: 'ja',
+				},
+			});
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.data.display_name).toBe('New Name');
+				expect(result.data.note).toBe('New bio');
+				expect(result.data.locked).toBe(true);
+				expect(result.data.bot).toBe(false);
+				expect(result.data.source?.privacy).toBe('unlisted');
+				expect(result.data.source?.sensitive).toBe(true);
+			}
+		});
+
+		test('parses object-style fields_attributes', () => {
+			const result = updateCredentialsBodySchema.safeParse({
+				fields_attributes: {
+					'0': { name: 'Pronouns', value: 'they/them' },
+				},
+			});
+			expect(result.success).toBe(true);
 		});
 	});
 });

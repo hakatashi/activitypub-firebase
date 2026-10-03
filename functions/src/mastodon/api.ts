@@ -126,11 +126,12 @@ export const actorObjectToAccount = async (
 	const actor = await apex.toJSONLD<JsonLdActor>(actorObject);
 	const username = actor.preferredUsername ?? last(actor.id.split('/')) ?? '';
 	const actorDomain = new URL(actor.id).host;
+	const isLocal = actorDomain === domain;
 
 	return {
 		...userInfo,
 		username,
-		acct: `${username}@${actorDomain}`,
+		acct: isLocal ? username : `${username}@${actorDomain}`,
 		display_name: actor.name ?? '',
 		url: `https://elk.zone/${mastodonDomain}/@${username}@${domain}`,
 		avatar: actor.icon?.url ?? '',
@@ -140,6 +141,56 @@ export const actorObjectToAccount = async (
 		note: actor.summary ?? '',
 		discoverable: actor.discoverable ?? false,
 	};
+};
+
+export interface CredentialAccountSource {
+	privacy: string;
+	sensitive: boolean;
+	language: string;
+	note: string;
+	fields: CamelToSnake<mastodon.v1.AccountField>[];
+	follow_requests_count: number;
+}
+
+export interface RoleEntity {
+	id: string;
+	name: string;
+	permissions: string;
+	color: string;
+	highlighted: boolean;
+}
+
+export type CredentialAccountEntity = CamelToSnake<mastodon.v1.Account> & {
+	source: CredentialAccountSource;
+	role: RoleEntity;
+};
+
+export const defaultRole: RoleEntity = {
+	id: '-99',
+	name: '',
+	permissions: '0',
+	color: '',
+	highlighted: false,
+};
+
+export const accountToCredentialAccount = (
+	account: CamelToSnake<mastodon.v1.Account>,
+	userInfo: UserInfo,
+): CredentialAccountEntity => ({
+	...account,
+	source: {
+		privacy: 'public',
+		sensitive: false,
+		language: 'ja',
+		note: htmlToPlainText(account.note),
+		fields: userInfo.fields ?? [],
+		follow_requests_count: 0,
+	},
+	role: defaultRole,
+});
+
+export type RelationshipEntity = CamelToSnake<mastodon.v1.Relationship> & {
+	muting_expires_at?: string | null;
 };
 
 const actorUsernameToAccount = async (
@@ -532,6 +583,214 @@ export const getFollowersPage = async (
 export const getFollowers = async (actor: APActor, page?: PageParams) =>
 	(await getFollowersPage(actor, page)).accounts;
 
+export const getFollowerActorIris = async (actor: APActor): Promise<string[]> => {
+	assert(actor.id !== undefined, 'actor.id is undefined');
+
+	const followStreams = await Streams.where('type', '==', 'Follow')
+		.where(metaIndexPath('objects', escapeFirestoreKey(actor.id)), '==', true)
+		.get();
+	const unfollowStreams = await Streams.where(
+		metaIndexPath('collections', escapeFirestoreKey(getInboxId(actor))),
+		'==',
+		true,
+	)
+		.where('type', '==', 'Undo')
+		.get();
+
+	const undoneFollowIds = new Set(
+		unfollowStreams.docs.flatMap((unfollowStream) => {
+			const unfollow = unfollowStream.data();
+			if (!isAPUndo(unfollow)) {
+				return [];
+			}
+			return toIdArray(unfollow.object);
+		}),
+	);
+
+	const followerIris: string[] = [];
+	for (const followStream of followStreams.docs) {
+		const follow = followStream.data();
+		if (undoneFollowIds.has(follow.id) || !isAPFollow(follow)) {
+			continue;
+		}
+		const followActor = toIdArray(follow.actor)[0];
+		if (followActor !== undefined && !followerIris.includes(followActor)) {
+			followerIris.push(followActor);
+		}
+	}
+	return followerIris;
+};
+
+export const getPendingFollowTargetIris = async (actor: APActor): Promise<Set<string>> => {
+	assert(actor.id !== undefined, 'actor.id is undefined');
+	const actorKey = escapeFirestoreKey(actor.id);
+
+	const followStreams = await Streams.where('type', '==', 'Follow')
+		.where(metaIndexPath('actors', actorKey), '==', true)
+		.get();
+	if (followStreams.empty) {
+		return new Set();
+	}
+
+	const acceptStreams = await Streams.where(
+		metaIndexPath('collections', escapeFirestoreKey(getInboxId(actor))),
+		'==',
+		true,
+	)
+		.where('type', '==', 'Accept')
+		.get();
+	const acceptedFollowIds = new Set(
+		acceptStreams.docs.flatMap((doc) => toIdArray(doc.data().object)),
+	);
+
+	const undoStreams = await Streams.where('type', '==', 'Undo')
+		.where(metaIndexPath('actors', actorKey), '==', true)
+		.get();
+	const undoneFollowIds = new Set(undoStreams.docs.flatMap((doc) => toIdArray(doc.data().object)));
+
+	const pendingTargetIris = new Set<string>();
+	for (const doc of followStreams.docs) {
+		const follow = doc.data();
+		if (!isAPFollow(follow)) {
+			continue;
+		}
+		if (acceptedFollowIds.has(follow.id) || undoneFollowIds.has(follow.id)) {
+			continue;
+		}
+		const target = toIdArray(follow.object)[0];
+		if (target !== undefined) {
+			pendingTargetIris.add(target);
+		}
+	}
+	return pendingTargetIris;
+};
+
+// カーソルは Follow アクティビティの Mastodon ID (→ ADR-0062)。
+// 返す `cursorIds` は `accounts` と同じ並び (新しい順)。
+export const getFollowingPage = async (
+	actor: APActor,
+	page: PageParams = { limit: FOLLOWERS_PAGE_LIMITS.defaultLimit },
+) => {
+	assert(actor.id !== undefined, 'actor.id is undefined');
+	const actorKey = escapeFirestoreKey(actor.id);
+
+	const followStreams = await Streams.where('type', '==', 'Follow')
+		.where(metaIndexPath('actors', actorKey), '==', true)
+		.get();
+	if (followStreams.empty) {
+		return { accounts: [], cursorIds: [] };
+	}
+
+	const acceptStreams = await Streams.where(
+		metaIndexPath('collections', escapeFirestoreKey(getInboxId(actor))),
+		'==',
+		true,
+	)
+		.where('type', '==', 'Accept')
+		.get();
+	const acceptedFollowIds = new Set(
+		acceptStreams.docs.flatMap((doc) => toIdArray(doc.data().object)),
+	);
+
+	const undoStreams = await Streams.where('type', '==', 'Undo')
+		.where(metaIndexPath('actors', actorKey), '==', true)
+		.get();
+	const undoneFollowIds = new Set(undoStreams.docs.flatMap((doc) => toIdArray(doc.data().object)));
+
+	const following = new Map<string, { followIri: string; published: unknown }>();
+
+	for (const followStream of followStreams.docs) {
+		const follow = followStream.data();
+		if (!isAPFollow(follow)) {
+			continue;
+		}
+		if (undoneFollowIds.has(follow.id) || !acceptedFollowIds.has(follow.id)) {
+			continue;
+		}
+		const target = toIdArray(follow.object)[0];
+		if (target !== undefined && !following.has(target)) {
+			following.set(target, { followIri: follow.id, published: follow.published });
+		}
+	}
+
+	const followIds = await getMastodonIds(
+		Array.from(following.values(), ({ followIri, published }) => ({ iri: followIri, published })),
+	);
+	const entries = Array.from(following, ([actorIri, { followIri }]) => ({
+		actorIri,
+		cursorId: followIds.get(followIri),
+	})).filter(
+		(entry): entry is { actorIri: string; cursorId: string } =>
+			entry.cursorId !== undefined && isIdInRange(entry.cursorId, page),
+	);
+	const pageEntries = takePage(entries, (entry) => entry.cursorId, page);
+
+	return {
+		accounts: await userIdsToAcconts(pageEntries.map((entry) => entry.actorIri)),
+		cursorIds: pageEntries.map((entry) => entry.cursorId),
+	};
+};
+
+export const getRelationships = async (
+	viewer: APActor,
+	accountIds: string[],
+): Promise<RelationshipEntity[]> => {
+	if (accountIds.length === 0) {
+		return [];
+	}
+
+	const userInfoDocsChunks = await Promise.all(
+		chunk(accountIds, FIRESTORE_IN_QUERY_LIMIT).map((chunkIds) =>
+			UserInfos.where('id', 'in', chunkIds).get(),
+		),
+	);
+	const userInfoMap = new Map<string, { actorId: string; userInfo: UserInfo }>();
+	for (const chunkSnap of userInfoDocsChunks) {
+		for (const doc of chunkSnap.docs) {
+			const data = doc.data();
+			const actorId = unescapeFirestoreKey(toFirestoreKey(doc.id));
+			userInfoMap.set(data.id, { actorId, userInfo: data });
+		}
+	}
+
+	const [followingList, followerList, pendingSet] = await Promise.all([
+		getFollowing(viewer),
+		getFollowerActorIris(viewer),
+		getPendingFollowTargetIris(viewer),
+	]);
+	const followingSet = new Set(followingList);
+	const followerSet = new Set(followerList);
+
+	const results: RelationshipEntity[] = [];
+	for (const id of accountIds) {
+		const target = userInfoMap.get(id);
+		if (target === undefined) {
+			continue;
+		}
+		const isFollowing = followingSet.has(target.actorId);
+		results.push({
+			id,
+			following: isFollowing,
+			showing_reblogs: isFollowing,
+			notifying: false,
+			languages: [],
+			followed_by: followerSet.has(target.actorId),
+			blocking: false,
+			blocked_by: false,
+			muting: false,
+			muting_notifications: false,
+			muting_expires_at: null,
+			requested: pendingSet.has(target.actorId),
+			requested_by: false,
+			domain_blocking: false,
+			endorsed: false,
+			note: '',
+		});
+	}
+
+	return results;
+};
+
 // OAuth トークンから、ログイン中のローカル actor の IRI と UserInfo を引く。
 const resolveAuth = async (req: express.Request, res: express.Response) => {
 	const request = new OauthRequest(req);
@@ -631,7 +890,7 @@ const getAccount = (acct: string) => {
 	}
 
 	if (lookupDomain !== domain) {
-		throw new Error('Not implemented');
+		return undefined;
 	}
 
 	return actorUsernameToAccount(username);
@@ -662,13 +921,42 @@ const respondWithStatuses = (
 	res.json(statuses);
 };
 
+// Mastodon の `ActiveModel::Type::Boolean` に合わせ、フォーム由来の文字列も解釈する。
+const FALSE_VALUES = new Set(['0', 'f', 'false', 'off']);
+export const toBoolean = (value: boolean | string | null | undefined) => {
+	if (typeof value === 'boolean') {
+		return value;
+	}
+	if (value === null || value === undefined || value === '') {
+		return undefined;
+	}
+	return !FALSE_VALUES.has(value.toLowerCase());
+};
+
+const isPresent = (value: unknown) => {
+	if (value === undefined || value === null || value === '') {
+		return false;
+	}
+	if (Array.isArray(value)) {
+		return value.length > 0;
+	}
+	if (typeof value === 'object') {
+		return Object.keys(value).length > 0;
+	}
+	return true;
+};
+
+const unprocessable = (res: express.Response, error: string) => {
+	res.status(422).json({ error });
+};
+
 const router = express.Router();
 
 router.use(
 	'/',
 	cors({
 		origin: true,
-		methods: ['GET', 'POST', 'DELETE'],
+		methods: ['GET', 'POST', 'PATCH', 'DELETE'],
 		allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
 		// これがないとブラウザ上のクライアントが Link ヘッダを読めずページネーションできない。
 		exposedHeaders: ['Link'],
@@ -693,6 +981,35 @@ export const accountLookupQuerySchema = z.object({
 
 export const accountParamsSchema = z.object({
 	id: z.string().min(1),
+});
+
+export const relationshipsQuerySchema = z.object({
+	id: z
+		.union([z.string(), z.array(z.string())])
+		.transform((val) => (Array.isArray(val) ? val : [val])),
+});
+
+export const updateCredentialsBodySchema = z.object({
+	display_name: z.string().optional(),
+	note: z.string().optional(),
+	avatar: z.unknown().optional(),
+	header: z.unknown().optional(),
+	locked: z.union([z.boolean(), z.string()]).transform(toBoolean).optional(),
+	bot: z.union([z.boolean(), z.string()]).transform(toBoolean).optional(),
+	discoverable: z.union([z.boolean(), z.string()]).transform(toBoolean).optional(),
+	fields_attributes: z
+		.union([
+			z.array(z.object({ name: z.string(), value: z.string() })),
+			z.record(z.string(), z.object({ name: z.string(), value: z.string() })),
+		])
+		.optional(),
+	source: z
+		.object({
+			privacy: z.enum(['public', 'unlisted', 'private', 'direct']).optional(),
+			sensitive: z.union([z.boolean(), z.string()]).transform(toBoolean).optional(),
+			language: z.string().optional(),
+		})
+		.optional(),
 });
 
 export const createAppBodySchema = z.object({
@@ -727,6 +1044,102 @@ router.get('/v1/accounts/lookup', async (req, res) => {
 
 	res.json(account);
 });
+
+router.get(
+	'/v1/accounts/relationships',
+	authRequired,
+	scopeRequired('read:follows'),
+	async (req, res) => {
+		const parsedQuery = relationshipsQuerySchema.safeParse(req.query);
+		if (!parsedQuery.success) {
+			res.json([]);
+			return;
+		}
+
+		const viewer = await getLocalActor(res.locals.actorId as string);
+		const relationships = await getRelationships(viewer, parsedQuery.data.id);
+		res.json(relationships);
+	},
+);
+
+router.get('/v1/accounts/verify_credentials', authRequired, async (req, res) => {
+	const actorId = res.locals.actorId as string;
+	const actor = await getLocalActor(actorId);
+	const userInfo = res.locals.auth as UserInfo;
+	const account = await actorObjectToAccount(actor, userInfo);
+	res.json(accountToCredentialAccount(account, userInfo));
+});
+
+router.patch(
+	'/v1/accounts/update_credentials',
+	authRequired,
+	scopeRequired('write:accounts'),
+	async (req, res) => {
+		const parsedBody = updateCredentialsBodySchema.safeParse(req.body ?? {});
+		if (!parsedBody.success) {
+			unprocessable(res, `Validation failed: ${parsedBody.error.issues[0]?.message ?? 'invalid'}`);
+			return;
+		}
+		const body = parsedBody.data;
+
+		const actorId = res.locals.actorId as string;
+		const actor = await apex.store.getObject(actorId, true);
+		assertIsAPActor(actor);
+
+		const userInfoRef = UserInfos.doc(escapeFirestoreKey(actorId));
+		const userInfoDoc = await userInfoRef.get();
+		assert(userInfoDoc.exists, 'userInfoDoc does not exist');
+		const userUpdates: Partial<UserInfo> = {};
+
+		if (body.display_name !== undefined) {
+			actor.name = body.display_name;
+		}
+		if (body.note !== undefined) {
+			actor.summary = plainTextToHtml(body.note);
+		}
+		if (body.locked !== undefined) {
+			actor.manuallyApprovesFollowers = body.locked;
+			userUpdates.locked = body.locked;
+		}
+		if (body.bot !== undefined) {
+			userUpdates.bot = body.bot;
+		}
+		if (body.discoverable !== undefined) {
+			actor.discoverable = body.discoverable;
+		}
+		if (body.fields_attributes !== undefined) {
+			const fieldsList = Array.isArray(body.fields_attributes)
+				? body.fields_attributes
+				: Object.values(body.fields_attributes);
+			const fields = fieldsList.map((f) => ({
+				name: f.name,
+				value: f.value,
+				verified_at: null,
+			}));
+			userUpdates.fields = fields;
+			actor.attachment = fields.map((f) => ({
+				type: 'PropertyValue',
+				name: f.name,
+				value: f.value,
+			}));
+		}
+
+		if (Object.keys(userUpdates).length > 0) {
+			await userInfoRef.update(userUpdates);
+		}
+
+		await apex.store.saveObject(actor);
+
+		const actorWithMeta = await apex.store.getObject(actorId, true);
+		assert(actorWithMeta !== undefined, 'actorWithMeta is undefined');
+		await apex.publishUpdate(actorWithMeta, actor);
+
+		const updatedUserInfo = (await userInfoRef.get()).data();
+		assert(updatedUserInfo !== undefined, 'updatedUserInfo is undefined');
+		const updatedAccount = await actorObjectToAccount(actor, updatedUserInfo);
+		res.json(accountToCredentialAccount(updatedAccount, updatedUserInfo));
+	},
+);
 
 router.get('/v1/accounts/:id/statuses', async (req, res) => {
 	const parsedParams = accountParamsSchema.safeParse(req.params);
@@ -794,8 +1207,230 @@ router.get('/v1/accounts/:id/followers', async (req, res) => {
 	res.json(accounts);
 });
 
-router.get('/v1/accounts/verify_credentials', authRequired, (req, res) => {
-	res.json(res.locals.auth);
+router.get('/v1/accounts/:id/following', async (req, res) => {
+	const parsedParams = accountParamsSchema.safeParse(req.params);
+	if (!parsedParams.success) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
+	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
+	if (userInfo.docs.length !== 1) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
+	const userInfoDoc = userInfo.docs[0];
+	assert(userInfoDoc !== undefined);
+
+	const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+	const actorObject = await apex.store.getObject(userId);
+
+	if (actorObject === undefined) {
+		res.sendStatus(500);
+		return;
+	}
+	assertIsAPActor(actorObject);
+
+	const { accounts, cursorIds } = await getFollowingPage(
+		actorObject,
+		parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
+	);
+	setLinkHeader(req, res, cursorIds);
+	res.json(accounts);
+});
+
+router.post(
+	'/v1/accounts/:id/follow',
+	authRequired,
+	scopeRequired('write:follows'),
+	async (req, res) => {
+		const parsedParams = accountParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
+		const userInfoDoc = userInfo.docs[0];
+		if (userInfoDoc === undefined) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const targetActorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		if (targetActorId === actor.id) {
+			unprocessable(res, 'You cannot follow yourself');
+			return;
+		}
+
+		const targetActor = await apex.store.getObject(targetActorId);
+		if (targetActor === undefined) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+		assertIsAPActor(targetActor);
+
+		const followingSet = new Set(await getFollowing(actor));
+		const isAlreadyFollowing = followingSet.has(targetActor.id);
+
+		if (!isAlreadyFollowing) {
+			const activity = await apex.buildActivity('Follow', actor.id, targetActor.id, {
+				object: targetActor.id,
+			});
+			await apex.addToOutbox(actor, activity);
+		}
+
+		const isTargetLocked =
+			targetActor.manuallyApprovesFollowers === true || userInfoDoc.data().locked === true;
+		const followerIris = await getFollowerActorIris(actor);
+		const relationship: RelationshipEntity = {
+			id: parsedParams.data.id,
+			following: !isTargetLocked,
+			showing_reblogs: !isTargetLocked,
+			notifying: false,
+			languages: [],
+			followed_by: followerIris.includes(targetActor.id),
+			blocking: false,
+			blocked_by: false,
+			muting: false,
+			muting_notifications: false,
+			muting_expires_at: null,
+			requested: isTargetLocked,
+			requested_by: false,
+			domain_blocking: false,
+			endorsed: false,
+			note: '',
+		};
+
+		res.json(relationship);
+	},
+);
+
+router.post(
+	'/v1/accounts/:id/unfollow',
+	authRequired,
+	scopeRequired('write:follows'),
+	async (req, res) => {
+		const parsedParams = accountParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
+		const userInfoDoc = userInfo.docs[0];
+		if (userInfoDoc === undefined) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const targetActorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const targetActor = await apex.store.getObject(targetActorId);
+		if (targetActor === undefined) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+		assertIsAPActor(targetActor);
+
+		const followingIri = toIdArray(actor.following)[0];
+		let follow = followingIri
+			? await apex.store.findActivityByCollectionAndObjectId(followingIri, targetActor.id, true)
+			: undefined;
+		if (follow === undefined) {
+			const outboxIri = toIdArray(actor.outbox)[0];
+			if (outboxIri) {
+				follow = await apex.store.findActivityByCollectionAndObjectId(
+					outboxIri,
+					targetActor.id,
+					true,
+				);
+			}
+		}
+		if (follow === undefined) {
+			const followDocs = await Streams.where('type', '==', 'Follow')
+				.where('actor', 'array-contains', actor.id)
+				.get();
+			follow = followDocs.docs
+				.map((doc) => doc.data())
+				.find((act) => toIdArray(act.object).includes(targetActor.id));
+		}
+
+		if (follow !== undefined) {
+			const cleanFollow = { ...follow };
+			delete cleanFollow._meta;
+			const undoActivity = await apex.buildActivity('Undo', actor.id, targetActor.id, {
+				object: cleanFollow,
+			});
+			await apex.addToOutbox(actor, undoActivity);
+			await apex.store.removeActivity(follow, actor.id);
+		}
+
+		const followerIris = await getFollowerActorIris(actor);
+		const relationship: RelationshipEntity = {
+			id: parsedParams.data.id,
+			following: false,
+			showing_reblogs: false,
+			notifying: false,
+			languages: [],
+			followed_by: followerIris.includes(targetActor.id),
+			blocking: false,
+			blocked_by: false,
+			muting: false,
+			muting_notifications: false,
+			muting_expires_at: null,
+			requested: false,
+			requested_by: false,
+			domain_blocking: false,
+			endorsed: false,
+			note: '',
+		};
+
+		res.json(relationship);
+	},
+);
+
+router.get('/v1/accounts/:id', async (req, res) => {
+	const parsedParams = accountParamsSchema.safeParse(req.params);
+	if (!parsedParams.success) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
+	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
+	const userInfoDoc = userInfo.docs[0];
+	if (userInfoDoc === undefined) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+
+	const actorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+	const actorObject = await apex.store.getObject(actorId);
+
+	if (actorObject === undefined) {
+		res.status(404).json({
+			error: 'Record not found',
+		});
+		return;
+	}
+	assertIsAPActor(actorObject);
+
+	const account = await actorObjectToAccount(actorObject, userInfoDoc.data());
+	res.json(account);
 });
 
 router.get('/v1/preferences', authRequired, (req, res) => {
@@ -840,31 +1475,6 @@ const getStatusByIri = async (iri: string) => {
 	return (await notesToStatuses([note]))[0];
 };
 
-// Mastodon の `ActiveModel::Type::Boolean` に合わせ、フォーム由来の文字列も解釈する。
-const FALSE_VALUES = new Set(['0', 'f', 'false', 'off']);
-const toBoolean = (value: boolean | string | null | undefined) => {
-	if (typeof value === 'boolean') {
-		return value;
-	}
-	if (value === null || value === undefined || value === '') {
-		return undefined;
-	}
-	return !FALSE_VALUES.has(value.toLowerCase());
-};
-
-const isPresent = (value: unknown) => {
-	if (value === undefined || value === null || value === '') {
-		return false;
-	}
-	if (Array.isArray(value)) {
-		return value.length > 0;
-	}
-	if (typeof value === 'object') {
-		return Object.keys(value).length > 0;
-	}
-	return true;
-};
-
 // JSON でもフォームでも届く。Elk は未指定の項目を `null` や空配列で送ってくる。
 export const createStatusBodySchema = z.object({
 	status: z.string().nullish(),
@@ -878,10 +1488,6 @@ export const createStatusBodySchema = z.object({
 	poll: z.unknown().optional(),
 	scheduled_at: z.unknown().optional(),
 });
-
-const unprocessable = (res: express.Response, error: string) => {
-	res.status(422).json({ error });
-};
 
 router.post('/v1/statuses', authRequired, scopeRequired('write:statuses'), async (req, res) => {
 	const parsedBody = createStatusBodySchema.safeParse(req.body ?? {});

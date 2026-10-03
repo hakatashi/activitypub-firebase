@@ -34,15 +34,15 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| GET | `/api/v1/accounts/verify_credentials` | 🟡 | `UserInfo` を素で返しており CredentialAccount として不完全 |
-| PATCH | `/api/v1/accounts/update_credentials` | ⬜ | プロフィール編集 |
-| GET | `/api/v1/accounts/lookup` | 🟡 | 他ドメインの acct は `Not implemented` を throw |
-| GET | `/api/v1/accounts/:id` | ⬜ | |
+| GET | `/api/v1/accounts/verify_credentials` | ✅ | 完全な CredentialAccount (source, role 含む) を返却 |
+| PATCH | `/api/v1/accounts/update_credentials` | ✅ | 表示名・bio・locked・discoverable・fields 更新、Update 配送 |
+| GET | `/api/v1/accounts/lookup` | ✅ | ローカル acct 解決、未存在・他ドメインは 404 |
+| GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示 |
 | GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ページネーション対応 |
 | GET | `/api/v1/accounts/:id/followers` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
-| GET | `/api/v1/accounts/:id/following` | ⬜ | |
-| GET | `/api/v1/accounts/relationships` | ⬜ | プロフィール表示に必須 |
-| POST | `/api/v1/accounts/:id/follow` / `unfollow` | ⬜ | unfollow は Store の未実装メソッドを踏む |
+| GET | `/api/v1/accounts/:id/following` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
+| GET | `/api/v1/accounts/relationships` | ✅ | フォロー・被フォロー・申請中の実データから Relationship を返却 |
+| POST | `/api/v1/accounts/:id/follow` / `unfollow` | ✅ | Follow / Undo(Follow) 配送、Relationship 返却 |
 | GET | `/api/v1/preferences` | ✅ | 固定値を返す |
 
 ## 投稿
