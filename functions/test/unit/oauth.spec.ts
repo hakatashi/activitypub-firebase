@@ -1,5 +1,7 @@
+import express from 'express';
+import type { AddressInfo } from 'node:net';
 import { describe, expect, test } from 'vitest';
-import {
+import oauthRouter, {
 	firebaseWebappsResponseSchema,
 	firebaseWebappConfigSchema,
 	oauthAuthorizeQuerySchema,
@@ -125,6 +127,49 @@ describe('oauth schemas', () => {
 				client_id: 'client-id',
 			});
 			expect(result.success).toBe(false);
+		});
+	});
+});
+
+describe('oauth CORS', () => {
+	const withServer = async (fn: (base: string) => Promise<void>) => {
+		const app = express();
+		app.use(express.json());
+		app.use(express.urlencoded({ extended: true }));
+		app.use('/oauth', oauthRouter);
+		const server = app.listen(0);
+		try {
+			await fn(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+		} finally {
+			server.close();
+		}
+	};
+
+	test('token preflight allows cross-origin requests', async () => {
+		await withServer(async (base) => {
+			const res = await fetch(`${base}/oauth/token`, {
+				method: 'OPTIONS',
+				headers: {
+					Origin: 'https://phanpy.social',
+					'Access-Control-Request-Method': 'POST',
+					'Access-Control-Request-Headers': 'content-type',
+				},
+			});
+			expect(res.status).toBe(204);
+			expect(res.headers.get('access-control-allow-origin')).toBe('https://phanpy.social');
+			expect(res.headers.get('access-control-allow-methods')).toContain('POST');
+		});
+	});
+
+	test('token response carries Access-Control-Allow-Origin even on errors', async () => {
+		await withServer(async (base) => {
+			const res = await fetch(`${base}/oauth/token`, {
+				method: 'POST',
+				headers: { Origin: 'https://phanpy.social', 'Content-Type': 'application/json' },
+				body: '{}',
+			});
+			expect(res.status).toBe(400);
+			expect(res.headers.get('access-control-allow-origin')).toBe('https://phanpy.social');
 		});
 	});
 });
