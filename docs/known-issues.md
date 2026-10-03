@@ -20,19 +20,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 `#ハッシュタグ` をリンクにせず、`tag` も付けない。メンションした相手は宛先に入らないため、
 リプライでない `direct` 投稿は誰にも配送されない(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md))。
 
-### 未実装ルートが 501 を返す
-
-`functions/src/mastodon/api.ts` の末尾で未定義ルートをすべて 501 にフォールバックしている。
-クライアントが起動時に叩く `custom_emojis` / `filters` / `announcements` / `lists` などが
-501 を返すと、クライアントが例外を投げて起動に失敗しうる。空配列を返すスタブが必要。
-
-### instance 情報が古い/サンプルのまま
-
-`functions/src/mastodon/instanceInformation.ts` の `version` が `'4.0.0'` で、
-Mastodon 4.3.0 で追加された `api_versions` を持たない。
-`contact.account.url` が `https://mastodon.social/@Gargron` のままなど、
-サンプル由来の値が残っている。
-
 ### OAuth トークンを失効できない
 
 `functions/src/mastodon/oauth2Model.ts` の `revokeToken` が未実装で、

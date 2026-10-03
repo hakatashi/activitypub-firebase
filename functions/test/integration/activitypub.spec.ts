@@ -51,6 +51,16 @@ describe('activitypub', () => {
 			expect(response.body.endpoints?.proxyUrl).toBeUndefined();
 			expect(response.body.proxyUrl).toBeUndefined();
 		});
+
+		test('redirects to Elk when Accept is text/html', async () => {
+			const response = await request(activitypub)
+				.get('/activitypub/u/hakatashi')
+				.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+			expect(response.status).toBe(302);
+			expect(response.headers.location).toContain('https://elk.zone/');
+			expect(response.headers.location).toContain('@hakatashi@');
+			expect(response.headers.vary).toContain('Accept');
+		});
 	});
 
 	describe('/nodeinfo', () => {
