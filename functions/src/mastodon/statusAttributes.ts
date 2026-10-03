@@ -89,9 +89,22 @@ const toTags = (note: APNote): TagLike[] => toArray<unknown>(note.tag).filter(is
 
 const hasType = (tag: TagLike, type: string) => toArray(tag.type).includes(type);
 
+export const getMentionIris = (note: APNote): string[] =>
+	toTags(note).flatMap((tag) => {
+		const href = toStringValue(tag.href);
+		if (!hasType(tag, 'Mention') || href === undefined) {
+			return [];
+		}
+		return [href];
+	});
+
 // Mention タグから mentions を組み立てる。`name` は `@user` か `@user@host`。
-// アカウント ID は未解決なので外部アカウントのプレースホルダ ID (`'1'`) を入れる。
-export const noteToMentions = (note: APNote): mastodon.v1.StatusMention[] =>
+// アカウント ID は `mentionIds` (IRI → ID の Map または Record) から引き、
+// 未解決の場合は後方互換性のため外部アカウントのプレースホルダ ID (`'1'`) を入れる (→ ADR-0069)。
+export const noteToMentions = (
+	note: APNote,
+	mentionIds?: Map<string, string> | Record<string, string>,
+): mastodon.v1.StatusMention[] =>
 	toTags(note).flatMap((tag) => {
 		const href = toStringValue(tag.href);
 		const name = toStringValue(tag.name);
@@ -100,7 +113,8 @@ export const noteToMentions = (note: APNote): mastodon.v1.StatusMention[] =>
 		}
 		const [username = '', host] = name.replace(/^@/, '').split('@');
 		const acct = host === undefined ? username : `${username}@${host}`;
-		return [{ id: '1', username, url: href, acct }];
+		const id = mentionIds instanceof Map ? mentionIds.get(href) : mentionIds?.[href];
+		return [{ id: id ?? '1', username, url: href, acct }];
 	});
 
 export const noteToHashtags = (note: APNote): mastodon.v1.Tag[] =>
