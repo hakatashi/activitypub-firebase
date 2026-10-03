@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
+import { getOrAssignMastodonId } from '../../src/mastodonId.js';
 import { AccessTokens, Streams, UserInfos } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -130,6 +131,21 @@ describe('Mastodon Accounts API (Issue #62)', () => {
 				username: 'alice',
 				acct: 'alice',
 				display_name: 'alice',
+			});
+		});
+
+		test('returns account when resolved via Mastodon ID', async () => {
+			const bob = await apex.createActor('bob', 'bob', '', '', 'Person');
+			bob.id = 'https://remote.example/users/bob';
+			await apex.store.saveObject(bob);
+			const bobMastodonId = await getOrAssignMastodonId(bob.id, undefined);
+
+			const res = await request(mastodon).get(`/api/v1/accounts/${bobMastodonId}`);
+			expect(res.status).toBe(200);
+			expect(res.body).toMatchObject({
+				id: bobMastodonId,
+				username: 'bob',
+				acct: 'bob@remote.example',
 			});
 		});
 	});

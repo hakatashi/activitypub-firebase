@@ -744,12 +744,20 @@ export const getRelationships = async (
 			UserInfos.where('id', 'in', chunkIds).get(),
 		),
 	);
-	const userInfoMap = new Map<string, { actorId: string; userInfo: UserInfo }>();
+	const targetActorMap = new Map<string, string>();
 	for (const chunkSnap of userInfoDocsChunks) {
 		for (const doc of chunkSnap.docs) {
 			const data = doc.data();
 			const actorId = unescapeFirestoreKey(toFirestoreKey(doc.id));
-			userInfoMap.set(data.id, { actorId, userInfo: data });
+			targetActorMap.set(data.id, actorId);
+		}
+	}
+	for (const id of accountIds) {
+		if (!targetActorMap.has(id)) {
+			const iri = await getIriByMastodonId(id);
+			if (iri !== undefined) {
+				targetActorMap.set(id, iri);
+			}
 		}
 	}
 
@@ -763,24 +771,24 @@ export const getRelationships = async (
 
 	const results: RelationshipEntity[] = [];
 	for (const id of accountIds) {
-		const target = userInfoMap.get(id);
-		if (target === undefined) {
+		const targetActorId = targetActorMap.get(id);
+		if (targetActorId === undefined) {
 			continue;
 		}
-		const isFollowing = followingSet.has(target.actorId);
+		const isFollowing = followingSet.has(targetActorId);
 		results.push({
 			id,
 			following: isFollowing,
 			showing_reblogs: isFollowing,
 			notifying: false,
 			languages: [],
-			followed_by: followerSet.has(target.actorId),
+			followed_by: followerSet.has(targetActorId),
 			blocking: false,
 			blocked_by: false,
 			muting: false,
 			muting_notifications: false,
 			muting_expires_at: null,
-			requested: pendingSet.has(target.actorId),
+			requested: pendingSet.has(targetActorId),
 			requested_by: false,
 			domain_blocking: false,
 			endorsed: false,
@@ -789,6 +797,33 @@ export const getRelationships = async (
 	}
 
 	return results;
+};
+
+const resolveAccountActor = async (
+	id: string,
+): Promise<{ actor: ApexObject & APActor; userInfo?: UserInfo } | undefined> => {
+	const userInfoSnap = await UserInfos.where('id', '==', id).get();
+	const userInfoDoc = userInfoSnap.docs[0];
+	if (userInfoDoc !== undefined) {
+		const actorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const actor = await apex.store.getObject(actorId);
+		if (actor === undefined) {
+			return undefined;
+		}
+		assertIsAPActor(actor);
+		return { actor, userInfo: userInfoDoc.data() };
+	}
+
+	const iri = await getIriByMastodonId(id);
+	if (iri !== undefined) {
+		const object = await apex.store.getObject(iri);
+		if (object !== undefined && isAPActor(object)) {
+			assertIsAPActor(object);
+			return { actor: object };
+		}
+	}
+
+	return undefined;
 };
 
 // OAuth トークンから、ログイン中のローカル actor の IRI と UserInfo を引く。
@@ -1255,28 +1290,20 @@ router.post(
 			return;
 		}
 
-		const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
-		const userInfoDoc = userInfo.docs[0];
-		if (userInfoDoc === undefined) {
+		const resolved = await resolveAccountActor(parsedParams.data.id);
+		if (resolved === undefined) {
 			res.status(404).json({ error: 'Record not found' });
 			return;
 		}
 
-		const targetActorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const targetActor = resolved.actor;
 		const actor = await apex.store.getObject(res.locals.actorId as string, true);
 		assertIsAPActor(actor);
 
-		if (targetActorId === actor.id) {
+		if (targetActor.id === actor.id) {
 			unprocessable(res, 'You cannot follow yourself');
 			return;
 		}
-
-		const targetActor = await apex.store.getObject(targetActorId);
-		if (targetActor === undefined) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-		assertIsAPActor(targetActor);
 
 		const followingSet = new Set(await getFollowing(actor));
 		const isAlreadyFollowing = followingSet.has(targetActor.id);
@@ -1289,7 +1316,7 @@ router.post(
 		}
 
 		const isTargetLocked =
-			targetActor.manuallyApprovesFollowers === true || userInfoDoc.data().locked === true;
+			targetActor.manuallyApprovesFollowers === true || resolved.userInfo?.locked === true;
 		const followerIris = await getFollowerActorIris(actor);
 		const relationship: RelationshipEntity = {
 			id: parsedParams.data.id,
@@ -1325,23 +1352,20 @@ router.post(
 			return;
 		}
 
-		const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
-		const userInfoDoc = userInfo.docs[0];
-		if (userInfoDoc === undefined) {
+		const resolved = await resolveAccountActor(parsedParams.data.id);
+		if (resolved === undefined) {
 			res.status(404).json({ error: 'Record not found' });
 			return;
 		}
 
-		const targetActorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const targetActor = resolved.actor;
 		const actor = await apex.store.getObject(res.locals.actorId as string, true);
 		assertIsAPActor(actor);
 
-		const targetActor = await apex.store.getObject(targetActorId);
-		if (targetActor === undefined) {
-			res.status(404).json({ error: 'Record not found' });
+		if (targetActor.id === actor.id) {
+			unprocessable(res, 'You cannot unfollow yourself');
 			return;
 		}
-		assertIsAPActor(targetActor);
 
 		const followingIri = toIdArray(actor.following)[0];
 		let follow = followingIri
@@ -1409,28 +1433,19 @@ router.get('/v1/accounts/:id', async (req, res) => {
 		return;
 	}
 
-	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
-	const userInfoDoc = userInfo.docs[0];
-	if (userInfoDoc === undefined) {
+	const resolved = await resolveAccountActor(parsedParams.data.id);
+	if (resolved === undefined) {
 		res.status(404).json({
 			error: 'Record not found',
 		});
 		return;
 	}
 
-	const actorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
-	const actorObject = await apex.store.getObject(actorId);
-
-	if (actorObject === undefined) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
-	assertIsAPActor(actorObject);
-
-	const account = await actorObjectToAccount(actorObject, userInfoDoc.data());
-	res.json(account);
+	const account = await actorObjectToAccount(resolved.actor, resolved.userInfo);
+	res.json({
+		...account,
+		id: parsedParams.data.id,
+	});
 });
 
 router.get('/v1/preferences', authRequired, (req, res) => {
