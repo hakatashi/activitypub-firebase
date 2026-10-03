@@ -366,8 +366,105 @@ describe('mastodon', () => {
 				expect(response.status).toBe(200);
 				expect(response.body.name).toBe('Test App');
 				expect(response.body.redirect_uri).toBe('urn:ietf:wg:oauth:2.0:oob');
+				expect(response.body.redirect_uris).toEqual(['urn:ietf:wg:oauth:2.0:oob']);
 				expect(response.body.client_id).toEqual(expect.any(String));
 				expect(response.body.client_secret).toEqual(expect.any(String));
+				expect(response.body.client_secret_expires_at).toBe(0);
+			});
+
+			test('creates a new app with array redirect_uris', async () => {
+				const response = await request(mastodon)
+					.post('/api/v1/apps')
+					.send({
+						client_name: 'Test App Array',
+						redirect_uris: ['https://example.com/oauth', 'https://example.com/oauth2'],
+						scopes: 'read write',
+					});
+				expect(response.status).toBe(200);
+				expect(response.body.name).toBe('Test App Array');
+				expect(response.body.redirect_uris).toEqual([
+					'https://example.com/oauth',
+					'https://example.com/oauth2',
+				]);
+				expect(response.body.redirect_uri).toBe(
+					'https://example.com/oauth\nhttps://example.com/oauth2',
+				);
+				expect(response.body.client_secret_expires_at).toBe(0);
+			});
+
+			test('concurrent app creation generates distinct IDs', async () => {
+				const [res1, res2] = await Promise.all([
+					request(mastodon).post('/api/v1/apps').send({
+						client_name: 'Concurrent App 1',
+						redirect_uris: 'urn:ietf:wg:oauth:2.0:oob',
+					}),
+					request(mastodon).post('/api/v1/apps').send({
+						client_name: 'Concurrent App 2',
+						redirect_uris: 'urn:ietf:wg:oauth:2.0:oob',
+					}),
+				]);
+				expect(res1.status).toBe(200);
+				expect(res2.status).toBe(200);
+				expect(res1.body.id).not.toBe(res2.body.id);
+			});
+		});
+
+		describe('/api/v1/apps/verify_credentials', () => {
+			test('returns 401 when no token is provided', async () => {
+				const response = await request(mastodon).get('/api/v1/apps/verify_credentials');
+				expect(response.status).toBe(401);
+			});
+
+			test('returns 401 when invalid token is provided', async () => {
+				const response = await request(mastodon)
+					.get('/api/v1/apps/verify_credentials')
+					.set('Authorization', 'Bearer invalid-token');
+				expect(response.status).toBe(401);
+			});
+
+			test('returns app credentials without client secrets when authorized', async () => {
+				const appResponse = await request(mastodon)
+					.post('/api/v1/apps')
+					.send({
+						client_name: 'Verify App',
+						redirect_uris: ['https://example.com/callback'],
+						scopes: 'read write',
+						website: 'https://example.com',
+					});
+				expect(appResponse.status).toBe(200);
+
+				await addToken('test-app-token', 'read write');
+				const tokenDocs = await AccessTokens.where('accessToken', '==', 'test-app-token').get();
+				const tokenDoc = tokenDocs.docs[0];
+				expect(tokenDoc).toBeDefined();
+				await tokenDoc!.ref.update({
+					client: {
+						id: appResponse.body.id,
+						clientId: appResponse.body.client_id,
+						name: 'Verify App',
+						redirectUris: ['https://example.com/callback'],
+						scopes: ['read', 'write'],
+						vapidKey: appResponse.body.vapid_key,
+						website: 'https://example.com',
+					},
+				});
+
+				const response = await request(mastodon)
+					.get('/api/v1/apps/verify_credentials')
+					.set('Authorization', 'Bearer test-app-token');
+
+				expect(response.status).toBe(200);
+				expect(response.body).toEqual({
+					id: appResponse.body.id,
+					name: 'Verify App',
+					website: 'https://example.com',
+					scopes: ['read', 'write'],
+					redirect_uri: 'https://example.com/callback',
+					redirect_uris: ['https://example.com/callback'],
+					vapid_key: appResponse.body.vapid_key,
+				});
+				expect(response.body.client_id).toBeUndefined();
+				expect(response.body.client_secret).toBeUndefined();
 			});
 		});
 	});

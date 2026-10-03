@@ -9,9 +9,10 @@ import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import fetch from 'node-fetch';
 import { z } from 'zod';
+import { AccessTokens, RefreshTokens } from '../schema.js';
 import { projectId } from '../firebase.js';
 import { redactSensitiveBody } from '../utils.js';
-import { Oauth2Model } from './oauth2Model.js';
+import { getFirstDoc, Oauth2Model } from './oauth2Model.js';
 
 export const firebaseWebappsResponseSchema = z.object({
 	apps: z
@@ -27,11 +28,16 @@ export const oauthAuthorizeQuerySchema = z.object({
 	redirect_uri: z.string().min(1),
 	response_type: z.string().min(1),
 	scope: z.string().default('scope'),
+	state: z.string().optional(),
+	code_challenge: z.string().optional(),
+	code_challenge_method: z.string().optional(),
 });
 
-export const oauthAuthorizeBodySchema = z.object({
-	idToken: z.string().min(1),
-});
+export const oauthAuthorizeBodySchema = z
+	.object({
+		idToken: z.string().min(1),
+	})
+	.passthrough();
 
 export const oauthTokenBodySchema = z
 	.object({
@@ -109,8 +115,10 @@ const getWebappConfig = async () => {
 	return config;
 };
 
+export const oauthModel = new Oauth2Model();
+
 export const oauth = new OAuth2Server({
-	model: new Oauth2Model(),
+	model: oauthModel,
 });
 
 const router = express.Router();
@@ -142,6 +150,9 @@ router.get('/authorize', async (req, res) => {
 		redirect_uri: redirectUri,
 		response_type: responseType,
 		scope,
+		state,
+		code_challenge: codeChallenge,
+		code_challenge_method: codeChallengeMethod,
 	} = parsedQuery.data;
 
 	let config: Record<string, unknown>;
@@ -156,11 +167,24 @@ router.get('/authorize', async (req, res) => {
 		return;
 	}
 
-	res
-		.status(200)
-		.contentType('text/html')
-		.send(
-			htmlEscape`
+	const extraInputs: string[] = [];
+	if (state !== undefined) {
+		extraInputs.push(
+			`<input type="hidden" name="state" id="state" value="${htmlEscape(state)}" autocomplete="off">`,
+		);
+	}
+	if (codeChallenge !== undefined) {
+		extraInputs.push(
+			`<input type="hidden" name="code_challenge" id="code_challenge" value="${htmlEscape(codeChallenge)}" autocomplete="off">`,
+		);
+	}
+	if (codeChallengeMethod !== undefined) {
+		extraInputs.push(
+			`<input type="hidden" name="code_challenge_method" id="code_challenge_method" value="${htmlEscape(codeChallengeMethod)}" autocomplete="off">`,
+		);
+	}
+
+	const baseHtml = htmlEscape`
 				<!DOCTYPE html>
 				<html lang="en">
 					<head>
@@ -211,14 +235,21 @@ router.get('/authorize', async (req, res) => {
 								<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
 								<input type="hidden" name="response_type" id="response_type" value="${responseType}" autocomplete="off">
 								<input type="hidden" name="scope" id="scope" value="${scope}" autocomplete="off">
+								<!-- EXTRA_INPUTS -->
 								<input type="hidden" name="idToken" id="idToken" value="" autocomplete="off">
 								<button name="button" type="submit">承認</button>
 							</form>
 						</div>
 					</body>
 				</html>
-			`,
-		);
+			`;
+
+	const renderedHtml =
+		extraInputs.length > 0
+			? baseHtml.replace('<!-- EXTRA_INPUTS -->', extraInputs.join('\n\t\t\t\t\t\t\t\t'))
+			: baseHtml.replace('<!-- EXTRA_INPUTS -->\n', '');
+
+	res.status(200).contentType('text/html').send(renderedHtml);
 });
 
 router.post('/authorize', async (req, res) => {
@@ -321,8 +352,86 @@ router.post('/token', tokenCors, async (req, res) => {
 	}
 });
 
-router.post('/revoke', tokenCors, (req, res) => {
-	res.sendStatus(501);
+router.post('/revoke', tokenCors, async (req, res) => {
+	let body: Record<string, unknown> = {};
+	if (typeof req.body === 'object' && req.body !== null) {
+		body = req.body as Record<string, unknown>;
+	}
+
+	let clientId = typeof body.client_id === 'string' ? body.client_id : undefined;
+	let clientSecret = typeof body.client_secret === 'string' ? body.client_secret : undefined;
+
+	const authHeader = req.headers.authorization;
+	if (authHeader?.startsWith('Basic ')) {
+		try {
+			const credentials = Buffer.from(authHeader.slice(6).trim(), 'base64').toString('utf-8');
+			const colonIndex = credentials.indexOf(':');
+			if (colonIndex !== -1) {
+				clientId = decodeURIComponent(credentials.slice(0, colonIndex));
+				clientSecret = decodeURIComponent(credentials.slice(colonIndex + 1));
+			}
+		} catch {
+			// ignore malformed basic auth header
+		}
+	}
+
+	if (!clientId) {
+		res.status(401).json({
+			error: 'invalid_client',
+			error_description: 'Client authentication failed',
+		});
+		return;
+	}
+
+	const client = await oauthModel.getClient(clientId, clientSecret ?? null);
+	if (!client) {
+		res.status(401).json({
+			error: 'invalid_client',
+			error_description: 'Client authentication failed',
+		});
+		return;
+	}
+
+	const token = body.token;
+	if (typeof token !== 'string' || token.length === 0) {
+		res.status(400).json({
+			error: 'invalid_request',
+			error_description: 'Missing token parameter',
+		});
+		return;
+	}
+
+	const accessTokenDoc = await getFirstDoc(AccessTokens.where('accessToken', '==', token));
+	if (accessTokenDoc) {
+		const tokenData = accessTokenDoc.data();
+		if (tokenData.client?.id !== client.id && tokenData.client?.clientId !== client.clientId) {
+			res.status(403).json({
+				error: 'unauthorized_client',
+				error_description: 'You are not authorized to revoke this token',
+			});
+			return;
+		}
+		await oauthModel.revokeToken(tokenData);
+		res.status(200).json({});
+		return;
+	}
+
+	const refreshTokenDoc = await getFirstDoc(RefreshTokens.where('refreshToken', '==', token));
+	if (refreshTokenDoc) {
+		const tokenData = refreshTokenDoc.data();
+		if (tokenData.client?.id !== client.id && tokenData.client?.clientId !== client.clientId) {
+			res.status(403).json({
+				error: 'unauthorized_client',
+				error_description: 'You are not authorized to revoke this token',
+			});
+			return;
+		}
+		await oauthModel.revokeToken(tokenData);
+		res.status(200).json({});
+		return;
+	}
+
+	res.status(200).json({});
 });
 
 export default router;
