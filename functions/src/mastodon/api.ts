@@ -6,6 +6,7 @@ import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
 import express from 'express';
 import firebase from 'firebase-admin';
+import { logger } from 'firebase-functions/v2';
 import { chunk, last, uniq, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { z } from 'zod';
@@ -17,12 +18,22 @@ import {
 	toFirestoreKey,
 	unescapeFirestoreKey,
 } from '../firebase.js';
-import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
+import { reserveIdempotencyKey } from '../idempotency.js';
+import { getIriByMastodonId, getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
+import { plainTextToHtml, publishNote } from '../notes.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
-import { isAPActor, isAPFollow, isAPNote, isAPUndo, toIdArray, toStringValue } from '../utils.js';
+import {
+	isAPActor,
+	isAPFollow,
+	isAPNote,
+	isAPUndo,
+	toError,
+	toIdArray,
+	toStringValue,
+} from '../utils.js';
 import { instanceV1, instanceV2 } from './instanceInformation.js';
 import { oauth } from './oauth.js';
 import type { PageParams } from './pagination.js';
@@ -538,6 +549,7 @@ const resolveAuth = async (req: express.Request, res: express.Response) => {
 	return {
 		userInfo: userInfoDoc.data(),
 		actorId: unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id)),
+		scope: token.scope,
 	};
 };
 
@@ -546,14 +558,38 @@ const authRequired = async (
 	res: express.Response,
 	next: express.NextFunction,
 ) => {
-	const { userInfo, actorId } = await resolveAuth(req, res);
+	const { userInfo, actorId, scope } = await resolveAuth(req, res);
 	// eslint-disable-next-line require-atomic-updates
 	res.locals.auth = userInfo;
 	// eslint-disable-next-line require-atomic-updates
 	res.locals.actorId = actorId;
+	// eslint-disable-next-line require-atomic-updates
+	res.locals.scope = scope;
 
 	next();
 };
+
+// Mastodon と同じく、`write:statuses` のような細分化スコープはその親 (`write`) でも満たされる。
+export const hasScope = (granted: unknown, required: string) => {
+	const grantedScopes = (
+		Array.isArray(granted) ? granted : String(granted ?? '').split(' ')
+	).filter((scope): scope is string => typeof scope === 'string');
+	const parent = required.split(':')[0];
+	return grantedScopes.some((scope) => scope === required || scope === parent);
+};
+
+// `authRequired` の後に置く。
+const scopeRequired =
+	(required: string) =>
+	(req: express.Request, res: express.Response, next: express.NextFunction) => {
+		if (!hasScope(res.locals.scope, required)) {
+			res.status(403).json({
+				error: 'This action is outside the authorized scopes',
+			});
+			return;
+		}
+		next();
+	};
 
 const getLocalActor = async (actorId: string): Promise<APActor> => {
 	const actor = await apex.store.getObject(actorId);
@@ -624,7 +660,7 @@ router.use(
 	cors({
 		origin: true,
 		methods: ['GET', 'POST'],
-		allowedHeaders: ['Authorization', 'Content-Type'],
+		allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
 		// これがないとブラウザ上のクライアントが Link ヘッダを読めずページネーションできない。
 		exposedHeaders: ['Link'],
 	}),
@@ -784,6 +820,153 @@ router.get('/v1/timelines/home', authRequired, async (req, res) => {
 		res,
 		await getHomeTimeline(viewer, parsePageParams(req.query, STATUS_PAGE_LIMITS)),
 	);
+});
+
+// 作成・重複時の応答に使う。Note でなければ (まだ保存されていなければ) undefined。
+const getStatusByIri = async (iri: string) => {
+	const note = await apex.store.getObject(iri);
+	if (!isAPNote(note)) {
+		return undefined;
+	}
+	return (await notesToStatuses([note]))[0];
+};
+
+// Mastodon の `ActiveModel::Type::Boolean` に合わせ、フォーム由来の文字列も解釈する。
+const FALSE_VALUES = new Set(['0', 'f', 'false', 'off']);
+const toBoolean = (value: boolean | string | null | undefined) => {
+	if (typeof value === 'boolean') {
+		return value;
+	}
+	if (value === null || value === undefined || value === '') {
+		return undefined;
+	}
+	return !FALSE_VALUES.has(value.toLowerCase());
+};
+
+const isPresent = (value: unknown) => {
+	if (value === undefined || value === null || value === '') {
+		return false;
+	}
+	if (Array.isArray(value)) {
+		return value.length > 0;
+	}
+	if (typeof value === 'object') {
+		return Object.keys(value).length > 0;
+	}
+	return true;
+};
+
+// JSON でもフォームでも届く。Elk は未指定の項目を `null` や空配列で送ってくる。
+export const createStatusBodySchema = z.object({
+	status: z.string().nullish(),
+	in_reply_to_id: z.string().nullish(),
+	sensitive: z.union([z.boolean(), z.string()]).nullish(),
+	spoiler_text: z.string().nullish(),
+	visibility: z.enum(['public', 'unlisted', 'private', 'direct']).nullish(),
+	language: z.string().nullish(),
+	// Phase 4 まで未対応。空でない値が来たら 422 にする (→ ADR-0063)。
+	media_ids: z.unknown().optional(),
+	poll: z.unknown().optional(),
+	scheduled_at: z.unknown().optional(),
+});
+
+const unprocessable = (res: express.Response, error: string) => {
+	res.status(422).json({ error });
+};
+
+router.post('/v1/statuses', authRequired, scopeRequired('write:statuses'), async (req, res) => {
+	const parsedBody = createStatusBodySchema.safeParse(req.body ?? {});
+	if (!parsedBody.success) {
+		unprocessable(res, `Validation failed: ${parsedBody.error.issues[0]?.message ?? 'invalid'}`);
+		return;
+	}
+	const body = parsedBody.data;
+
+	for (const field of ['media_ids', 'poll', 'scheduled_at'] as const) {
+		if (isPresent(body[field])) {
+			unprocessable(res, `${field} is not supported yet`);
+			return;
+		}
+	}
+
+	const spoilerText = body.spoiler_text?.trim() ?? '';
+	// 本文が空で注意書きがあれば、注意書きを本文に回す (Mastodon と同じ)。
+	const text = body.status?.trim() || spoilerText;
+	if (text === '') {
+		unprocessable(res, "Validation failed: Text can't be blank");
+		return;
+	}
+	const maxCharacters = instanceV2.configuration.statuses.max_characters;
+	if ([...text].length + [...spoilerText].length > maxCharacters) {
+		unprocessable(res, `Validation failed: Text character limit of ${maxCharacters} exceeded`);
+		return;
+	}
+
+	const actor = await apex.store.getObject(res.locals.actorId as string, true);
+	assertIsAPActor(actor);
+
+	let replyTarget: NoteObject | undefined;
+	if (isPresent(body.in_reply_to_id)) {
+		const iri = await getIriByMastodonId(body.in_reply_to_id ?? '');
+		const target = iri === undefined ? undefined : await apex.store.getObject(iri);
+		const visible =
+			isAPNote(target) && isNoteVisibleTo(target, actor.id, new Set(await getFollowing(actor)));
+		if (!visible) {
+			res
+				.status(404)
+				.json({ error: 'The post you are trying to reply to does not appear to exist.' });
+			return;
+		}
+		replyTarget = target;
+	}
+
+	const noteIri = apex.utils.objectIdToIRI();
+	const idempotencyKey = req.get('Idempotency-Key');
+	let release: (() => Promise<void>) | undefined;
+	if (idempotencyKey !== undefined && idempotencyKey !== '') {
+		const reservation = await reserveIdempotencyKey({
+			actorId: actor.id,
+			key: idempotencyKey,
+			noteIri,
+		});
+		if (reservation.type === 'duplicate') {
+			const status = await getStatusByIri(reservation.noteIri);
+			if (status === undefined) {
+				// 先行リクエストがまだ Note を保存していない (Mastodon のロック取得失敗と同じ扱い)。
+				res.status(503).json({ error: 'Duplicate request is in progress, try again later' });
+				return;
+			}
+			res.json(status);
+			return;
+		}
+		({ release } = reservation);
+	}
+
+	try {
+		await publishNote(actor, {
+			id: noteIri,
+			content: plainTextToHtml(text),
+			visibility: body.visibility ?? 'public',
+			inReplyTo: replyTarget?.id,
+			mentions: replyTarget ? toIdArray(replyTarget.attributedTo).slice(0, 1) : [],
+			summary: spoilerText === '' ? undefined : spoilerText,
+			sensitive: spoilerText !== '' || (toBoolean(body.sensitive) ?? false),
+			language: body.language ?? undefined,
+		});
+	} catch (error) {
+		// Note が保存されていなければ、再送で作り直せるよう予約を取り消す。
+		// 保存済みで配送だけ失敗した場合は、再送で重複しないよう予約を残す。
+		if (release !== undefined && (await apex.store.getObject(noteIri)) === undefined) {
+			await release();
+		}
+		logger.error({ type: 'postStatusError', error: toError(error).message });
+		res.status(500).json({ error: 'Failed to create the status' });
+		return;
+	}
+
+	const status = await getStatusByIri(noteIri);
+	assert(status !== undefined, 'created status is undefined');
+	res.json(status);
 });
 
 router.post('/v1/apps', async (req, res) => {

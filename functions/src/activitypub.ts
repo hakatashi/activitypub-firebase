@@ -5,6 +5,7 @@ import { https, logger, params } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
+import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
@@ -130,35 +131,12 @@ app.post(
 
 		const { text } = parsedBody.data;
 
-		const url = apex.utils.objectIdToIRI();
-		const published = new Date().toISOString();
 		const actorId = `https://${domain}/activitypub/u/hakatashi`;
 		const actor = await apex.store.getObject(actorId, true);
 		assert(actor !== undefined, 'actor is undefined');
-		const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
-		const object = {
-			id: url,
-			url,
-			published,
-			type: 'Note',
-			attributedTo: actor.id,
-			to: 'as:Public',
-			cc: followersId,
-			content: text,
-		};
+		const { activity } = await publishNote(actor, { content: text, visibility: 'public' });
 
-		await apex.store.saveObject(object);
-		const message = await apex.buildActivity('Create', actor.id, 'as:Public', {
-			cc: followersId,
-			object,
-			published,
-		});
-
-		logger.info({ type: 'createPostMessage', message });
-
-		const result = await apex.addToOutbox(actor, message);
-
-		logger.info({ type: 'createPostAddToOutboxResult', result });
+		logger.info({ type: 'createPostMessage', message: activity });
 
 		res.send('ok');
 	},

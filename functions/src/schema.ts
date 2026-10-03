@@ -107,3 +107,15 @@ export const MastodonIds = db.collection('mastodonIds') as CollectionReference<M
 export const MastodonIdsByIri = db.collection(
 	'mastodonIdsByIri',
 ) as CollectionReference<MastodonIdByIriRecord>;
+
+// `POST /api/v1/statuses` の `Idempotency-Key` (→ ADR-0063)。ドキュメント ID は
+// `functions/src/idempotency.ts` が actor とキーから導出する。`expiresAt` は TTL ポリシーの対象。
+export interface IdempotencyKeyRecord {
+	actorId: string;
+	noteIri: string;
+	expiresAt: Timestamp;
+}
+
+export const IdempotencyKeys = db.collection(
+	'idempotencyKeys',
+) as CollectionReference<IdempotencyKeyRecord>;

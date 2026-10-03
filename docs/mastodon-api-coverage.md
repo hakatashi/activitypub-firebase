@@ -49,7 +49,7 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| POST | `/api/v1/statuses` | ⬜ | **最優先。`Idempotency-Key`(1時間 TTL)対応が必要** |
+| POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids` / `poll` / `scheduled_at` は 422。メンション・リンクの自動変換は未対応 |
 | GET | `/api/v1/statuses/:id` | ⬜ | |
 | DELETE | `/api/v1/statuses/:id` | ⬜ | |
 | GET | `/api/v1/statuses/:id/context` | ⬜ | スレッド表示に必須 |
