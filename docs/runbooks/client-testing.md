@@ -49,7 +49,7 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 巡回する画面: ログイン直後、ホーム(スクロールして2ページ目を読む)、通知、自分のプロフィール、
 フォロー中・フォロワー(Elk のみ)、ホームの先頭の投稿の詳細、ローカルタイムライン。
 
-問題が1件でもあれば終了コード 1 で終わる。DNS の都合で初回は1分ほどかかる(→ 下の「ハマりどころ」)。
+問題が1件でもあれば終了コード 1 で終わる。両クライアントで1分半ほどかかる。
 
 ## 2. 結果の読み方
 
@@ -80,9 +80,10 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 
 ## ハマりどころ
 
-- **HakataMatrix の上流 DNS(ルーター)は、Firebase Hosting のホスト名への AAAA 問い合わせに応答しない。**
-  そのため名前解決に毎回15秒かかる。Node の `fetch` は名前解決込みで10秒でタイムアウトするので、
-  `run.mjs` では `https` を IPv4 に固定して使っている。Chromium は初回だけ15秒待ち、その後はキャッシュが効く。
+- 自宅 LAN の DNS(NAS)は `hakatashi.com` をヘアピン DNS として持っている。Firebase Hosting を指すホスト名
+  (`mastodon-dev` / `activitypub-dev` など)の設定が崩れると、LAN 内でだけ名前解決が遅れたり失敗したりする。
+  dev につながらない・初回だけ極端に遅いときは、まず
+  `dig mastodon-dev.hakatashi.com AAAA` が即答するかを見る(構成は `~/docs/mastodon-client-test.md`)。
 - Elk はログイン処理(`verify_credentials`)が終わる前に画面を遷移させる。
   画面遷移ではなく `verify_credentials` の応答を待つこと。
 - Elk の `/` はビルド時に事前描画されており、`NUXT_PUBLIC_DEFAULT_SERVER` が効かない(既定の `m.webtoo.ls` が出る)。

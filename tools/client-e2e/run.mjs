@@ -8,7 +8,6 @@
 // トークンは出力のすべてから伏せ字にする。
 
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import https from 'node:https';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
@@ -42,28 +41,15 @@ if (!TOKEN) {
 
 const redact = (text) => String(text).replaceAll(TOKEN, '<MASTODON_DEV_TOKEN>');
 
-// fetch(undici)は名前解決込みで 10 秒の接続タイムアウトを持つ。HakataMatrix の上流 DNS は
-// Firebase Hosting のホスト名への AAAA 問い合わせに 15 秒応答しないため、IPv4 に固定して https で叩く。
-const api = (pathname) =>
-	new Promise((resolve, reject) => {
-		const req = https.get(
-			`https://${SERVER}${pathname}`,
-			{ family: 4, headers: { authorization: `Bearer ${TOKEN}` } },
-			(res) => {
-				let body = '';
-				res.setEncoding('utf8');
-				res.on('data', (chunk) => (body += chunk));
-				res.on('end', () => {
-					if (res.statusCode >= 400) {
-						reject(new Error(`GET ${pathname} -> ${res.statusCode}`));
-						return;
-					}
-					resolve(JSON.parse(body));
-				});
-			},
-		);
-		req.on('error', reject);
+const api = async (pathname) => {
+	const res = await fetch(`https://${SERVER}${pathname}`, {
+		headers: { authorization: `Bearer ${TOKEN}` },
 	});
+	if (!res.ok) {
+		throw new Error(`GET ${pathname} -> ${res.status}`);
+	}
+	return res.json();
+};
 
 // 画面がひととおり読み込まれるのを待つ。streaming などで networkidle にならないことがあるので上限付き。
 const settle = async (page) => {
