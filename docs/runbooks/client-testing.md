@@ -83,7 +83,7 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 - 自宅 LAN の DNS(NAS)は `hakatashi.com` をヘアピン DNS として持っている。Firebase Hosting を指すホスト名
   (`mastodon-dev` / `activitypub-dev` など)の設定が崩れると、LAN 内でだけ名前解決が遅れたり失敗したりする。
   dev につながらない・初回だけ極端に遅いときは、まず
-  `dig mastodon-dev.hakatashi.com AAAA` が即答するかを見る(構成は `~/docs/mastodon-client-test.md`)。
+  `dig mastodon-dev.hakatashi.com AAAA` が即答するかを見る(構成と切り分け手順は HakataMatrix 側の `~/docs/lan-dns.md`)。
 - Elk はログイン処理(`verify_credentials`)が終わる前に画面を遷移させる。
   画面遷移ではなく `verify_credentials` の応答を待つこと。
 - Elk の `/` はビルド時に事前描画されており、`NUXT_PUBLIC_DEFAULT_SERVER` が効かない(既定の `m.webtoo.ls` が出る)。
