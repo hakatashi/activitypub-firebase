@@ -90,3 +90,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0062](0062-cursor-pagination-by-mastodon-id.md) | ページネーションは Mastodon ID のカーソルで行い、Firestore は published で範囲を絞る | Accepted |
 | [0063](0063-post-status-and-idempotency-key.md) | POST /api/v1/statuses の Note 組み立てと Idempotency-Key の保持 | Accepted |
 | [0064](0064-get-delete-statuses-and-context.md) | GET / DELETE /api/v1/statuses/:id と /context のスレッド走査・削除仕様 | Accepted |
+| [0066](0066-self-hosted-clients-driven-by-playwright.md) | クライアント互換性の検証に Elk / Phanpy を自前ホストし Playwright で操作する | Accepted |
