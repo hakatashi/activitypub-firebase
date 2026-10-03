@@ -17,6 +17,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 | Mastodon API のどこまで実装したか | [`docs/mastodon-api-coverage.md`](docs/mastodon-api-coverage.md) |
 | ビルド・テスト・デプロイの方法 | [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md) |
 | 連合が動くことをどう確認するか | [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md) |
+| Elk などのクライアントで動くことをどう確認するか | [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) |
 
 `third_party/` には仕様書と参考実装が submodule として置かれている
 (`activitypub` = W3C 仕様、`mastodon` / `mastodon_documentation` = Mastodon 本体とドキュメント、
