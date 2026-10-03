@@ -50,9 +50,9 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids` / `poll` / `scheduled_at` は 422。メンション・リンクの自動変換は未対応 |
-| GET | `/api/v1/statuses/:id` | ⬜ | |
-| DELETE | `/api/v1/statuses/:id` | ⬜ | |
-| GET | `/api/v1/statuses/:id/context` | ⬜ | スレッド表示に必須 |
+| GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404 |
+| DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却 |
+| GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |
 | POST | `/api/v1/statuses/:id/favourite` / `unfavourite` | ⬜ | |
 | POST | `/api/v1/statuses/:id/reblog` / `unreblog` | ⬜ | |
 | POST | `/api/v1/statuses/:id/bookmark` / `unbookmark` | ⬜ | |

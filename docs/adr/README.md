@@ -89,3 +89,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0061](0061-timeline-actor-filter-and-visibility.md) | タイムラインは actor で絞り、可視性を1箇所で判定する | Accepted |
 | [0062](0062-cursor-pagination-by-mastodon-id.md) | ページネーションは Mastodon ID のカーソルで行い、Firestore は published で範囲を絞る | Accepted |
 | [0063](0063-post-status-and-idempotency-key.md) | POST /api/v1/statuses の Note 組み立てと Idempotency-Key の保持 | Accepted |
+| [0064](0064-get-delete-statuses-and-context.md) | GET / DELETE /api/v1/statuses/:id と /context のスレッド走査・削除仕様 | Accepted |

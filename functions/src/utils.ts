@@ -1,5 +1,13 @@
 import type { APObject } from './apex/index.js';
-import type { APActor, APAnnounce, APFollow, APLike, APNote, APUndo } from 'activitypub-types';
+import type {
+	APActor,
+	APAnnounce,
+	APFollow,
+	APLike,
+	APNote,
+	APTombstone,
+	APUndo,
+} from 'activitypub-types';
 import type express from 'express';
 import { z } from 'zod';
 
@@ -180,6 +188,13 @@ export const isAPAnnounce = <T>(object: T): object is T & APAnnounce => {
 		return false;
 	}
 	return objectToTypeArray(object).includes('Announce');
+};
+
+export const isAPTombstone = <T>(object: T): object is T & APTombstone => {
+	if (typeof object !== 'object' || object === null) {
+		return false;
+	}
+	return objectToTypeArray(object).includes('Tombstone');
 };
 
 // AS2 の Object/Link は id/href を持つが、activitypub-express は compactArrays: false で

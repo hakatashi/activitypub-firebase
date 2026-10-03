@@ -175,7 +175,7 @@ describe('POST /api/v1/statuses (Issue #60)', () => {
 		expect(response.body.in_reply_to_id).toBe(parentId);
 
 		const note = await apex.store.getObject(response.body.uri);
-		expect(note?.inReplyTo).toBe(parentIri);
+		expect(note?.inReplyTo).toEqual([parentIri]);
 		expect(note?.cc).toEqual([`${me.id}/followers`, REMOTE]);
 	});
 

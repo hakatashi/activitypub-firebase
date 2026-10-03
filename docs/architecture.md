@@ -206,6 +206,12 @@ Mastodon と同じ規則で決め、リプライ先の投稿者を宛先に加�
 `idempotencyKeys` へ予約し、1時間以内の再送には既存の Status を返す
 (→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md))。
 
+個別投稿の取得(`GET /api/v1/statuses/:id`)・削除(`DELETE /api/v1/statuses/:id`)・スレッド表示(`GET /api/v1/statuses/:id/context`)は
+Mastodon ID から Note を引いて処理する。削除時は Note を Tombstone 化して `Delete` を outbox に積み、
+`onStreamCreated` で `statuses_count` を減算する。context は手元に存在する Note のみ `inReplyTo` を祖先方向(最大40件)・
+子返信方向(DFS、深さ20・件数60上限、`type + inReplyTo + _meta.published` 複合インデックス)に探索し、
+循環参照を防ぎつつ可視性フィルタを通す(→ [ADR-0064](adr/0064-get-delete-statuses-and-context.md))。
+
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
 未定義のルートは 501 にフォールバックする。
 

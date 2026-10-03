@@ -4,7 +4,15 @@ import { isEqual } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { buildMetaIndex } from './meta.js';
 import { Objects, UserInfos } from './schema.js';
-import { isAPAnnounce, isAPFollow, isAPLike, isAPNote, toIdArray, toTypeArray } from './utils.js';
+import {
+	isAPAnnounce,
+	isAPFollow,
+	isAPLike,
+	isAPNote,
+	isAPTombstone,
+	toIdArray,
+	toTypeArray,
+} from './utils.js';
 
 export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (event) => {
 	const stream = event.data?.after?.data?.();
@@ -70,10 +78,17 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 	// 型だけで判定すると、投稿への Like/Announce のたびに「いいねした側」の
 	// statuses_count を誤って増やそうとしてしまう (存在しない UserInfos への
 	// update は例外になり、他の更新も巻き添えで失われる → ADR-0039)。
+	// Delete の場合は statuses_count を減算する (→ ADR-0064)。
 	const isCreate = toTypeArray(stream.type).includes('Create');
+	const isDelete = toTypeArray(stream.type).includes('Delete');
 	const isNote = isCreate && objects.some(isAPNote);
+	const isDeletedNote =
+		isDelete && objects.some((object) => isAPNote(object) || isAPTombstone(object));
 	if (isNote && actorId !== undefined) {
 		getUserInfoDelta(actorId).statusesDelta = 1;
+	}
+	if (isDeletedNote && actorId !== undefined) {
+		getUserInfoDelta(actorId).statusesDelta = -1;
 	}
 
 	// Denormalize userInfos.followers_count
