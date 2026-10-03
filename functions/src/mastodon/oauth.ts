@@ -2,6 +2,7 @@ import OAuth2Server, {
 	Request as OauthRequest,
 	Response as OauthResponse,
 } from '@node-oauth/oauth2-server';
+import cors from 'cors';
 import { htmlEscape } from 'escape-goat';
 import express from 'express';
 import firebase from 'firebase-admin';
@@ -113,6 +114,16 @@ export const oauth = new OAuth2Server({
 });
 
 const router = express.Router();
+
+// Phanpy など、ブラウザ上で動くクライアントは別オリジンから token/revoke を fetch する。
+// authorize はページ遷移なので CORS は不要。
+const tokenCors = cors({
+	origin: true,
+	methods: ['POST'],
+	allowedHeaders: ['Authorization', 'Content-Type'],
+});
+router.options('/token', tokenCors);
+router.options('/revoke', tokenCors);
 
 router.get('/authorize', async (req, res) => {
 	logger.info({
@@ -271,7 +282,7 @@ router.post('/authorize', async (req, res) => {
 	}
 });
 
-router.post('/token', async (req, res) => {
+router.post('/token', tokenCors, async (req, res) => {
 	const parsedBody = oauthTokenBodySchema.safeParse(req.body);
 	if (!parsedBody.success) {
 		res.status(400).send('Bad request');
@@ -310,7 +321,7 @@ router.post('/token', async (req, res) => {
 	}
 });
 
-router.post('/revoke', (req, res) => {
+router.post('/revoke', tokenCors, (req, res) => {
 	res.sendStatus(501);
 });
 
