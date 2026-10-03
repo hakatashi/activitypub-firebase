@@ -1,7 +1,11 @@
 import type { APActor, APNote } from 'activitypub-types';
 import type { mastodon } from 'masto';
 import { describe, expect, test } from 'vitest';
-import { actorObjectToAccount, noteObjectToStatus } from '../../src/mastodon/api.js';
+import {
+	accountToCredentialAccount,
+	actorObjectToAccount,
+	noteObjectToStatus,
+} from '../../src/mastodon/api.js';
 import { isNoteVisibleTo } from '../../src/mastodon/statusAttributes.js';
 import { domain } from '../../src/firebase.js';
 import type { UserInfo } from '../../src/schema.js';
@@ -79,6 +83,50 @@ describe('actorObjectToAccount', () => {
 			header_static: '',
 			note: '',
 			discoverable: false,
+		});
+	});
+
+	test('returns username only as acct when actor domain matches local domain', async () => {
+		const actor = {
+			id: `https://${domain}/activitypub/u/hakatashi`,
+			type: 'Person',
+			preferredUsername: 'hakatashi',
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(actor, userInfo);
+
+		expect(account.acct).toBe('hakatashi');
+	});
+});
+
+describe('accountToCredentialAccount', () => {
+	test('converts account into CredentialAccount with source and default role', async () => {
+		const actor = {
+			id: `https://${domain}/activitypub/u/hakatashi`,
+			type: 'Person',
+			preferredUsername: 'hakatashi',
+			summary: '<p>Bio content</p>',
+		} as unknown as APActor;
+		const account = await actorObjectToAccount(actor, userInfo);
+		const credentialAccount = accountToCredentialAccount(account, userInfo);
+
+		expect(credentialAccount).toMatchObject({
+			...account,
+			source: {
+				privacy: 'public',
+				sensitive: false,
+				language: 'ja',
+				note: 'Bio content',
+				fields: [],
+				follow_requests_count: 0,
+			},
+			role: {
+				id: '-99',
+				name: '',
+				permissions: '0',
+				color: '',
+				highlighted: false,
+			},
 		});
 	});
 });

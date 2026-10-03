@@ -193,11 +193,11 @@ API で露出する Status などの ID は AP IRI とは別に採番した、�
 読み出し時(`getMastodonIds`)に未採番の IRI があればその場で採番する。
 既存データのバックフィルは `functions/bin/assignMastodonIds.ts`。
 
-コレクション系エンドポイント(`timelines/public`・`timelines/home`・`accounts/:id/statuses`・`accounts/:id/followers`)は
+コレクション系エンドポイント(`timelines/public`・`timelines/home`・`accounts/:id/statuses`・`accounts/:id/followers`・`accounts/:id/following`)は
 `max_id` / `since_id` / `min_id` / `limit` でページングし、`Link` ヘッダ(`next` / `prev`)で次のページを示す
 (`Access-Control-Expose-Headers: Link` を付ける)。カーソルは Mastodon ID で、応答は常に新しい順。
 Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [attributedTo +] _meta.published` の昇順・降順の複合インデックス)、
-可視性の判定と ID の厳密な比較は取得後にアプリケーション側で行う。followers のカーソルは Follow アクティビティの Mastodon ID
+可視性の判定と ID の厳密な比較は取得後にアプリケーション側で行う。followers / following のカーソルは Follow アクティビティの Mastodon ID
 (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。
 
 投稿(`POST /api/v1/statuses`)と管理者用の `/activitypub/createPost` は、どちらも `functions/src/notes.ts` の
@@ -211,6 +211,10 @@ Mastodon ID から Note を引いて処理する。削除時は Note を Tombsto
 `onStreamCreated` で `statuses_count` を減算する。context は手元に存在する Note のみ `inReplyTo` を祖先方向(最大40件)・
 子返信方向(DFS、深さ20・件数60上限、`type + inReplyTo + _meta.published` 複合インデックス)に探索し、
 循環参照を防ぎつつ可視性フィルタを通す(→ [ADR-0064](adr/0064-get-delete-statuses-and-context.md))。
+
+アカウント系エンドポイント(`GET /api/v1/accounts/verify_credentials`・`PATCH /api/v1/accounts/update_credentials`・`GET /api/v1/accounts/:id`・`GET /api/v1/accounts/relationships`・`POST /api/v1/accounts/:id/follow`・`POST /api/v1/accounts/:id/unfollow`)は、
+自アカウント情報(Elk 互換の `role` / `source` を含む)の取得・更新(AP `Update` 配送付き)や、フォロー・アンフォロー(AP `Follow` / `Undo(Follow)` 配送付き)、
+および関係性の判定を提供する(→ [ADR-0065](adr/0065-account-endpoints-and-follow-unfollow.md))。
 
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
 未定義のルートは 501 にフォールバックする。
