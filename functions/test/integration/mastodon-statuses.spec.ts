@@ -447,5 +447,57 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			expect(res.status).toBe(200);
 			expect(res.body.descendants.map((s: { id: string }) => s.id)).toEqual([publicReplyId]);
 		});
+
+		test('finds descendants when inReplyTo is stored as an array (federated reply from remote actor)', async () => {
+			const { object: root } = await publishNote(me, {
+				content: plainTextToHtml('Root post for federation reply test'),
+				visibility: 'public',
+			});
+
+			// 外部インスタンスから受信した Note (apex.fromJSONLD により inReplyTo は配列になる)
+			const federatedReplyId = 'https://remote.example/notes/bob-reply-1';
+			const published = new Date().toISOString();
+			await apex.store.saveObject({
+				id: federatedReplyId,
+				type: 'Note',
+				attributedTo: REMOTE_BOB,
+				to: ['as:Public'],
+				content: '<p>Reply from remote Bob</p>',
+				published,
+				inReplyTo: [root.id],
+			} as unknown as APObject);
+
+			const ids = await getMastodonIds([
+				{ iri: root.id, published: root.published },
+				{ iri: federatedReplyId, published },
+			]);
+			const rootId = ids.get(root.id)!;
+			const bobReplyId = ids.get(federatedReplyId)!;
+
+			// Root の context にリモート Bob の返信が descendants として含まれることを確認
+			const res = await getContext(rootId);
+			expect(res.status).toBe(200);
+			expect(res.body.descendants.map((s: { id: string }) => s.id)).toEqual([bobReplyId]);
+
+			// Bob の返信の context に Root が ancestors として含まれることも確認
+			const bobRes = await getContext(bobReplyId);
+			expect(bobRes.status).toBe(200);
+			expect(bobRes.body.ancestors.map((s: { id: string }) => s.id)).toEqual([rootId]);
+		});
+
+		test('publishNote stores inReplyTo as an array of IRIs', async () => {
+			const { object: root } = await publishNote(me, {
+				content: plainTextToHtml('Root'),
+				visibility: 'public',
+			});
+			const { object: reply } = await publishNote(me, {
+				content: plainTextToHtml('Reply'),
+				visibility: 'public',
+				inReplyTo: root.id,
+			});
+
+			const stored = await apex.store.getObject(reply.id);
+			expect(stored?.inReplyTo).toEqual([root.id]);
+		});
 	});
 });

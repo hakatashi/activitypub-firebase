@@ -180,7 +180,12 @@ export default class Store extends IApexStore implements ApexStore {
 	async getReplies(inReplyTo: string): Promise<APObject[]> {
 		logger.info({ type: 'getReplies', inReplyTo });
 		const docs = await Objects.where('type', '==', 'Note')
-			.where('inReplyTo', '==', inReplyTo)
+			.where(
+				firebase.firestore.Filter.or(
+					firebase.firestore.Filter.where('inReplyTo', '==', inReplyTo),
+					firebase.firestore.Filter.where('inReplyTo', 'array-contains', inReplyTo),
+				),
+			)
 			.orderBy(PUBLISHED_KEY, 'asc')
 			.get();
 		return docs.docs.map((doc) => doc.data());
@@ -203,6 +208,12 @@ export default class Store extends IApexStore implements ApexStore {
 		const publishedKey = toPublishedSortKey(objectWithId.published);
 		if (publishedKey !== undefined) {
 			objectWithId._meta = { ...objectWithId._meta, published: publishedKey };
+		}
+		if (objectWithId.inReplyTo !== undefined) {
+			const inReplyTo = toIdArray(objectWithId.inReplyTo);
+			if (inReplyTo.length > 0) {
+				objectWithId.inReplyTo = inReplyTo;
+			}
 		}
 		const docRef = Objects.doc(escapeFirestoreKey(objectId));
 		await this.db.runTransaction(async (transaction) => {

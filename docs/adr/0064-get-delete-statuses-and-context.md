@@ -21,7 +21,7 @@
    - `{ ancestors: [], descendants: [] }` を返す。対象 Note が未存在または閲覧権限がなければ 404。
    - `ancestors`: `inReplyTo` を上限 40 件まで遡る。手元にないリモート Note は HTTP で取りに行かない ([[ADR-0059]])。訪問済み Set で循環参照を防止し、根から手前 (古い順) に並べる。
    - `descendants`: 対象 Note の IRI を `inReplyTo` に持つ Note を手元から深さ優先 (DFS) で集める (深さ上限 20、件数上限 60)。手元にない Note は取りに行かない。
-   - `objects` コレクションに `(type, inReplyTo, _meta.published)` の複合インデックスを追加する。
+   - `inReplyTo` の保存形式は配列とし、`getReplies` は `Filter.or` (`==` / `array-contains`) で引く。`objects` に `(type, inReplyTo, _meta.published)` の複合インデックス (ASC / CONTAINS) を追加する。
    - いずれも閲覧者 (認証任意) に対する可視性フィルタを通す。
 
 ## 理由

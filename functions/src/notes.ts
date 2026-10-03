@@ -73,6 +73,7 @@ export const publishNote = async (actor: APObject, note: NewNote) => {
 
 	const id = note.id ?? apex.utils.objectIdToIRI();
 	const published = new Date().toISOString();
+	const inReplyTo = note.inReplyTo === undefined ? undefined : toIdArray(note.inReplyTo);
 	const object: APObject = {
 		id,
 		url: id,
@@ -85,7 +86,7 @@ export const publishNote = async (actor: APObject, note: NewNote) => {
 		...(note.language === undefined ? {} : { contentMap: { [note.language]: note.content } }),
 		...(note.summary === undefined ? {} : { summary: note.summary }),
 		...(note.sensitive === undefined ? {} : { sensitive: note.sensitive }),
-		...(note.inReplyTo === undefined ? {} : { inReplyTo: note.inReplyTo }),
+		...(inReplyTo === undefined || inReplyTo.length === 0 ? {} : { inReplyTo }),
 	};
 
 	// saveObject は渡したオブジェクトに `_meta` を書き足すので、Create に埋め込む方を汚さないよう複製を渡す。

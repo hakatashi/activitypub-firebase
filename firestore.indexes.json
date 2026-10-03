@@ -141,6 +141,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "objects",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "inReplyTo",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "_meta.published",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
