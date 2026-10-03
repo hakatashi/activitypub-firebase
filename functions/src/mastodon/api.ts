@@ -21,7 +21,7 @@ import {
 import { reserveIdempotencyKey } from '../idempotency.js';
 import { getIriByMastodonId, getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
-import { plainTextToHtml, publishNote } from '../notes.js';
+import { deleteNote, htmlToPlainText, plainTextToHtml, publishNote } from '../notes.js';
 import { Clients, Streams, UserInfo, UserInfos } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
@@ -172,8 +172,10 @@ export interface StatusContext {
 }
 
 // masto の型は `application` を non-null としているが、Mastodon 本体はリモート投稿で null を返す。
+// また DELETE レスポンスでは本文プレーンテキストの `text` が含まれる。
 export type StatusEntity = Omit<CamelToSnake<mastodon.v1.Status>, 'application'> & {
 	application: CamelToSnake<mastodon.v1.Status>['application'] | null;
+	text?: string | null;
 };
 
 const isLocalIri = (iri: string) => iri.startsWith(`https://${domain}/`);
@@ -558,15 +560,22 @@ const authRequired = async (
 	res: express.Response,
 	next: express.NextFunction,
 ) => {
-	const { userInfo, actorId, scope } = await resolveAuth(req, res);
-	// eslint-disable-next-line require-atomic-updates
-	res.locals.auth = userInfo;
-	// eslint-disable-next-line require-atomic-updates
-	res.locals.actorId = actorId;
-	// eslint-disable-next-line require-atomic-updates
-	res.locals.scope = scope;
+	try {
+		const { userInfo, actorId, scope } = await resolveAuth(req, res);
+		// eslint-disable-next-line require-atomic-updates
+		res.locals.auth = userInfo;
+		// eslint-disable-next-line require-atomic-updates
+		res.locals.actorId = actorId;
+		// eslint-disable-next-line require-atomic-updates
+		res.locals.scope = scope;
 
-	next();
+		next();
+	} catch (error) {
+		const status = (error as { statusCode?: number }).statusCode ?? 401;
+		res.status(status).json({
+			error: toError(error).message,
+		});
+	}
 };
 
 // Mastodon と同じく、`write:statuses` のような細分化スコープはその親 (`write`) でも満たされる。
@@ -659,7 +668,7 @@ router.use(
 	'/',
 	cors({
 		origin: true,
-		methods: ['GET', 'POST'],
+		methods: ['GET', 'POST', 'DELETE'],
 		allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
 		// これがないとブラウザ上のクライアントが Link ヘッダを読めずページネーションできない。
 		exposedHeaders: ['Link'],
@@ -968,6 +977,196 @@ router.post('/v1/statuses', authRequired, scopeRequired('write:statuses'), async
 	assert(status !== undefined, 'created status is undefined');
 	res.json(status);
 });
+
+const MAX_ANCESTORS = 40;
+const MAX_DESCENDANTS = 60;
+const MAX_DESCENDANTS_DEPTH = 20;
+
+export const statusParamsSchema = z.object({
+	id: z.string().min(1),
+});
+
+export const getStatusAncestors = async (
+	note: NoteObject,
+	viewer: APActor | undefined,
+	viewerFollowing: Set<string>,
+): Promise<StatusEntity[]> => {
+	const ancestorNotes: NoteObject[] = [];
+	const visited = new Set<string>([note.id]);
+	let currentReplyTo = toIdArray(note.inReplyTo)[0];
+
+	while (currentReplyTo !== undefined && ancestorNotes.length < MAX_ANCESTORS) {
+		if (visited.has(currentReplyTo)) {
+			// 循環参照を検出したら停止 (→ ADR-0064)
+			break;
+		}
+		visited.add(currentReplyTo);
+		const parent = await apex.store.getObject(currentReplyTo);
+		if (!isAPNote(parent)) {
+			// 手元に存在しないか Note でなければチェーン終了 (リモートへは取りに行かない → ADR-0059)
+			break;
+		}
+		ancestorNotes.push(parent);
+		currentReplyTo = toIdArray(parent.inReplyTo)[0];
+	}
+
+	ancestorNotes.reverse();
+	const visibleAncestors = ancestorNotes.filter((ancestor) =>
+		isNoteVisibleTo(ancestor, viewer?.id, viewerFollowing),
+	);
+	return notesToStatuses(visibleAncestors);
+};
+
+export const getStatusDescendants = async (
+	note: NoteObject,
+	viewer: APActor | undefined,
+	viewerFollowing: Set<string>,
+): Promise<StatusEntity[]> => {
+	const descendantNotes: NoteObject[] = [];
+	const visited = new Set<string>([note.id]);
+
+	const collect = async (parentIri: string, depth: number) => {
+		if (depth >= MAX_DESCENDANTS_DEPTH || descendantNotes.length >= MAX_DESCENDANTS) {
+			return;
+		}
+		const rawReplies = await apex.store.getReplies(parentIri);
+		const replies = rawReplies.filter(isAPNote);
+
+		// Mastodon 仕様: 親と同じ投稿者による返信 (self-reply) を優先して上位に持ってくる
+		const parentNote = descendantNotes.find((d) => d.id === parentIri) ?? note;
+		const parentAuthor = getAttributedTo(parentNote);
+		const sortedReplies =
+			parentAuthor === undefined
+				? replies
+				: [...replies].sort((a, b) => {
+						const aIsSelf = getAttributedTo(a) === parentAuthor;
+						const bIsSelf = getAttributedTo(b) === parentAuthor;
+						if (aIsSelf && !bIsSelf) {
+							return -1;
+						}
+						if (!aIsSelf && bIsSelf) {
+							return 1;
+						}
+						return 0;
+					});
+
+		for (const reply of sortedReplies) {
+			if (visited.has(reply.id) || descendantNotes.length >= MAX_DESCENDANTS) {
+				continue;
+			}
+			visited.add(reply.id);
+			descendantNotes.push(reply);
+			await collect(reply.id, depth + 1);
+		}
+	};
+
+	await collect(note.id, 0);
+
+	const visibleDescendants = descendantNotes.filter((descendant) =>
+		isNoteVisibleTo(descendant, viewer?.id, viewerFollowing),
+	);
+	return notesToStatuses(visibleDescendants);
+};
+
+router.get('/v1/statuses/:id/context', async (req, res) => {
+	const parsedParams = statusParamsSchema.safeParse(req.params);
+	if (!parsedParams.success) {
+		res.status(404).json({ error: 'Record not found' });
+		return;
+	}
+
+	const iri = await getIriByMastodonId(parsedParams.data.id);
+	const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+	if (!isAPNote(note)) {
+		res.status(404).json({ error: 'Record not found' });
+		return;
+	}
+
+	const viewer = await getOptionalViewer(req, res);
+	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+	if (!isNoteVisibleTo(note, viewer?.id, viewerFollowing)) {
+		res.status(404).json({ error: 'Record not found' });
+		return;
+	}
+
+	const [ancestors, descendants] = await Promise.all([
+		getStatusAncestors(note, viewer, viewerFollowing),
+		getStatusDescendants(note, viewer, viewerFollowing),
+	]);
+
+	res.json({ ancestors, descendants });
+});
+
+router.get('/v1/statuses/:id', async (req, res) => {
+	const parsedParams = statusParamsSchema.safeParse(req.params);
+	if (!parsedParams.success) {
+		res.status(404).json({ error: 'Record not found' });
+		return;
+	}
+
+	const iri = await getIriByMastodonId(parsedParams.data.id);
+	const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+	if (!isAPNote(note)) {
+		res.status(404).json({ error: 'Record not found' });
+		return;
+	}
+
+	const viewer = await getOptionalViewer(req, res);
+	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+	if (!isNoteVisibleTo(note, viewer?.id, viewerFollowing)) {
+		res.status(404).json({ error: 'Record not found' });
+		return;
+	}
+
+	const [status] = await notesToStatuses([note]);
+	if (status === undefined) {
+		res.status(404).json({ error: 'Record not found' });
+		return;
+	}
+
+	res.json(status);
+});
+
+router.delete(
+	'/v1/statuses/:id',
+	authRequired,
+	scopeRequired('write:statuses'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		// 自分の投稿のみ削除可能。他人の投稿なら 404 (存在秘匿 → ADR-0064)。
+		if (getAttributedTo(note) !== actor.id) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		// 削除前の Note から Status を生成する (Mastodon 仕様: 削除して再編集するために本文が必要)。
+		const [status] = await notesToStatuses([note]);
+		assert(status !== undefined, 'status is undefined');
+		const statusWithText: StatusEntity = {
+			...status,
+			text: htmlToPlainText(status.content),
+		};
+
+		await deleteNote(actor, note);
+
+		res.json(statusWithText);
+	},
+);
 
 router.post('/v1/apps', async (req, res) => {
 	const parsedBody = createAppBodySchema.safeParse(req.body);

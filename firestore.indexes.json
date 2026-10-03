@@ -123,6 +123,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "objects",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "inReplyTo",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "_meta.published",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

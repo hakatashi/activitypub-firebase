@@ -395,6 +395,102 @@ describe('denormalizations', () => {
 			expect(userInfo.statuses_count).toBe(5);
 		});
 
+		test('decrements statuses_count when a Delete stream with Tombstone object is created', async () => {
+			const actorId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(actorId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 0,
+				following_count: 0,
+				statuses_count: 5,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('delete-tombstone-stream'));
+			await ref.set({
+				id: 'https://example.com/activities/delete-1',
+				type: 'Delete',
+				actor: [actorId],
+				object: [{ id: 'https://example.com/notes/1', type: 'Tombstone' }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
+			expect(userInfo.statuses_count).toBe(4);
+		});
+
+		test('decrements statuses_count when a Delete stream with Note object is created', async () => {
+			const actorId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(actorId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 0,
+				following_count: 0,
+				statuses_count: 3,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('delete-note-stream'));
+			await ref.set({
+				id: 'https://example.com/activities/delete-2',
+				type: ['Delete'],
+				actor: [actorId],
+				object: [{ id: 'https://example.com/notes/2', type: ['Note'] }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
+			expect(userInfo.statuses_count).toBe(2);
+		});
+
+		test('does not underflow statuses_count below 0 on Delete stream', async () => {
+			const actorId = 'https://example.com/activitypub/u/hakatashi';
+			await UserInfos.doc(escapeFirestoreKey(actorId)).set({
+				id: '1',
+				uid: 'firebase-uid',
+				locked: false,
+				bot: false,
+				created_at: '2023-01-01T00:00:00.000Z',
+				followers_count: 0,
+				following_count: 0,
+				statuses_count: 0,
+				last_status_at: '',
+				emojis: [],
+				fields: [],
+				roles: [],
+			});
+
+			const ref = Streams.doc(escapeFirestoreKey('delete-underflow-stream'));
+			await ref.set({
+				id: 'https://example.com/activities/delete-3',
+				type: 'Delete',
+				actor: [actorId],
+				object: [{ id: 'https://example.com/notes/3', type: 'Tombstone' }],
+			});
+			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
+
+			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
+			expect(userInfo.statuses_count).toBe(0);
+		});
+
 		test('decrements followers_count when stream.type is an array and object.type is an array', async () => {
 			const followerId = 'https://example.com/activitypub/u/follower';
 			const followedId = 'https://example.com/activitypub/u/hakatashi';

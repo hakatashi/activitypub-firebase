@@ -176,6 +176,16 @@ export default class Store extends IApexStore implements ApexStore {
 		return docs.docs.map((doc) => doc.data());
 	}
 
+	// コンテキスト用に、特定の Note を inReplyTo とする返信 Note を取得する (→ ADR-0064)。
+	async getReplies(inReplyTo: string): Promise<APObject[]> {
+		logger.info({ type: 'getReplies', inReplyTo });
+		const docs = await Objects.where('type', '==', 'Note')
+			.where('inReplyTo', '==', inReplyTo)
+			.orderBy(PUBLISHED_KEY, 'asc')
+			.get();
+		return docs.docs.map((doc) => doc.data());
+	}
+
 	async getObjectsCount(field: string, value: unknown) {
 		logger.info({
 			type: 'countObjects',

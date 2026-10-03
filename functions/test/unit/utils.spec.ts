@@ -5,6 +5,7 @@ import {
 	isAPActor,
 	isAPFollow,
 	isAPNote,
+	isAPTombstone,
 	isAPUndo,
 	pickSafeHeaders,
 	redactSensitiveBody,
@@ -349,6 +350,20 @@ describe('isAPUndo', () => {
 	test('returns false for other types or non-objects', () => {
 		expect(isAPUndo({ id: 'https://example.com/a/1', type: 'Follow' })).toBe(false);
 		expect(isAPUndo(null)).toBe(false);
+	});
+});
+
+describe('isAPTombstone', () => {
+	test('returns true for Tombstone with string or array type', () => {
+		expect(isAPTombstone({ id: 'https://example.com/o/1', type: 'Tombstone' })).toBe(true);
+		expect(isAPTombstone({ id: 'https://example.com/o/1', type: ['Tombstone'] })).toBe(true);
+	});
+
+	test('returns false for other types or non-objects', () => {
+		expect(isAPTombstone({ id: 'https://example.com/o/1', type: 'Note' })).toBe(false);
+		expect(isAPTombstone(null)).toBe(false);
+		expect(isAPTombstone(undefined)).toBe(false);
+		expect(isAPTombstone('Tombstone')).toBe(false);
 	});
 });
 
