@@ -95,5 +95,6 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0067](0067-stubs-markers-and-instance-info.md) | クライアント起動用スタブ・既読マーカー・インスタンス情報の整備 | Accepted |
 | [0068](0068-app-registration-oauth-revocation-and-pkce.md) | アプリ登録の配列対応・トランザクション採番・OAuth トークン失効と PKCE | Accepted |
 | [0069](0069-mastodon-account-id-and-status-mentions.md) | アカウント ID の採番と Status mentions の実 ID 解決 | Accepted |
+| [0070](0070-status-viewer-attributes-and-storage.md) | Status の認証ユーザー依存属性の導出と保存形式 | Accepted |
 
 
