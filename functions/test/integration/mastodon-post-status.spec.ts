@@ -8,6 +8,7 @@ import { reserveIdempotencyKey } from '../../src/idempotency.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
 import { AccessTokens, IdempotencyKeys, Objects, Streams, UserInfos } from '../../src/schema.js';
+import * as webfinger from '../../src/webfinger.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = process.env.GCLOUD_PROJECT;
@@ -170,13 +171,84 @@ describe('POST /api/v1/statuses (Issue #60)', () => {
 			parentIri,
 		);
 
-		const response = await post({ status: 'reply', in_reply_to_id: parentId });
+		vi.spyOn(webfinger, 'resolveMentions').mockResolvedValue(
+			new Map([
+				[
+					'@alice@remote.example',
+					{ actorIri: REMOTE, url: REMOTE, username: 'alice', domain: 'remote.example' },
+				],
+			]),
+		);
+		const response = await post({
+			status: '@alice@remote.example reply',
+			in_reply_to_id: parentId,
+		});
 		expect(response.status).toBe(200);
 		expect(response.body.in_reply_to_id).toBe(parentId);
 
 		const note = await apex.store.getObject(response.body.uri);
 		expect(note?.inReplyTo).toEqual([parentIri]);
 		expect(note?.cc).toEqual([`${me.id}/followers`, REMOTE]);
+	});
+
+	test('parses mentions, URLs, and hashtags, saving tags and mentions', async () => {
+		vi.spyOn(webfinger, 'resolveMentions').mockResolvedValue(
+			new Map([
+				[
+					'@alice@remote.example',
+					{ actorIri: REMOTE, url: REMOTE, username: 'alice', domain: 'remote.example' },
+				],
+			]),
+		);
+		const response = await post({
+			status: 'Hello @alice@remote.example #fediverse see https://example.com',
+		});
+		expect(response.status).toBe(200);
+		expect(response.body.content).toContain('class="u-url mention"');
+		expect(response.body.content).toContain('class="mention hashtag"');
+		expect(response.body.content).toContain('href="https://example.com"');
+		expect(response.body.tags).toEqual([
+			{ name: 'fediverse', url: 'https://mastodon-dev.hakatashi.com/tags/fediverse' },
+		]);
+		expect(response.body.mentions).toHaveLength(1);
+		expect(response.body.mentions[0]?.username).toBe('alice');
+		expect(response.body.mentions[0]?.acct).toBe('alice@remote.example');
+
+		const note = await apex.store.getObject(response.body.uri);
+		expect(note?.tag).toEqual([
+			{
+				type: 'Mention',
+				href: REMOTE,
+				name: '@alice@remote.example',
+			},
+			{
+				type: 'Hashtag',
+				href: 'https://mastodon-dev.hakatashi.com/tags/fediverse',
+				name: '#fediverse',
+			},
+		]);
+		expect(note?.cc).toEqual([`${me.id}/followers`, REMOTE]);
+	});
+
+	test('delivers direct post to mentioned user', async () => {
+		vi.spyOn(webfinger, 'resolveMentions').mockResolvedValue(
+			new Map([
+				[
+					'@alice@remote.example',
+					{ actorIri: REMOTE, url: REMOTE, username: 'alice', domain: 'remote.example' },
+				],
+			]),
+		);
+		const response = await post({
+			status: '@alice@remote.example secret message',
+			visibility: 'direct',
+		});
+		expect(response.status).toBe(200);
+		expect(response.body.visibility).toBe('direct');
+
+		const note = await apex.store.getObject(response.body.uri);
+		expect(note?.to).toEqual([REMOTE]);
+		expect(note?.cc).toEqual([]);
 	});
 
 	test('returns 404 when in_reply_to_id is unknown', async () => {

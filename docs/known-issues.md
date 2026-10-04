@@ -14,12 +14,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 ## Mastodon API
 
-### 投稿本文のメンション・リンクを解析しない
-
-`POST /api/v1/statuses` は本文をエスケープして段落に分けるだけで、URL・`@メンション`・
-`#ハッシュタグ` をリンクにせず、`tag` も付けない。メンションした相手は宛先に入らないため、
-リプライでない `direct` 投稿は誰にも配送されない(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md))。
-
 ### OAuth トークンを失効できない
 
 `functions/src/mastodon/oauth2Model.ts` の `revokeToken` が未実装で、

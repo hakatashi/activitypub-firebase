@@ -28,6 +28,8 @@ import {
 } from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
 import { deleteNote, htmlToPlainText, plainTextToHtml, publishNote } from '../notes.js';
+import { extractMentions, formatPostContent } from './statusContent.js';
+import * as webfinger from '../webfinger.js';
 import { Clients, Markers, Streams, UserInfo, UserInfos } from '../schema.js';
 import type { MastodonClient } from '../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
@@ -2003,12 +2005,20 @@ router.post('/v1/statuses', authRequired, scopeRequired('write:statuses'), async
 	}
 
 	try {
+		const extractedMentions = extractMentions(text);
+		const resolvedMentions = await webfinger.resolveMentions(extractedMentions);
+		const formatted = formatPostContent(text, {
+			resolvedMentions,
+			mastodonDomain,
+		});
+
 		await publishNote(actor, {
 			id: noteIri,
-			content: plainTextToHtml(text),
+			content: formatted.html,
 			visibility: body.visibility ?? 'public',
 			inReplyTo: replyTarget?.id,
-			mentions: replyTarget ? toIdArray(replyTarget.attributedTo).slice(0, 1) : [],
+			mentions: formatted.mentionedActorIris,
+			tag: formatted.tags,
 			summary: spoilerText === '' ? undefined : spoilerText,
 			sensitive: spoilerText !== '' || (toBoolean(body.sensitive) ?? false),
 			language: body.language ?? undefined,

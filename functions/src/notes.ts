@@ -1,5 +1,6 @@
 import type { APObject } from './apex/index.js';
 import { apex } from './apex.js';
+import type { NoteTag } from './mastodon/statusContent.js';
 import { toIdArray } from './utils.js';
 
 // ローカル actor の Note を組み立てて保存し、Create を outbox に積んで配送する (→ ADR-0063)。
@@ -15,8 +16,9 @@ export interface NewNote {
 	visibility: NoteVisibility;
 	// リプライ先の IRI。
 	inReplyTo?: string | undefined;
-	// 宛先に加える actor の IRI (リプライ先の投稿者など)。
+	// 宛先に加える actor の IRI (メンション相手など)。
 	mentions?: string[];
+	tag?: NoteTag[] | undefined;
 	summary?: string | undefined;
 	sensitive?: boolean;
 	language?: string | undefined;
@@ -83,6 +85,7 @@ export const publishNote = async (actor: APObject, note: NewNote) => {
 		to,
 		cc,
 		content: note.content,
+		...(note.tag === undefined || note.tag.length === 0 ? {} : { tag: note.tag }),
 		...(note.language === undefined ? {} : { contentMap: { [note.language]: note.content } }),
 		...(note.summary === undefined ? {} : { summary: note.summary }),
 		...(note.sensitive === undefined ? {} : { sensitive: note.sensitive }),
