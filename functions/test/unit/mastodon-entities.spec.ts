@@ -7,10 +7,12 @@ import {
 	noteObjectToStatus,
 } from '../../src/mastodon/api.js';
 import * as mastodonIdModule from '../../src/mastodonId.js';
+import type { StatusViewerContext } from '../../src/mastodon/statusAttributes.js';
 import {
 	getMentionIris,
 	isNoteVisibleTo,
 	noteToMentions,
+	noteToViewerAttributes,
 } from '../../src/mastodon/statusAttributes.js';
 import { domain } from '../../src/firebase.js';
 import type { UserInfo } from '../../src/schema.js';
@@ -365,6 +367,28 @@ describe('noteObjectToStatus attribute derivation', () => {
 			name: 'activitypub-firebase',
 		});
 	});
+
+	test('derives viewer interaction attributes from context.viewer', () => {
+		const note = make({});
+		const withoutViewer = noteObjectToStatus(note, account, '1');
+		expect(withoutViewer.favourited).toBe(false);
+		expect(withoutViewer.reblogged).toBe(false);
+		expect(withoutViewer.bookmarked).toBe(false);
+		expect(withoutViewer.pinned).toBe(false);
+
+		const withViewer = noteObjectToStatus(note, account, '1', {
+			viewer: {
+				favourited: new Set([note.id]),
+				reblogged: new Set([note.id]),
+				bookmarked: new Set([note.id]),
+				pinned: new Set([note.id]),
+			},
+		});
+		expect(withViewer.favourited).toBe(true);
+		expect(withViewer.reblogged).toBe(true);
+		expect(withViewer.bookmarked).toBe(true);
+		expect(withViewer.pinned).toBe(true);
+	});
 });
 
 describe('isNoteVisibleTo', () => {
@@ -481,5 +505,65 @@ describe('noteToMentions', () => {
 				url: 'https://remote.example/users/alice',
 			},
 		]);
+	});
+});
+
+describe('noteToViewerAttributes', () => {
+	const note = {
+		id: 'https://example.com/activitypub/o/1',
+	} as unknown as APNote;
+
+	test('returns all false when viewer context is undefined', () => {
+		expect(noteToViewerAttributes(note, undefined)).toEqual({
+			favourited: false,
+			reblogged: false,
+			bookmarked: false,
+			pinned: false,
+		});
+	});
+
+	test('resolves boolean attributes from viewer context directly', () => {
+		const viewer: StatusViewerContext = {
+			favourited: true,
+			reblogged: false,
+			bookmarked: true,
+			pinned: false,
+		};
+		expect(noteToViewerAttributes(note, viewer)).toEqual({
+			favourited: true,
+			reblogged: false,
+			bookmarked: true,
+			pinned: false,
+		});
+	});
+
+	test('resolves attributes from Sets of IRIs in viewer context', () => {
+		const viewer: StatusViewerContext = {
+			favourited: new Set([note.id]),
+			reblogged: new Set(),
+			bookmarked: new Set([note.id]),
+			pinned: new Set([note.id]),
+		};
+		expect(noteToViewerAttributes(note, viewer)).toEqual({
+			favourited: true,
+			reblogged: false,
+			bookmarked: true,
+			pinned: true,
+		});
+	});
+
+	test('falls back to false when note id is not present in Sets', () => {
+		const viewer: StatusViewerContext = {
+			favourited: new Set(['https://example.com/other']),
+			reblogged: new Set(['https://example.com/other']),
+			bookmarked: new Set(['https://example.com/other']),
+			pinned: new Set(['https://example.com/other']),
+		};
+		expect(noteToViewerAttributes(note, viewer)).toEqual({
+			favourited: false,
+			reblogged: false,
+			bookmarked: false,
+			pinned: false,
+		});
 	});
 });

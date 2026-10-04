@@ -34,7 +34,9 @@ import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
 import {
 	isAPActor,
+	isAPAnnounce,
 	isAPFollow,
+	isAPLike,
 	isAPNote,
 	isAPUndo,
 	toError,
@@ -60,10 +62,12 @@ import {
 	noteToHashtags,
 	noteToLanguage,
 	noteToMentions,
+	noteToViewerAttributes,
 	noteToVisibility,
 	isNotePublicTimelineEligible,
 	isNoteVisibleTo,
 } from './statusAttributes.js';
+import type { StatusViewerContext } from './statusAttributes.js';
 
 const validScopes = [
 	'follow',
@@ -236,6 +240,8 @@ export interface StatusContext {
 	meta?: { likesCount?: number; sharesCount?: number } | undefined;
 	// メンション先の actor IRI とそのアカウント ID のマップ (→ ADR-0069)。
 	mentionIds?: Map<string, string> | Record<string, string> | undefined;
+	// 認証ユーザー (viewer) のインタラクション状態 (→ ADR-0070)。
+	viewer?: StatusViewerContext | undefined;
 }
 
 // masto の型は `application` を non-null としているが、Mastodon 本体はリモート投稿で null を返す。
@@ -272,11 +278,8 @@ export const noteObjectToStatus = (
 		// `url` は人間向けの URL。Note の `url` があればそれ、無ければ IRI。
 		url: toIdArray(note.url)[0] ?? noteId,
 		...noteToCounts(note, context.meta),
-		reblogged: false,
-		favourited: false,
+		...noteToViewerAttributes(note, context.viewer),
 		muted: false,
-		bookmarked: false,
-		pinned: false,
 		content: toStringValue(note.content) ?? '',
 		reblog: null,
 		// application はこのサーバーの投稿のみ。リモート投稿では不明なので null。
@@ -385,7 +388,112 @@ const userIdsToAccounts = async (
 // Note を Status エンティティへ変換する。可視性の絞り込みは呼び出し側で済ませておくこと。
 type NoteObject = ApexObject & APNote;
 
-const notesToStatuses = async (notes: NoteObject[]) => {
+export interface ViewerRelationships {
+	favourited: Set<string>;
+	reblogged: Set<string>;
+	bookmarked: Set<string>;
+	pinned: Set<string>;
+}
+
+// 認証ユーザー (viewer) と対象 Note 群との関係 (favourite / reblog / bookmark / pin) を一括解決する (→ ADR-0070)。
+export const getViewerRelationships = async (
+	viewer: APActor | undefined,
+	notes: NoteObject[],
+): Promise<ViewerRelationships> => {
+	const empty: ViewerRelationships = {
+		favourited: new Set(),
+		reblogged: new Set(),
+		bookmarked: new Set(),
+		pinned: new Set(),
+	};
+	if (viewer === undefined || viewer.id === undefined || notes.length === 0) {
+		return empty;
+	}
+
+	const actorKey = escapeFirestoreKey(viewer.id);
+	const noteIris = notes.map((note) => note.id).filter((id): id is string => id !== undefined);
+	const ownNoteIris = notes
+		.filter((note) => getAttributedTo(note) === viewer.id)
+		.map((note) => note.id)
+		.filter((id): id is string => id !== undefined);
+
+	// 1. Like, Announce, Undo from streams
+	const [likeStreams, announceStreams, undoStreams] = await Promise.all([
+		Streams.where('type', '==', 'Like').where('actor', 'array-contains', viewer.id).get(),
+		Streams.where('type', '==', 'Announce').where('actor', 'array-contains', viewer.id).get(),
+		Streams.where('type', '==', 'Undo').where('actor', 'array-contains', viewer.id).get(),
+	]);
+
+	const undoneActivityIds = new Set(
+		undoStreams.docs.flatMap((doc) => {
+			const data = doc.data();
+			if (!isAPUndo(data)) {
+				return [];
+			}
+			return toIdArray(data.object);
+		}),
+	);
+
+	const favourited = new Set<string>();
+	for (const doc of likeStreams.docs) {
+		const data = doc.data();
+		if (undoneActivityIds.has(data.id) || !isAPLike(data)) {
+			continue;
+		}
+		for (const targetId of toIdArray(data.object)) {
+			favourited.add(targetId);
+		}
+	}
+
+	const reblogged = new Set<string>();
+	for (const doc of announceStreams.docs) {
+		const data = doc.data();
+		if (undoneActivityIds.has(data.id) || !isAPAnnounce(data)) {
+			continue;
+		}
+		for (const targetId of toIdArray(data.object)) {
+			reblogged.add(targetId);
+		}
+	}
+
+	// 2. Bookmarks from userInfos/{actorKey}/bookmarks
+	const bookmarked = new Set<string>();
+	const bookmarksCollection = UserInfos.doc(actorKey).collection('bookmarks');
+	const noteIdChunks = chunk(noteIris.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
+	const bookmarkSnaps = await Promise.all(
+		noteIdChunks.map((idChunk) =>
+			bookmarksCollection.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+		),
+	);
+	for (const snap of bookmarkSnaps) {
+		for (const doc of snap.docs) {
+			const iri = unescapeFirestoreKey(toFirestoreKey(doc.id));
+			bookmarked.add(iri);
+		}
+	}
+
+	// 3. Pins from userInfos/{actorKey}/pins
+	const pinned = new Set<string>();
+	if (ownNoteIris.length > 0) {
+		const pinsCollection = UserInfos.doc(actorKey).collection('pins');
+		const ownIdChunks = chunk(ownNoteIris.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
+		const pinSnaps = await Promise.all(
+			ownIdChunks.map((idChunk) =>
+				pinsCollection.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+			),
+		);
+		for (const snap of pinSnaps) {
+			for (const doc of snap.docs) {
+				const iri = unescapeFirestoreKey(toFirestoreKey(doc.id));
+				pinned.add(iri);
+			}
+		}
+	}
+
+	return { favourited, reblogged, bookmarked, pinned };
+};
+
+export const notesToStatuses = async (notes: NoteObject[], viewer?: APActor | undefined) => {
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
 
 	// リプライ先は手元に保存済みのものだけ解決する (リモートへは取りに行かない → ADR-0059)。
@@ -401,11 +509,12 @@ const notesToStatuses = async (notes: NoteObject[]) => {
 	const mentionIris = uniq(validNotes.flatMap((note) => getMentionIris(note)));
 	const allAccountIris = uniq([...authorIris, ...mentionIris]);
 
-	const [accountIds, mastodonIds] = await Promise.all([
+	const [accountIds, mastodonIds, viewerRelations] = await Promise.all([
 		resolveAccountIds(allAccountIris),
 		getMastodonIds(
 			[...validNotes, ...replyTargets].map((note) => ({ iri: note.id, published: note.published })),
 		),
+		getViewerRelationships(viewer, validNotes),
 	]);
 	const accounts = await userIdsToAccounts(authorIris, accountIds);
 	const accountsMap = new Map(zip(authorIris, accounts));
@@ -433,6 +542,7 @@ const notesToStatuses = async (notes: NoteObject[]) => {
 			inReplyTo,
 			meta: note._meta,
 			mentionIds: accountIds,
+			viewer: viewerRelations,
 		});
 	});
 };
@@ -541,24 +651,43 @@ const collectVisibleNotes = async ({
 };
 
 // actor の投稿一覧。viewer に見えるものだけを返す。
+// oxlint-disable-next-line max-params
 export const getAccountStatuses = async (
 	actorId: string,
 	viewer: APActor | undefined,
 	page: PageParams,
+	options: { pinned?: boolean } = {},
 ) => {
 	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+	if (options.pinned) {
+		const actorKey = escapeFirestoreKey(actorId);
+		const pinsSnap = await UserInfos.doc(actorKey).collection('pins').get();
+		if (pinsSnap.empty) {
+			return [];
+		}
+		const noteIris = pinsSnap.docs.map((doc) => unescapeFirestoreKey(toFirestoreKey(doc.id)));
+		const notes = (await apex.store.getObjects(noteIris)).filter(isAPNote);
+		const visibleNotes = notes.filter((note) => isNoteVisibleTo(note, viewer?.id, viewerFollowing));
+		return notesToStatuses(visibleNotes, viewer);
+	}
 	const notes = await collectVisibleNotes({
 		actors: [actorId],
 		page,
 		isVisible: (note) => isNoteVisibleTo(note, viewer?.id, viewerFollowing),
 	});
-	return notesToStatuses(notes.map((entry) => entry.note));
+	return notesToStatuses(
+		notes.map((entry) => entry.note),
+		viewer,
+	);
 };
 
 // 公開タイムライン。public な投稿のみ (unlisted / private / direct は載せない)。
-export const getPublicTimeline = async (page: PageParams) => {
+export const getPublicTimeline = async (page: PageParams, viewer?: APActor | undefined) => {
 	const notes = await collectVisibleNotes({ page, isVisible: isNotePublicTimelineEligible });
-	return notesToStatuses(notes.map((entry) => entry.note));
+	return notesToStatuses(
+		notes.map((entry) => entry.note),
+		viewer,
+	);
 };
 
 // ホームタイムライン。自分の投稿 + フォロー中の相手の投稿のうち、閲覧権限のあるもの。
@@ -577,7 +706,10 @@ export const getHomeTimeline = async (viewer: APActor, page: PageParams) => {
 			),
 		)
 	).flat();
-	return notesToStatuses(takePage(entries, (entry) => entry.id, page).map((entry) => entry.note));
+	return notesToStatuses(
+		takePage(entries, (entry) => entry.id, page).map((entry) => entry.note),
+		viewer,
+	);
 };
 
 // カーソルは Follow アクティビティの Mastodon ID (Mastodon の follow 行 ID に相当。→ ADR-0062)。
@@ -1490,10 +1622,13 @@ router.get('/v1/accounts/:id/statuses', async (req, res) => {
 
 	// 認証は任意。トークンがあれば閲覧者として可視性を判定する。
 	const viewer = await getOptionalViewer(req, res);
+	const isPinned = typeof req.query.pinned === 'string' && toBoolean(req.query.pinned) === true;
 	respondWithStatuses(
 		req,
 		res,
-		await getAccountStatuses(actorId, viewer, parsePageParams(req.query, STATUS_PAGE_LIMITS)),
+		await getAccountStatuses(actorId, viewer, parsePageParams(req.query, STATUS_PAGE_LIMITS), {
+			pinned: isPinned,
+		}),
 	);
 });
 
@@ -1759,10 +1894,11 @@ router.get('/v1/push/subscription', authRequired, (req, res) => {
 });
 
 router.get('/v1/timelines/public', async (req, res) => {
+	const viewer = await getOptionalViewer(req, res);
 	respondWithStatuses(
 		req,
 		res,
-		await getPublicTimeline(parsePageParams(req.query, STATUS_PAGE_LIMITS)),
+		await getPublicTimeline(parsePageParams(req.query, STATUS_PAGE_LIMITS), viewer),
 	);
 });
 
@@ -1776,12 +1912,12 @@ router.get('/v1/timelines/home', authRequired, async (req, res) => {
 });
 
 // 作成・重複時の応答に使う。Note でなければ (まだ保存されていなければ) undefined。
-const getStatusByIri = async (iri: string) => {
+const getStatusByIri = async (iri: string, viewer?: APActor | undefined) => {
 	const note = await apex.store.getObject(iri);
 	if (!isAPNote(note)) {
 		return undefined;
 	}
-	return (await notesToStatuses([note]))[0];
+	return (await notesToStatuses([note], viewer))[0];
 };
 
 // JSON でもフォームでも届く。Elk は未指定の項目を `null` や空配列で送ってくる。
@@ -1929,7 +2065,7 @@ export const getStatusAncestors = async (
 	const visibleAncestors = ancestorNotes.filter((ancestor) =>
 		isNoteVisibleTo(ancestor, viewer?.id, viewerFollowing),
 	);
-	return notesToStatuses(visibleAncestors);
+	return notesToStatuses(visibleAncestors, viewer);
 };
 
 export const getStatusDescendants = async (
@@ -1980,7 +2116,7 @@ export const getStatusDescendants = async (
 	const visibleDescendants = descendantNotes.filter((descendant) =>
 		isNoteVisibleTo(descendant, viewer?.id, viewerFollowing),
 	);
-	return notesToStatuses(visibleDescendants);
+	return notesToStatuses(visibleDescendants, viewer);
 };
 
 router.get('/v1/statuses/:id/context', async (req, res) => {
@@ -2033,7 +2169,7 @@ router.get('/v1/statuses/:id', async (req, res) => {
 		return;
 	}
 
-	const [status] = await notesToStatuses([note]);
+	const [status] = await notesToStatuses([note], viewer);
 	if (status === undefined) {
 		res.status(404).json({ error: 'Record not found' });
 		return;
@@ -2080,6 +2216,405 @@ router.delete(
 		await deleteNote(actor, note);
 
 		res.json(statusWithText);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/favourite',
+	authRequired,
+	scopeRequired('write:favourites'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const viewerRelations = await getViewerRelationships(actor, [note]);
+		if (!viewerRelations.favourited.has(note.id)) {
+			const to = toIdArray(note.attributedTo);
+			const activity = await apex.buildActivity('Like', actor.id, to, {
+				object: note.id,
+			});
+			await apex.addToOutbox(actor, activity);
+		}
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/unfavourite',
+	authRequired,
+	scopeRequired('write:favourites'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const [likeDocs, undoDocs] = await Promise.all([
+			Streams.where('type', '==', 'Like').where('actor', 'array-contains', actor.id).get(),
+			Streams.where('type', '==', 'Undo').where('actor', 'array-contains', actor.id).get(),
+		]);
+
+		const undoneIds = new Set(
+			undoDocs.docs.flatMap((doc) => {
+				const data = doc.data();
+				return isAPUndo(data) ? toIdArray(data.object) : [];
+			}),
+		);
+
+		const activeLikeDoc = likeDocs.docs.find(
+			(doc) =>
+				!undoneIds.has(doc.data().id) &&
+				isAPLike(doc.data()) &&
+				toIdArray(doc.data().object).includes(note.id),
+		);
+
+		if (activeLikeDoc !== undefined) {
+			const like = activeLikeDoc.data();
+			const cleanLike = { ...like };
+			delete cleanLike._meta;
+			const undoActivity = await apex.buildActivity(
+				'Undo',
+				actor.id,
+				toIdArray(note.attributedTo),
+				{
+					object: cleanLike,
+				},
+			);
+			await apex.addToOutbox(actor, undoActivity);
+			await apex.store.removeActivity(like, actor.id);
+		}
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/reblog',
+	authRequired,
+	scopeRequired('write:statuses'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const visibility = noteToVisibility(note);
+		if (visibility === 'direct' || visibility === 'private') {
+			unprocessable(res, 'This post cannot be reblogged');
+			return;
+		}
+
+		const viewerRelations = await getViewerRelationships(actor, [note]);
+		if (!viewerRelations.reblogged.has(note.id)) {
+			const followersIri = toIdArray(actor.followers)[0];
+			const cc = [followersIri, ...toIdArray(note.attributedTo)].filter(
+				(item): item is string => typeof item === 'string' && item.length > 0,
+			);
+			const activity = await apex.buildActivity('Announce', actor.id, [apex.consts.publicAddress], {
+				cc,
+				object: note.id,
+			});
+			await apex.addToOutbox(actor, activity);
+		}
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/unreblog',
+	authRequired,
+	scopeRequired('write:statuses'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const [announceDocs, undoDocs] = await Promise.all([
+			Streams.where('type', '==', 'Announce').where('actor', 'array-contains', actor.id).get(),
+			Streams.where('type', '==', 'Undo').where('actor', 'array-contains', actor.id).get(),
+		]);
+
+		const undoneIds = new Set(
+			undoDocs.docs.flatMap((doc) => {
+				const data = doc.data();
+				return isAPUndo(data) ? toIdArray(data.object) : [];
+			}),
+		);
+
+		const activeAnnounceDoc = announceDocs.docs.find(
+			(doc) =>
+				!undoneIds.has(doc.data().id) &&
+				isAPAnnounce(doc.data()) &&
+				toIdArray(doc.data().object).includes(note.id),
+		);
+
+		if (activeAnnounceDoc !== undefined) {
+			const announce = activeAnnounceDoc.data();
+			const cleanAnnounce = { ...announce };
+			delete cleanAnnounce._meta;
+			const undoActivity = await apex.buildActivity('Undo', actor.id, toIdArray(announce.to), {
+				cc: toIdArray(announce.cc),
+				object: cleanAnnounce,
+			});
+			await apex.addToOutbox(actor, undoActivity);
+			await apex.store.removeActivity(announce, actor.id);
+		}
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/bookmark',
+	authRequired,
+	scopeRequired('write:bookmarks'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actorKey = escapeFirestoreKey(actor.id);
+		const noteKey = escapeFirestoreKey(note.id);
+		await UserInfos.doc(actorKey)
+			.collection('bookmarks')
+			.doc(noteKey)
+			.set({ noteIri: note.id, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/unbookmark',
+	authRequired,
+	scopeRequired('write:bookmarks'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actorKey = escapeFirestoreKey(actor.id);
+		const noteKey = escapeFirestoreKey(note.id);
+		await UserInfos.doc(actorKey).collection('bookmarks').doc(noteKey).delete();
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/pin',
+	authRequired,
+	scopeRequired('write:accounts'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		if (getAttributedTo(note) !== actor.id) {
+			unprocessable(res, 'You can only pin your own posts');
+			return;
+		}
+
+		if (noteToVisibility(note) === 'direct') {
+			unprocessable(res, 'You cannot pin direct posts');
+			return;
+		}
+
+		const actorKey = escapeFirestoreKey(actor.id);
+		const noteKey = escapeFirestoreKey(note.id);
+		const pinsCollection = UserInfos.doc(actorKey).collection('pins');
+		const pinsSnap = await pinsCollection.get();
+		if (!pinsSnap.docs.some((doc) => doc.id === noteKey) && pinsSnap.size >= 5) {
+			unprocessable(
+				res,
+				'Validation failed: You have already pinned the maximum number of posts (5)',
+			);
+			return;
+		}
+
+		await pinsCollection
+			.doc(noteKey)
+			.set({ noteIri: note.id, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
+	},
+);
+
+router.post(
+	'/v1/statuses/:id/unpin',
+	authRequired,
+	scopeRequired('write:accounts'),
+	async (req, res) => {
+		const parsedParams = statusParamsSchema.safeParse(req.params);
+		if (!parsedParams.success) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const iri = await getIriByMastodonId(parsedParams.data.id);
+		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
+		if (!isAPNote(note)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actor = await apex.store.getObject(res.locals.actorId as string, true);
+		assertIsAPActor(actor);
+
+		const viewerFollowing = new Set(await getFollowing(actor));
+		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
+			res.status(404).json({ error: 'Record not found' });
+			return;
+		}
+
+		const actorKey = escapeFirestoreKey(actor.id);
+		const noteKey = escapeFirestoreKey(note.id);
+		await UserInfos.doc(actorKey).collection('pins').doc(noteKey).delete();
+
+		const status = await getStatusByIri(note.id, actor);
+		assert(status !== undefined, 'status is undefined');
+		res.json(status);
 	},
 );
 

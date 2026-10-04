@@ -56,6 +56,14 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 		return req;
 	};
 
+	const postStatusAction = (id: string, action: string, token?: string) => {
+		const req = request(mastodon).post(`/api/v1/statuses/${id}/${action}`);
+		if (token !== undefined) {
+			req.set('Authorization', `Bearer ${token}`);
+		}
+		return req;
+	};
+
 	beforeEach(async () => {
 		if (firestoreHost === undefined || projectId === undefined) {
 			throw new Error('Firestore emulator is not running');
@@ -110,6 +118,9 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 
 		await addToken('me-token', 'read write follow', UID_ME);
 		await addToken('me-statuses-token', 'write:statuses', UID_ME);
+		await addToken('me-favourites-token', 'write:favourites', UID_ME);
+		await addToken('me-bookmarks-token', 'write:bookmarks', UID_ME);
+		await addToken('me-accounts-token', 'write:accounts', UID_ME);
 		await addToken('me-read-token', 'read', UID_ME);
 		await addToken('alice-token', 'read write follow', UID_ALICE);
 	});
@@ -586,6 +597,334 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 				},
 			]);
 			expect(carolAccountId).not.toBe('1');
+		});
+	});
+
+	describe('Viewer status interactions (Issue #155, ADR-0070)', () => {
+		test('POST /api/v1/statuses/:id/favourite and /unfavourite', async () => {
+			const { object: note } = await publishNote(alice, {
+				content: plainTextToHtml('Post to favourite'),
+				visibility: 'public',
+			});
+			const ids = await getMastodonIds([{ iri: note.id, published: note.published }]);
+			const statusId = ids.get(note.id)!;
+
+			// 認証なし -> 401
+			const unauthRes = await postStatusAction(statusId, 'favourite');
+			expect(unauthRes.status).toBe(401);
+
+			// 不足スコープ -> 403
+			const forbiddenRes = await postStatusAction(statusId, 'favourite', 'me-read-token');
+			expect(forbiddenRes.status).toBe(403);
+			const wrongScopeRes = await postStatusAction(statusId, 'favourite', 'me-statuses-token');
+			expect(wrongScopeRes.status).toBe(403);
+
+			// 存在しないステータス -> 404
+			const notFoundRes = await postStatusAction(
+				'99999999999999999999',
+				'favourite',
+				'me-favourites-token',
+			);
+			expect(notFoundRes.status).toBe(404);
+
+			// お気に入り登録
+			const favRes = await postStatusAction(statusId, 'favourite', 'me-favourites-token');
+			expect(favRes.status).toBe(200);
+			expect(favRes.body.id).toBe(statusId);
+			expect(favRes.body.favourited).toBe(true);
+
+			// Streams に Like アクティビティが保存されている
+			const likeStreams = await Streams.where('type', '==', 'Like')
+				.where('actor', 'array-contains', me.id)
+				.get();
+			expect(likeStreams.docs.length).toBe(1);
+
+			// GET /statuses/:id での反映確認
+			const meGetRes = await getStatus(statusId, 'me-token');
+			expect(meGetRes.status).toBe(200);
+			expect(meGetRes.body.favourited).toBe(true);
+
+			// 他ユーザーまたは未認証からは favourited: false
+			const aliceGetRes = await getStatus(statusId, 'alice-token');
+			expect(aliceGetRes.status).toBe(200);
+			expect(aliceGetRes.body.favourited).toBe(false);
+
+			const anonGetRes = await getStatus(statusId);
+			expect(anonGetRes.status).toBe(200);
+			expect(anonGetRes.body.favourited).toBe(false);
+
+			// 冪等性: 再度 favourite しても正常終了
+			const reFavRes = await postStatusAction(statusId, 'favourite', 'me-favourites-token');
+			expect(reFavRes.status).toBe(200);
+			expect(reFavRes.body.favourited).toBe(true);
+
+			// お気に入り解除
+			const unfavRes = await postStatusAction(statusId, 'unfavourite', 'me-favourites-token');
+			expect(unfavRes.status).toBe(200);
+			expect(unfavRes.body.favourited).toBe(false);
+
+			// Streams に Undo アクティビティが追加された
+			const undoStreams = await Streams.where('type', '==', 'Undo')
+				.where('actor', 'array-contains', me.id)
+				.get();
+			expect(undoStreams.docs.length).toBe(1);
+
+			// 解除後の GET 確認
+			const meAfterGetRes = await getStatus(statusId, 'me-token');
+			expect(meAfterGetRes.status).toBe(200);
+			expect(meAfterGetRes.body.favourited).toBe(false);
+		});
+
+		test('POST /api/v1/statuses/:id/reblog and /unreblog', async () => {
+			const { object: publicNote } = await publishNote(alice, {
+				content: plainTextToHtml('Public post to reblog'),
+				visibility: 'public',
+			});
+			const { object: directNote } = await publishNote(alice, {
+				content: plainTextToHtml('Direct post to me'),
+				visibility: 'direct',
+				mentions: [me.id],
+			});
+			const { object: privateNote } = await publishNote(alice, {
+				content: plainTextToHtml('Private post'),
+				visibility: 'private',
+			});
+
+			const ids = await getMastodonIds([
+				{ iri: publicNote.id, published: publicNote.published },
+				{ iri: directNote.id, published: directNote.published },
+				{ iri: privateNote.id, published: privateNote.published },
+			]);
+			const publicId = ids.get(publicNote.id)!;
+			const directId = ids.get(directNote.id)!;
+			const privateId = ids.get(privateNote.id)!;
+
+			// 認証・スコープチェック
+			const unauthRes = await postStatusAction(publicId, 'reblog');
+			expect(unauthRes.status).toBe(401);
+
+			const forbiddenRes = await postStatusAction(publicId, 'reblog', 'me-favourites-token');
+			expect(forbiddenRes.status).toBe(403);
+
+			// direct / private のブースト不可
+			const directRes = await postStatusAction(directId, 'reblog', 'me-statuses-token');
+			expect(directRes.status).toBe(422);
+
+			// private (未フォロー) は 404
+			const privateRes = await postStatusAction(privateId, 'reblog', 'me-statuses-token');
+			expect(privateRes.status).toBe(404);
+
+			// 公開投稿のブースト
+			const reblogRes = await postStatusAction(publicId, 'reblog', 'me-statuses-token');
+			expect(reblogRes.status).toBe(200);
+			expect(reblogRes.body.reblogged).toBe(true);
+
+			// Streams に Announce アクティビティが保存されている
+			const announceStreams = await Streams.where('type', '==', 'Announce')
+				.where('actor', 'array-contains', me.id)
+				.get();
+			expect(announceStreams.docs.length).toBe(1);
+
+			// GET /statuses/:id での反映確認
+			const meGetRes = await getStatus(publicId, 'me-token');
+			expect(meGetRes.status).toBe(200);
+			expect(meGetRes.body.reblogged).toBe(true);
+
+			const aliceGetRes = await getStatus(publicId, 'alice-token');
+			expect(aliceGetRes.status).toBe(200);
+			expect(aliceGetRes.body.reblogged).toBe(false);
+
+			// ブースト解除
+			const unreblogRes = await postStatusAction(publicId, 'unreblog', 'me-statuses-token');
+			expect(unreblogRes.status).toBe(200);
+			expect(unreblogRes.body.reblogged).toBe(false);
+
+			// 解除後の GET 確認
+			const meAfterGetRes = await getStatus(publicId, 'me-token');
+			expect(meAfterGetRes.status).toBe(200);
+			expect(meAfterGetRes.body.reblogged).toBe(false);
+		});
+
+		test('POST /api/v1/statuses/:id/bookmark and /unbookmark', async () => {
+			const { object: note } = await publishNote(alice, {
+				content: plainTextToHtml('Post to bookmark'),
+				visibility: 'public',
+			});
+			const ids = await getMastodonIds([{ iri: note.id, published: note.published }]);
+			const statusId = ids.get(note.id)!;
+
+			// 認証・スコープチェック
+			const unauthRes = await postStatusAction(statusId, 'bookmark');
+			expect(unauthRes.status).toBe(401);
+
+			const forbiddenRes = await postStatusAction(statusId, 'bookmark', 'me-statuses-token');
+			expect(forbiddenRes.status).toBe(403);
+
+			// ブックマーク登録
+			const bmRes = await postStatusAction(statusId, 'bookmark', 'me-bookmarks-token');
+			expect(bmRes.status).toBe(200);
+			expect(bmRes.body.bookmarked).toBe(true);
+
+			// Firestore の bookmarks サブコレクションに保存されている
+			const bmDoc = await UserInfos.doc(escapeFirestoreKey(me.id))
+				.collection('bookmarks')
+				.doc(escapeFirestoreKey(note.id))
+				.get();
+			expect(bmDoc.exists).toBe(true);
+
+			// GET /statuses/:id での反映確認
+			const meGetRes = await getStatus(statusId, 'me-token');
+			expect(meGetRes.status).toBe(200);
+			expect(meGetRes.body.bookmarked).toBe(true);
+
+			// 他ユーザーからは bookmarked: false
+			const aliceGetRes = await getStatus(statusId, 'alice-token');
+			expect(aliceGetRes.status).toBe(200);
+			expect(aliceGetRes.body.bookmarked).toBe(false);
+
+			// ブックマーク解除
+			const unbmRes = await postStatusAction(statusId, 'unbookmark', 'me-bookmarks-token');
+			expect(unbmRes.status).toBe(200);
+			expect(unbmRes.body.bookmarked).toBe(false);
+
+			const bmDocAfter = await UserInfos.doc(escapeFirestoreKey(me.id))
+				.collection('bookmarks')
+				.doc(escapeFirestoreKey(note.id))
+				.get();
+			expect(bmDocAfter.exists).toBe(false);
+
+			// 解除後の GET 確認
+			const meAfterGetRes = await getStatus(statusId, 'me-token');
+			expect(meAfterGetRes.status).toBe(200);
+			expect(meAfterGetRes.body.bookmarked).toBe(false);
+		});
+
+		test('POST /api/v1/statuses/:id/pin and /unpin', async () => {
+			const { object: myNote } = await publishNote(me, {
+				content: plainTextToHtml('My note to pin'),
+				visibility: 'public',
+			});
+			const { object: aliceNote } = await publishNote(alice, {
+				content: plainTextToHtml('Alice note'),
+				visibility: 'public',
+			});
+			const { object: directNote } = await publishNote(me, {
+				content: plainTextToHtml('My direct note'),
+				visibility: 'direct',
+			});
+
+			const ids = await getMastodonIds([
+				{ iri: myNote.id, published: myNote.published },
+				{ iri: aliceNote.id, published: aliceNote.published },
+				{ iri: directNote.id, published: directNote.published },
+			]);
+			const myStatusId = ids.get(myNote.id)!;
+			const aliceStatusId = ids.get(aliceNote.id)!;
+			const directStatusId = ids.get(directNote.id)!;
+
+			// 認証・スコープチェック
+			const unauthRes = await postStatusAction(myStatusId, 'pin');
+			expect(unauthRes.status).toBe(401);
+
+			const forbiddenRes = await postStatusAction(myStatusId, 'pin', 'me-statuses-token');
+			expect(forbiddenRes.status).toBe(403);
+
+			// 他人の投稿をピン留めしようとすると 422
+			const otherPinRes = await postStatusAction(aliceStatusId, 'pin', 'me-accounts-token');
+			expect(otherPinRes.status).toBe(422);
+			expect(otherPinRes.body.error).toBe('You can only pin your own posts');
+
+			// ダイレクトメッセージをピン留めしようとすると 422
+			const directPinRes = await postStatusAction(directStatusId, 'pin', 'me-accounts-token');
+			expect(directPinRes.status).toBe(422);
+			expect(directPinRes.body.error).toBe('You cannot pin direct posts');
+
+			// 自分の公開投稿をピン留め
+			const pinRes = await postStatusAction(myStatusId, 'pin', 'me-accounts-token');
+			expect(pinRes.status).toBe(200);
+			expect(pinRes.body.pinned).toBe(true);
+
+			// Firestore の pins サブコレクションに保存されている
+			const pinDoc = await UserInfos.doc(escapeFirestoreKey(me.id))
+				.collection('pins')
+				.doc(escapeFirestoreKey(myNote.id))
+				.get();
+			expect(pinDoc.exists).toBe(true);
+
+			// GET /statuses/:id での反映確認
+			const meGetRes = await getStatus(myStatusId, 'me-token');
+			expect(meGetRes.status).toBe(200);
+			expect(meGetRes.body.pinned).toBe(true);
+
+			// 他ユーザーからは pinned: false (本人のピン留めフラグ)
+			const aliceGetRes = await getStatus(myStatusId, 'alice-token');
+			expect(aliceGetRes.status).toBe(200);
+			expect(aliceGetRes.body.pinned).toBe(false);
+
+			// GET /accounts/:id/statuses?pinned=true で取得できる
+			const accountStatusesRes = await request(mastodon)
+				.get('/api/v1/accounts/1/statuses?pinned=true')
+				.set('Authorization', 'Bearer me-token');
+			expect(accountStatusesRes.status).toBe(200);
+			expect(accountStatusesRes.body.length).toBe(1);
+			expect(accountStatusesRes.body[0].id).toBe(myStatusId);
+			expect(accountStatusesRes.body[0].pinned).toBe(true);
+
+			// ピン留め解除
+			const unpinRes = await postStatusAction(myStatusId, 'unpin', 'me-accounts-token');
+			expect(unpinRes.status).toBe(200);
+			expect(unpinRes.body.pinned).toBe(false);
+
+			const pinDocAfter = await UserInfos.doc(escapeFirestoreKey(me.id))
+				.collection('pins')
+				.doc(escapeFirestoreKey(myNote.id))
+				.get();
+			expect(pinDocAfter.exists).toBe(false);
+
+			// 解除後の GET 確認
+			const meAfterGetRes = await getStatus(myStatusId, 'me-token');
+			expect(meAfterGetRes.status).toBe(200);
+			expect(meAfterGetRes.body.pinned).toBe(false);
+
+			const accountStatusesAfterRes = await request(mastodon)
+				.get('/api/v1/accounts/1/statuses?pinned=true')
+				.set('Authorization', 'Bearer me-token');
+			expect(accountStatusesAfterRes.status).toBe(200);
+			expect(accountStatusesAfterRes.body).toEqual([]);
+		});
+
+		test('GET /api/v1/timelines/public returns viewer interaction attributes', async () => {
+			const { object: note } = await publishNote(alice, {
+				content: plainTextToHtml('Timeline status'),
+				visibility: 'public',
+			});
+			const ids = await getMastodonIds([{ iri: note.id, published: note.published }]);
+			const statusId = ids.get(note.id)!;
+
+			// favourite & bookmark
+			await postStatusAction(statusId, 'favourite', 'me-token');
+			await postStatusAction(statusId, 'bookmark', 'me-token');
+
+			// Public timeline with me-token
+			const meTlRes = await request(mastodon)
+				.get('/api/v1/timelines/public')
+				.set('Authorization', 'Bearer me-token');
+			expect(meTlRes.status).toBe(200);
+			const meStatus = meTlRes.body.find((s: { id: string }) => s.id === statusId);
+			expect(meStatus).toBeDefined();
+			expect(meStatus.favourited).toBe(true);
+			expect(meStatus.bookmarked).toBe(true);
+			expect(meStatus.reblogged).toBe(false);
+
+			// Public timeline with alice-token
+			const aliceTlRes = await request(mastodon)
+				.get('/api/v1/timelines/public')
+				.set('Authorization', 'Bearer alice-token');
+			expect(aliceTlRes.status).toBe(200);
+			const aliceStatus = aliceTlRes.body.find((s: { id: string }) => s.id === statusId);
+			expect(aliceStatus).toBeDefined();
+			expect(aliceStatus.favourited).toBe(false);
+			expect(aliceStatus.bookmarked).toBe(false);
 		});
 	});
 });

@@ -177,3 +177,35 @@ export const isNoteVisibleTo = (
 // 公開タイムラインに載せるのは public のみ (unlisted は載せない)。
 export const isNotePublicTimelineEligible = (note: APNote): boolean =>
 	noteToVisibility(note) === 'public';
+
+export interface StatusViewerContext {
+	favourited?: boolean | ReadonlySet<string> | undefined;
+	reblogged?: boolean | ReadonlySet<string> | undefined;
+	bookmarked?: boolean | ReadonlySet<string> | undefined;
+	pinned?: boolean | ReadonlySet<string> | undefined;
+}
+
+const resolveViewerFlag = (
+	flag: boolean | ReadonlySet<string> | undefined,
+	noteId: string,
+): boolean => {
+	if (typeof flag === 'boolean') {
+		return flag;
+	}
+	if (flag !== undefined) {
+		return flag.has(noteId);
+	}
+	return false;
+};
+
+// 認証ユーザー (viewer) と Note の関係から Status のインタラクション属性を導出する (→ ADR-0070)。
+// Note ID をキーとして Set から判定するか、単一 Note 用に boolean を直接受け取る。
+export const noteToViewerAttributes = (note: APNote, viewerContext?: StatusViewerContext) => {
+	const noteId = note.id ?? '';
+	return {
+		favourited: resolveViewerFlag(viewerContext?.favourited, noteId),
+		reblogged: resolveViewerFlag(viewerContext?.reblogged, noteId),
+		bookmarked: resolveViewerFlag(viewerContext?.bookmarked, noteId),
+		pinned: resolveViewerFlag(viewerContext?.pinned, noteId),
+	};
+};
