@@ -1,12 +1,14 @@
 import firebase from 'firebase-admin';
 import { countBy, isEqual } from 'lodash-es';
 import { db, domain, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
+import { recomputeLocalFollowCounts } from '../src/denormalizations.js';
 import { buildMetaIndex } from '../src/meta.js';
 import { Streams, UserInfos } from '../src/schema.js';
-import { isAPFollow, isAPNote, toArray, toIdArray } from '../src/utils.js';
+import { isAPNote, toArray, toIdArray } from '../src/utils.js';
 
 // 単一ユーザー運用 (AGENTS.md) の前提で決め打ち。ADR-0035 のバックフィル専用。
 const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
+const followingId = `https://${domain}/activitypub/u/hakatashi/following`;
 
 // ADR-0021 より前のスキーマで書き込まれた非正規化フィールド。バックフィル時に削除する。
 const LEGACY_META_FIELDS = [
@@ -30,20 +32,35 @@ db.runTransaction(async (transaction) => {
 		(streamDoc) => toIdArray(streamDoc.data().actor)[0],
 	);
 
-	const follows = streams.docs
-		.filter((streamDoc) => streamDoc.data().type === 'Follow')
-		.flatMap((streamDoc) => toIdArray(streamDoc.data().object));
-	const followCounts = countBy(follows);
-
-	const unfollows = streams.docs
-		.filter((streamDoc) => streamDoc.data().type === 'Undo')
-		.flatMap((streamDoc) => toArray(streamDoc.data().object))
-		.filter(isAPFollow)
-		.flatMap((object) => toIdArray(object.object));
-	const unfollowCounts = countBy(unfollows);
+	// 同じ actor から同じ相手への Follow は最新の 1 件だけ残す (→ ADR-0075)。
+	const supersededFollowIds = new Set<string>();
+	const latestFollows = new Map<string, { id: string; published: string }>();
+	for (const streamDoc of streams.docs) {
+		const stream = streamDoc.data();
+		if (stream.type !== 'Follow') {
+			continue;
+		}
+		const key = `${toIdArray(stream.actor)[0]} ${toIdArray(stream.object)[0]}`;
+		const published = String(stream.published ?? '');
+		const latest = latestFollows.get(key);
+		if (latest === undefined || published > latest.published) {
+			if (latest !== undefined) {
+				supersededFollowIds.add(latest.id);
+			}
+			latestFollows.set(key, { id: streamDoc.id, published });
+		} else {
+			supersededFollowIds.add(streamDoc.id);
+		}
+	}
+	console.log(`superseded follows: ${supersededFollowIds.size}`);
 
 	streams.docs.forEach((streamDoc) => {
 		const stream = streamDoc.data();
+
+		if (supersededFollowIds.has(streamDoc.id)) {
+			transaction.delete(streamDoc.ref);
+			return;
+		}
 
 		const updates: Record<string, unknown> = {};
 
@@ -77,6 +94,15 @@ db.runTransaction(async (transaction) => {
 			updates['_meta.isPublic'] = true;
 		}
 
+		// 自分発の Follow も同様に、following コレクション所属なら公開扱いにする。
+		if (
+			stream.type === 'Follow' &&
+			toIdArray(stream._meta?.collection).includes(followingId) &&
+			stream._meta?.isPublic !== true
+		) {
+			updates['_meta.isPublic'] = true;
+		}
+
 		if (Object.keys(updates).length > 0) {
 			transaction.update(streamDoc.ref, updates);
 		}
@@ -94,14 +120,9 @@ db.runTransaction(async (transaction) => {
 				statuses_count: newStatusCount,
 			});
 		}
-
-		// Denormalize followers_count
-		const oldFollowersCount = userInfo.followers_count;
-		const newFollowersCount = (followCounts[actorId] ?? 0) - (unfollowCounts[actorId] ?? 0);
-		if (oldFollowersCount !== newFollowersCount) {
-			transaction.update(userInfoDoc.ref, {
-				followers_count: newFollowersCount,
-			});
-		}
 	});
+}).then(async () => {
+	// followers_count / following_count は一覧と同じ基準で数え直す (→ ADR-0075)。
+	// `_meta.index` の更新がトリガー経由で反映された後に実行すること。
+	await recomputeLocalFollowCounts();
 });

@@ -1,18 +1,48 @@
 import assert from 'node:assert';
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { isEqual } from 'lodash-es';
-import { db, escapeFirestoreKey } from './firebase.js';
+import { apex } from './activitypub.js';
+import { db, domain, escapeFirestoreKey } from './firebase.js';
+import { collectFollowing, getFollowerActorIris } from './mastodon/api.js';
 import { buildMetaIndex } from './meta.js';
 import { Objects, UserInfos } from './schema.js';
 import {
 	isAPAnnounce,
-	isAPFollow,
 	isAPLike,
 	isAPNote,
 	isAPTombstone,
+	isAPActor,
 	toIdArray,
 	toTypeArray,
 } from './utils.js';
+
+// 単一ユーザー運用 (AGENTS.md) の前提で決め打ち。
+const localActorId = `https://${domain}/activitypub/u/hakatashi`;
+
+// ローカルユーザーの followers_count / following_count を、Mastodon API のフォロワー/
+// フォロー一覧と同じ基準 (Accept 済み・Undo されていない・相手ごとに 1 件) で数え直す。
+// 差分更新ではなく再計算なので、重複した Follow や再送でカウンタがずれない (→ ADR-0075)。
+export const recomputeLocalFollowCounts = async () => {
+	const actor = await apex.store.getObject(localActorId);
+	if (actor === undefined || !isAPActor(actor)) {
+		return;
+	}
+	const [followers, following] = await Promise.all([
+		getFollowerActorIris(actor),
+		collectFollowing(actor),
+	]);
+	const ref = UserInfos.doc(escapeFirestoreKey(localActorId));
+	const doc = await ref.get();
+	if (!doc.exists) {
+		return;
+	}
+	const data = doc.data();
+	assert(data !== undefined);
+	if (data.followers_count === followers.length && data.following_count === following.size) {
+		return;
+	}
+	await ref.update({ followers_count: followers.length, following_count: following.size });
+};
 
 export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (event) => {
 	const stream = event.data?.after?.data?.();
@@ -28,11 +58,17 @@ export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (ev
 	// スカラー ID に正規化される。
 	const newIndex = buildMetaIndex(stream);
 
-	if (isEqual(stream._meta?.index, newIndex)) {
-		return;
+	if (!isEqual(stream._meta?.index, newIndex)) {
+		await event.data.after.ref.update({ '_meta.index': newIndex });
 	}
 
-	await event.data.after.ref.update({ '_meta.index': newIndex });
+	// フォロー数は「Accept 済みでユニークな相手の数」を `_meta.index` を引くクエリで数えるため、
+	// インデックスを書いた後に再計算する (→ ADR-0075)。再計算は冪等なので、インデックス更新が
+	// 再びトリガーしても結果は変わらない。
+	const types = toTypeArray(stream.type);
+	if (types.includes('Follow') || types.includes('Accept') || types.includes('Undo')) {
+		await recomputeLocalFollowCounts();
+	}
 });
 
 export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (event) => {
@@ -51,7 +87,7 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 	const actorId = toIdArray(stream.actor)[0];
 
 	// 更新計画を収集 (ID ごとのデルタ)
-	const userInfoDeltas = new Map<string, { statusesDelta?: number; followersDelta?: number }>();
+	const userInfoDeltas = new Map<string, { statusesDelta?: number }>();
 	const objectDeltas = new Map<string, { likesDelta?: number; sharesDelta?: number }>();
 
 	const getUserInfoDelta = (id: string) => {
@@ -91,14 +127,6 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 		getUserInfoDelta(actorId).statusesDelta = -1;
 	}
 
-	// Denormalize userInfos.followers_count
-	if (toTypeArray(stream.type).includes('Follow')) {
-		for (const objectId of toIdArray(stream.object)) {
-			getUserInfoDelta(objectId).followersDelta =
-				(getUserInfoDelta(objectId).followersDelta ?? 0) + 1;
-		}
-	}
-
 	// Denormalize objects._meta.likesCount / sharesCount (→ ADR-0037)。apex 本体の
 	// likes/shares コレクション機構は activity (streams) 専用で Note のような object を
 	// 対象にすると壊れるため使わず、followers_count と同じ非正規化カウンタのパターンを
@@ -117,12 +145,6 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 
 	if (toTypeArray(stream.type).includes('Undo')) {
 		for (const object of objects) {
-			if (isAPFollow(object)) {
-				for (const followObjectId of toIdArray(object.object)) {
-					getUserInfoDelta(followObjectId).followersDelta =
-						(getUserInfoDelta(followObjectId).followersDelta ?? 0) - 1;
-				}
-			}
 			if (isAPLike(object)) {
 				for (const likedObjectId of toIdArray(object.object)) {
 					getObjectDelta(likedObjectId).likesDelta =
@@ -180,12 +202,6 @@ export const onStreamCreated = onDocumentCreated('streams/{streamId}', async (ev
 				updates.statuses_count = Math.max(
 					0,
 					(data.statuses_count ?? 0) + entry.delta.statusesDelta,
-				);
-			}
-			if (entry.delta.followersDelta !== undefined) {
-				updates.followers_count = Math.max(
-					0,
-					(data.followers_count ?? 0) + entry.delta.followersDelta,
 				);
 			}
 			if (Object.keys(updates).length > 0) {
