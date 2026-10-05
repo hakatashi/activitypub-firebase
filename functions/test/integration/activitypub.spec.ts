@@ -2,26 +2,14 @@ import request from 'supertest';
 import { describe, expect, test, afterEach, beforeEach, vi } from 'vitest';
 import { activitypub, apex } from '../../src/activitypub.js';
 
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 
 describe('activitypub', () => {
-	beforeEach(() => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-	});
-
 	// Teardown firestore database after each test
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	test('Root path should not be implemented', async () => {

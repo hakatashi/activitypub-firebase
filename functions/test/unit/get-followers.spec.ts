@@ -6,9 +6,7 @@ import { getFollowers, getFollowersPage } from '../../src/mastodon/api.js';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import { Streams } from '../../src/schema.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const actor = {
 	id: 'https://example.com/activitypub/u/hakatashi',
@@ -55,20 +53,12 @@ const saveUndoFollow = (
 
 describe('getFollowers', () => {
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
 		await apex.store.saveObject(actor);
 	});
 
 	// Teardown firestore database after each test
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	test('returns an empty array when nobody has followed the actor', async () => {

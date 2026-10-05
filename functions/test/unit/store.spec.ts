@@ -1,10 +1,8 @@
-import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { describe, expect, test, afterEach } from 'vitest';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import Store from '../../src/store.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 describe('Store', () => {
 	const store = new Store();
@@ -20,20 +18,9 @@ describe('Store', () => {
 			_meta: { ...activity._meta, index: buildMetaIndex(activity) },
 		});
 
-	beforeEach(() => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-	});
-
 	// Teardown firestore database after each test
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	describe('saveObject / getObject', () => {

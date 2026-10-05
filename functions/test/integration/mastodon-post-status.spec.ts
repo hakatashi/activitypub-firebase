@@ -3,15 +3,12 @@ import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/activitypub.js';
-import { escapeFirestoreKey } from '../../src/firebase.js';
 import { reserveIdempotencyKey } from '../../src/idempotency.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
-import { AccessTokens, IdempotencyKeys, Objects, Streams, UserInfos } from '../../src/schema.js';
+import { IdempotencyKeys, Objects, Streams } from '../../src/schema.js';
 import * as webfinger from '../../src/webfinger.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
 
 const PUBLIC = 'as:Public';
 const REMOTE = 'https://remote.example/u/alice';
@@ -24,48 +21,17 @@ const countNotes = async () =>
 describe('POST /api/v1/statuses (Issue #60)', () => {
 	let me: Awaited<ReturnType<typeof apex.createActor>>;
 
-	const addToken = async (token: string, scope: string) => {
-		const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
-		await AccessTokens.add({
-			accessToken: token,
-			accessTokenExpiresAt: farFuture,
-			refreshTokenExpiresAt: farFuture,
-			scope,
-			client: { id: '1', grants: [] },
-			user: { userId: UID },
-		} as never);
-	};
+	const addToken = (token: string, scope: string) => addAccessToken(token, scope, UID);
 
 	const post = (body: Record<string, unknown>, token = 'write-token') =>
 		request(mastodon).post('/api/v1/statuses').set('Authorization', `Bearer ${token}`).send(body);
 
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 		// 配送 (Cloud Tasks への enqueue) はテストの対象外。
 		vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(undefined as never);
 
-		me = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
-		await apex.store.saveObject(me);
-		await UserInfos.doc(escapeFirestoreKey(me.id)).set({
-			id: '1',
-			uid: UID,
-			locked: false,
-			bot: false,
-			created_at: '2026-01-01T00:00:00.000Z',
-			followers_count: 0,
-			following_count: 0,
-			statuses_count: 0,
-			last_status_at: '',
-			emojis: [],
-			fields: [],
-			roles: [],
-		});
+		me = await createLocalActor('hakatashi', { uid: UID, id: '1' });
 		await apex.store.saveObject({
 			id: REMOTE,
 			type: 'Person',
@@ -80,10 +46,7 @@ describe('POST /api/v1/statuses (Issue #60)', () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	test('creates a public note, delivers Create via outbox and returns the Status', async () => {

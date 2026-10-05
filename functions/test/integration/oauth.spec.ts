@@ -1,16 +1,13 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import firebase from 'firebase-admin';
+import nock from 'nock';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import apiRouter from '../../src/mastodon/api.js';
 import oauthRouter from '../../src/mastodon/oauth.js';
 import { AccessTokens, Clients, RefreshTokens, Users } from '../../src/schema.js';
-
-vi.mock('node-fetch');
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/firestore.js';
 
 // mastodonApi (src/mastodon/index.ts) 自体は body-parser を持たず、本番では
 // Cloud Functions Framework が req.body を解決してから oauthRouter に渡す。
@@ -22,20 +19,9 @@ app.use('/oauth', oauthRouter);
 app.use('/api', apiRouter);
 
 describe('oauth', () => {
-	beforeEach(() => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-	});
-
 	// Teardown firestore database after each test
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	describe('POST /oauth/token', () => {
@@ -154,21 +140,12 @@ describe('oauth', () => {
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
 			} as unknown as firebase.credential.Credential);
 
-			const { default: fetch, Response } = await import('node-fetch');
-			const fetchMock = vi.mocked(fetch);
-			fetchMock
-				.mockResolvedValueOnce({
-					ok: true,
-					status: 200,
-					statusText: 'OK',
-					json: () => Promise.resolve({ apps: [{ appId: 'test-app-id' }] }),
-				} as unknown as typeof Response.prototype)
-				.mockResolvedValueOnce({
-					ok: true,
-					status: 200,
-					statusText: 'OK',
-					json: () => Promise.resolve({ apiKey: 'fake-api-key', appId: 'test-app-id' }),
-				} as unknown as typeof Response.prototype);
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
+				.reply(200, { apps: [{ appId: 'test-app-id' }] });
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps\/test-app-id\/config$/)
+				.reply(200, { apiKey: 'fake-api-key', appId: 'test-app-id' });
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -189,21 +166,12 @@ describe('oauth', () => {
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
 			} as unknown as firebase.credential.Credential);
 
-			const { default: fetch, Response } = await import('node-fetch');
-			const fetchMock = vi.mocked(fetch);
-			fetchMock
-				.mockResolvedValueOnce({
-					ok: true,
-					status: 200,
-					statusText: 'OK',
-					json: () => Promise.resolve({ apps: [{ appId: 'test-app-id' }] }),
-				} as unknown as typeof Response.prototype)
-				.mockResolvedValueOnce({
-					ok: true,
-					status: 200,
-					statusText: 'OK',
-					json: () => Promise.resolve({ apiKey: 'fake-api-key', appId: 'test-app-id' }),
-				} as unknown as typeof Response.prototype);
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
+				.reply(200, { apps: [{ appId: 'test-app-id' }] });
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps\/test-app-id\/config$/)
+				.reply(200, { apiKey: 'fake-api-key', appId: 'test-app-id' });
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -251,13 +219,9 @@ describe('oauth', () => {
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
 			} as unknown as firebase.credential.Credential);
 
-			const { default: fetch, Response } = await import('node-fetch');
-			const fetchMock = vi.mocked(fetch);
-			fetchMock.mockResolvedValueOnce({
-				ok: false,
-				status: 403,
-				statusText: 'Forbidden',
-			} as unknown as typeof Response.prototype);
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
+				.reply(403, 'Forbidden');
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -277,14 +241,9 @@ describe('oauth', () => {
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
 			} as unknown as firebase.credential.Credential);
 
-			const { default: fetch, Response } = await import('node-fetch');
-			const fetchMock = vi.mocked(fetch);
-			fetchMock.mockResolvedValueOnce({
-				ok: true,
-				status: 200,
-				statusText: 'OK',
-				json: () => Promise.resolve({ apps: 'invalid-apps-format' }),
-			} as unknown as typeof Response.prototype);
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
+				.reply(200, { apps: 'invalid-apps-format' });
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -480,21 +439,12 @@ describe('oauth', () => {
 			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
 			} as unknown as firebase.credential.Credential);
-			const { default: fetch, Response } = await import('node-fetch');
-			const fetchMock = vi.mocked(fetch);
-			fetchMock
-				.mockResolvedValueOnce({
-					ok: true,
-					status: 200,
-					statusText: 'OK',
-					json: () => Promise.resolve({ apps: [{ appId: 'test-app-id' }] }),
-				} as unknown as typeof Response.prototype)
-				.mockResolvedValueOnce({
-					ok: true,
-					status: 200,
-					statusText: 'OK',
-					json: () => Promise.resolve({ apiKey: 'fake-api-key', appId: 'test-app-id' }),
-				} as unknown as typeof Response.prototype);
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
+				.reply(200, { apps: [{ appId: 'test-app-id' }] });
+			nock('https://firebase.googleapis.com')
+				.get(/\/v1beta1\/projects\/[^/]+\/webApps\/test-app-id\/config$/)
+				.reply(200, { apiKey: 'fake-api-key', appId: 'test-app-id' });
 
 			const authPageResponse = await request(app).get('/oauth/authorize').query({
 				client_id: clientId,

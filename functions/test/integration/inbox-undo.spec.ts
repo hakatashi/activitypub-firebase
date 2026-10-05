@@ -8,8 +8,7 @@ import { escapeFirestoreKey } from '../../src/firebase.js';
 import { getFollowers } from '../../src/mastodon/api.js';
 import { Streams, UserInfos } from '../../src/schema.js';
 
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { createLocalActor, resetFirestore } from '../helpers/index.js';
 
 const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 const RECIPIENT_ID = `https://${DEV_DOMAIN}/activitypub/u/hakatashi`;
@@ -50,12 +49,11 @@ describe('inbox Undo(Follow) processing (Issue #53)', () => {
 	let actor: Awaited<ReturnType<typeof apex.createActor>>;
 
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-
-		actor = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
-		await apex.store.saveObject(actor);
+		actor = await createLocalActor('hakatashi', {
+			uid: 'firebase-uid',
+			id: '1',
+			userInfo: { created_at: '2023-01-01T00:00:00.000Z' },
+		});
 		await apex.store.saveObject({
 			id: REMOTE_ACTOR_ID,
 			type: 'Person',
@@ -71,21 +69,6 @@ describe('inbox Undo(Follow) processing (Issue #53)', () => {
 			outbox: `${OTHER_REMOTE_ACTOR_ID}/outbox`,
 		});
 
-		await UserInfos.doc(escapeFirestoreKey(RECIPIENT_ID)).set({
-			id: '1',
-			uid: 'firebase-uid',
-			locked: false,
-			bot: false,
-			created_at: '2023-01-01T00:00:00.000Z',
-			followers_count: 0,
-			following_count: 0,
-			statuses_count: 0,
-			last_status_at: '',
-			emojis: [],
-			fields: [],
-			roles: [],
-		});
-
 		originalEnv = app.get('env') as string;
 		app.set('env', 'development');
 	});
@@ -93,10 +76,7 @@ describe('inbox Undo(Follow) processing (Issue #53)', () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		app.set('env', originalEnv);
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	test('handles bare IRI Undo(Follow) by embedding resolved Follow, removing Follow activity, and decrementing followers_count', async () => {

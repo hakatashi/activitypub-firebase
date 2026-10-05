@@ -1,5 +1,4 @@
 import type { APObject } from 'activitypub-types';
-import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/activitypub.js';
@@ -7,10 +6,13 @@ import { escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
 import { plainTextToHtml, publishNote } from '../../src/notes.js';
-import { AccessTokens, Streams, UserInfos } from '../../src/schema.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { Streams, UserInfos } from '../../src/schema.js';
+import {
+	addAccessToken,
+	createLocalActor,
+	mastodon as mastodonReq,
+	resetFirestore,
+} from '../helpers/index.js';
 
 const UID_ME = 'uid-hakatashi';
 const UID_ALICE = 'uid-alice';
@@ -20,93 +22,27 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 	let me: Awaited<ReturnType<typeof apex.createActor>>;
 	let alice: Awaited<ReturnType<typeof apex.createActor>>;
 
-	const addToken = async (token: string, scope: string, uid = UID_ME) => {
-		const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
-		await AccessTokens.add({
-			accessToken: token,
-			accessTokenExpiresAt: farFuture,
-			refreshTokenExpiresAt: farFuture,
-			scope,
-			client: { id: '1', grants: [] },
-			user: { userId: uid },
-		} as never);
-	};
+	const addToken = (token: string, scope: string, uid = UID_ME) =>
+		addAccessToken(token, scope, uid);
 
-	const getStatus = (id: string, token?: string) => {
-		const req = request(mastodon).get(`/api/v1/statuses/${id}`);
-		if (token !== undefined) {
-			req.set('Authorization', `Bearer ${token}`);
-		}
-		return req;
-	};
+	const getStatus = (id: string, token?: string) =>
+		mastodonReq.get(`/api/v1/statuses/${id}`, token);
 
-	const deleteStatus = (id: string, token?: string) => {
-		const req = request(mastodon).delete(`/api/v1/statuses/${id}`);
-		if (token !== undefined) {
-			req.set('Authorization', `Bearer ${token}`);
-		}
-		return req;
-	};
+	const deleteStatus = (id: string, token?: string) =>
+		mastodonReq.delete(`/api/v1/statuses/${id}`, token);
 
-	const getContext = (id: string, token?: string) => {
-		const req = request(mastodon).get(`/api/v1/statuses/${id}/context`);
-		if (token !== undefined) {
-			req.set('Authorization', `Bearer ${token}`);
-		}
-		return req;
-	};
+	const getContext = (id: string, token?: string) =>
+		mastodonReq.get(`/api/v1/statuses/${id}/context`, token);
 
-	const postStatusAction = (id: string, action: string, token?: string) => {
-		const req = request(mastodon).post(`/api/v1/statuses/${id}/${action}`);
-		if (token !== undefined) {
-			req.set('Authorization', `Bearer ${token}`);
-		}
-		return req;
-	};
+	const postStatusAction = (id: string, action: string, token?: string) =>
+		mastodonReq.post(`/api/v1/statuses/${id}/${action}`, token);
 
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 		vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(undefined as never);
 
-		me = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
-		await apex.store.saveObject(me);
-		await UserInfos.doc(escapeFirestoreKey(me.id)).set({
-			id: '1',
-			uid: UID_ME,
-			locked: false,
-			bot: false,
-			created_at: '2026-01-01T00:00:00.000Z',
-			followers_count: 0,
-			following_count: 0,
-			statuses_count: 0,
-			last_status_at: '',
-			emojis: [],
-			fields: [],
-			roles: [],
-		});
-
-		alice = await apex.createActor('alice', 'alice', '', '', 'Person');
-		await apex.store.saveObject(alice);
-		await UserInfos.doc(escapeFirestoreKey(alice.id)).set({
-			id: '2',
-			uid: UID_ALICE,
-			locked: false,
-			bot: false,
-			created_at: '2026-01-01T00:00:00.000Z',
-			followers_count: 0,
-			following_count: 0,
-			statuses_count: 0,
-			last_status_at: '',
-			emojis: [],
-			fields: [],
-			roles: [],
-		});
+		me = await createLocalActor('hakatashi', { uid: UID_ME, id: '1' });
+		alice = await createLocalActor('alice', { uid: UID_ALICE, id: '2' });
 
 		await apex.store.saveObject({
 			id: REMOTE_BOB,
@@ -127,10 +63,7 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	describe('GET /api/v1/statuses/:id', () => {

@@ -7,6 +7,7 @@ import ActivitypubExpress from '../../src/apex/index.js';
 import { computeHttpSignatureHeaders } from '../../src/apex/pub/federation.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import Store from '../../src/store.js';
+import { resetFirestore } from '../helpers/index.js';
 
 // MongoDB native driver compatibility for upstream specs
 (firebase.firestore.CollectionReference.prototype as any).findOne = async function (query?: any) {
@@ -370,14 +371,7 @@ export async function initApex() {
 }
 
 export async function resetDb(apex: any, _client: any, testUser: any) {
-	const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-	const projectId = process.env.GCLOUD_PROJECT;
-	if (firestoreHost && projectId) {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
-	}
+	await resetFirestore();
 	delete testUser._local;
 	await apex.store.setup(testUser);
 	testUser._local = { blockList: [] };

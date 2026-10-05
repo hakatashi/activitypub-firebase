@@ -2,9 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { activitypub, apex, app } from '../../src/activitypub.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 const LOCAL_ACTOR_ID = `https://${DEV_DOMAIN}/activitypub/u/hakatashi`;
@@ -32,10 +30,6 @@ describe('/inbox forwarding (W3C ActivityPub 7.1.2, Issue #54)', () => {
 	let originalEnv: string;
 
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-
 		// 1. ローカルアクターの作成
 		const localActor = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
 		await apex.store.saveObject(localActor);
@@ -85,10 +79,7 @@ describe('/inbox forwarding (W3C ActivityPub 7.1.2, Issue #54)', () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		app.set('env', originalEnv);
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	test.each([

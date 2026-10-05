@@ -15,10 +15,9 @@ export default defineConfig({
 		environment: 'node',
 		globals: true,
 		include: ['test/**/*.spec.ts', 'test/apex-upstream/**/*.spec.js'],
-		setupFiles: ['test/setup-keys.ts', 'test/apex-upstream/setup.ts'],
-		testTimeout: 10000,
-		// テストは Firestore エミュレータを共有し、各テストの afterEach で
-		// 全ドキュメントを消去する。ファイルを並列実行すると互いのデータを消し合うため直列化する。
-		fileParallelism: false,
+		setupFiles: ['test/setup-env.ts', 'test/setup-keys.ts', 'test/apex-upstream/setup.ts'],
+		testTimeout: 15000,
+		fileParallelism: true,
+		maxWorkers: 4,
 	},
 });

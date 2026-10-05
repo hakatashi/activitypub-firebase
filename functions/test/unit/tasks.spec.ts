@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
 import { deliveryTask, pingTask } from '../../src/tasks.js';
 
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const actorId = 'https://example.com/activitypub/u/hakatashi';
 const address = 'https://remote.example/u/alice/inbox';
@@ -18,9 +17,6 @@ const makePingTaskRequest = (data: unknown) =>
 
 describe('deliveryTask', () => {
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
 		await apex.store.saveObject({
 			id: actorId,
 			type: 'Person',
@@ -31,12 +27,7 @@ describe('deliveryTask', () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	test('does nothing on a 2xx response', async () => {

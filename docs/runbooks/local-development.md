@@ -41,10 +41,13 @@ npm --prefix functions run test:watch
 
 - `firebase emulators:exec --only firestore` でエミュレータを起動(ポートは `firebase.json` で 34567)
 - `GCLOUD_PROJECT=activitypub-firebase-dev` を設定する。
-  これにより `functions/src/firebase.ts` の分岐が dev ドメイン
-  (`activitypub-dev.hakatashi.com`)を返す
-- `vitest.config.ts` の `test.fileParallelism: false` でテストファイルを直列実行する。
-  テストが Firestore エミュレータを共有し、各テストが全データを消去するため必須
+  テスト実行時は `test/setup-env.ts` が Vitest ワーカーごとに分離された
+  `projectId` (`activitypub-firebase-dev-w${poolId}`) を `GCLOUD_PROJECT` と `FIREBASE_CONFIG`
+  に設定し、エミュレータ上でワーカー間のデータ衝突を防ぐ (→ [ADR-0077](../adr/0077-isolate-test-firestore-by-worker-project-id.md))。
+  また `activitypub-firebase-dev*` の前方一致により、
+  `functions/src/firebase.ts` の分岐は dev ドメイン (`activitypub-dev.hakatashi.com`) を返す
+- `vitest.config.ts` の `test.fileParallelism: true` (および `maxWorkers: 4`) でテストファイルを
+  ワーカーごとに並列実行する
 
 ### ディレクトリ構成
 
@@ -53,11 +56,11 @@ npm --prefix functions run test:watch
   - `test/unit/apex/` — apex フォークライブラリ単体のテスト。Firebase / Firestore に依存せず、ライブラリの純粋な機能や通信処理をテストする。
 - `test/integration/` — Express アプリ(`activitypub` / `mastodonApi`)に対して
   `supertest` でリクエストを送るテスト。
+- `test/helpers/` — テスト共通ヘルパー (`resetFirestore`, `createLocalActor`, `addAccessToken`, `mastodon`)。
 
-どちらも Firestore エミュレータを使う場合は、各テストの `afterEach` でエミュレータの
-`DELETE /emulator/v1/projects/{id}/databases/(default)/documents` を叩き、全データを消去する。
-新しいテストを書く際もこの方式に合わせること(`test/unit/store.spec.ts` や
-`test/integration/*.spec.ts` を参照)。
+Firestore エミュレータを使うテストでは、各テストの `afterEach` でテストヘルパーの
+`resetFirestore()` (`test/helpers/index.ts`) を呼び出し、現在のワーカーのプロジェクトの全データを消去する。
+エミュレータのリセットエンドポイントを直接叩かず、必ず `resetFirestore()` を使うこと。
 
 `vitest.config.ts` は Vite のネイティブな TypeScript/ESM 変換を使うため、
 Jest 時代のような `moduleNameMapper` での `./x.js` → `./x` 解決は不要。

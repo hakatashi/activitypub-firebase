@@ -12,8 +12,7 @@ import {
 import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { Objects, Streams, UserInfos } from '../../src/schema.js';
 
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const getData = async <T>(ref: DocumentReference<T>): Promise<T> => {
 	const data = (await ref.get()).data();
@@ -33,20 +32,9 @@ const makeCreatedEvent = (data: unknown) =>
 // これを使い、Firestore エミュレータ上の実ドキュメントから CloudEvent 相当のオブジェクトを
 // 組み立ててトリガーのロジックだけを直接検証する。
 describe('denormalizations', () => {
-	beforeEach(() => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-	});
-
 	// Teardown firestore database after each test
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	// onStreamWritten は streams コレクションの書き込みを検知し、_meta.collection /

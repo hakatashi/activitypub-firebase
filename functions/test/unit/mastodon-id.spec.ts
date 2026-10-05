@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
 	buildMastodonId,
 	getIriByMastodonId,
@@ -11,9 +11,7 @@ import {
 	toPublishedSortKey,
 } from '../../src/mastodonId.js';
 import Store from '../../src/store.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 // 長さでソート → 辞書順でソート (Mastodon API ドキュメントの推奨手順) で比較する。
 const compareIds = (a: string, b: string) => a.length - b.length || Number(a > b) - Number(a < b);
@@ -85,17 +83,8 @@ describe('toIdTimestamp', () => {
 });
 
 describe('Mastodon ID mapping (Firestore)', () => {
-	beforeEach(() => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-	});
-
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	test('maps both ways and is stable across calls', async () => {
