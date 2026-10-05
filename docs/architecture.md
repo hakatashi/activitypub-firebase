@@ -20,8 +20,8 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ |
 | `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ |
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
-| `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
-| `onStreamCreated` | Firestore trigger | `userInfos` の投稿数・フォロワー数を非正規化 |
+| `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化し、Follow / Accept / Undo の書き込み時に `userInfos` のフォロー数・フォロワー数を再計算 |
+| `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
 
@@ -121,6 +121,8 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `contexts` | エスケープした URL | JSON-LD コンテキストのキャッシュ |
 | `deliveries` | エスケープした `アクティビティ ID + 宛先` | 配送結果(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
+| `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
+| `markers` | `エスケープした actor IRI_タイムライン名` | `/api/v1/markers` の既読位置(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
 | `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
 | `idempotencyKeys` | `sha256(actor IRI + キー)` | `POST /api/v1/statuses` の `Idempotency-Key` → Note IRI。`expiresAt` に TTL ポリシー(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md)) |
@@ -170,6 +172,8 @@ IRI はドットを含むので、クエリのフィールドパスは必ず
 
 apex のストア抽象では集計ができないため、フォロワー数・投稿数は Firestore Trigger
 (`functions/src/denormalizations.ts`)で `userInfos` に非正規化している。
+投稿数は差分更新、フォロー数・フォロワー数は Mastodon API の一覧と同じ関数で数え直す再計算で持つ
+(→ [ADR-0075](adr/0075-recompute-follow-counts.md))。
 既存データの再計算には `functions/bin/denormalizations.ts` を使う。
 
 ## Mastodon API 層
@@ -181,6 +185,8 @@ apex のストア抽象では集計ができないため、フォロワー数・
 |---|---|
 | `index.ts` | express アプリ、`beforeUserCreate` |
 | `api.ts` | `/api/**` のルーティングと AP オブジェクト → Mastodon エンティティの変換 |
+| `statusAttributes.ts` | Note から Status の属性(visibility・language・各種カウント・mentions・tags など)を導出する純粋関数(→ [ADR-0060](adr/0060-derive-status-attributes-from-note.md)) |
+| `statusContent.ts` | 投稿本文のメンション・URL・ハッシュタグを解析して HTML と `tag` を組み立てる(→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)) |
 | `pagination.ts` | `max_id` / `since_id` / `min_id` / `limit` の解釈と `Link` ヘッダの生成(Firestore には触らない) |
 | `oauth.ts` | OAuth2 のエンドポイント。認可画面に FirebaseUI を埋め込む |
 | `oauth2Model.ts` | `@node-oauth/oauth2-server` の Firestore バックエンド |
@@ -216,8 +222,14 @@ Mastodon ID から Note を引いて処理する。削除時は Note を Tombsto
 自アカウント情報(Elk 互換の `role` / `source` を含む)の取得・更新(AP `Update` 配送付き)や、フォロー・アンフォロー(AP `Follow` / `Undo(Follow)` 配送付き)、
 および関係性の判定を提供する(→ [ADR-0065](adr/0065-account-endpoints-and-follow-unfollow.md))。
 
+ローカルアカウントの Account ID は `userInfos` の `id`、リモートアカウントは Mastodon ID で採番した値を使い、
+Status の `mentions[].id` もこれに揃える(→ [ADR-0069](adr/0069-mastodon-account-id-and-status-mentions.md))。
+Status の `favourited` / `reblogged` / `bookmarked` / `pinned` は認証ユーザーの Like / Announce と
+`userInfos/{actor}/bookmarks`・`pins` から判定する(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。
+認証・スコープのエラーは Mastodon と同じく 401 / 403 を JSON で返す(→ [ADR-0074](adr/0074-mastodon-api-authentication-error-handling.md))。
+
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
-未定義のルートは 501 にフォールバックする。
+未定義のルートは 404 にフォールバックする(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md))。
 
 ## デプロイ
 
