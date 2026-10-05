@@ -15,6 +15,9 @@
 		"deploy": "firebase deploy --only functions",
 		"logs": "firebase functions:log",
 		"test": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run\"",
+		"test:changed": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --changed\"",
+		"test:changed:main": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --changed origin/main\"",
+		"test:only": "node bin/run-test.js",
 		"test:watch": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest\""
 	},
 	"dependencies": {

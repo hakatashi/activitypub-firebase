@@ -32,10 +32,85 @@ lint/format の構成は [ADR-0018](../adr/0018-eslint-to-oxlint-oxfmt.md) を�
 Firestore エミュレータを起動した上で Vitest を実行する。npm script が両方をまとめている。
 テストランナーの選定理由は [ADR-0011](../adr/0011-vitest-over-jest.md) を参照。
 
+### テストの実行方法と使い分け
+
+用途に応じて以下のコマンドを使い分ける。**PR を作成する前には全件実行 (`npm test`) が必須 (AGENTS.md の規則)。**
+
+| コマンド | 対象 | 使い分けの目安 |
+|---|---|---|
+| `npm --prefix functions test` | 全テスト (880件超) | PR 作成前の最終確認、全体のリグレッション確認 |
+| `npm --prefix functions run test:changed` | 未コミット変更の影響を受けるテスト | 日常の開発イテレーション (最も高速) |
+| `npm --prefix functions run test:changed:main` | `origin/main` からの差分の影響を受けるテスト | ブランチでコミットを進めている最中の確認 |
+| `npm --prefix functions run test:only -- <filter>` | 指定したファイル・テスト名・パス | 特定のテストの集中デバッグ、部分実行 |
+| `npm --prefix functions run test:watch` | Vitest ウォッチモード | TDD などテスト駆動での継続実行 |
+
+#### 1. 全件実行
+
 ```bash
 npm --prefix functions test
-npm --prefix functions run test:watch
 ```
+
+エミュレータを起動し、すべての unit、integration、apex-upstream spec を並列実行する。
+PR を作成する前には必ずこのコマンドを実行し、全件パスすることを確認する。
+
+#### 2. 変更に関係するテストのみ実行 (`test:changed`)
+
+```bash
+npm --prefix functions run test:changed        # 作業ツリーの未コミットの変更 (HEAD との差分)
+npm --prefix functions run test:changed:main   # origin/main との差分
+```
+
+Vitest の `--changed` オプションを利用し、git の差分から変更されたファイルおよびそれらを import しているテストファイルを自動検出して実行する。テストの多くをスキップできるため、数秒で結果が得られ開発のイテレーションが大幅に高速化する。
+
+> [!NOTE]
+> **`test:changed` と `vitest related` の違い**
+> - `--changed`: git の diff (HEAD または指定コミットとの差分) から変更ファイルを Vitest が自動取得し、関連テストを実行する。
+> - `vitest related <files>`: git の状態にかかわらず、引数で渡されたファイル群 (例: `src/store.ts`) を静的解析して依存するテストを実行する。特定ファイルを明示して関連テストを網羅したい場合は後述の `test:only -- related <files>` を使う。
+
+#### 3. 部分実行と絞り込み (`test:only`)
+
+`firebase emulators:exec` に直接引数を追加するとエミュレータ CLI の引数エラーになるため、Vitest への引数転送には `test:only` を使う。
+
+```bash
+# 特定のテストファイルを実行
+npm --prefix functions run test:only -- test/unit/store.spec.ts
+
+# テスト名で絞り込み (-t / --testNamePattern)
+npm --prefix functions run test:only -- -t "round-trips an object"
+
+# ディレクトリ単位で実行 (unit と integration のみ実行)
+npm --prefix functions run test:only -- test/unit test/integration
+
+# apex-upstream spec を除外して実行
+npm --prefix functions run test:only -- --exclude 'test/apex-upstream/**'
+
+# 指定ファイルに関連するテストを実行 (vitest related)
+npm --prefix functions run test:only -- related src/store.ts
+```
+
+#### 4. エミュレータ起動中の直接実行
+
+開発中に `npm --prefix functions run serve` や `firebase emulators:start --only firestore` などで既に Firestore エミュレータが起動している場合は、エミュレータの再起動コストをかけずに Vitest を直接実行できる。
+
+```bash
+cd functions
+cross-env GCLOUD_PROJECT=activitypub-firebase-dev npx vitest run [filter]
+cross-env GCLOUD_PROJECT=activitypub-firebase-dev npx vitest run --changed
+```
+
+### apex-upstream spec の扱い
+
+`test/apex-upstream/` には上流の `activitypub-express` 同梱 spec が配置されており、Firestore Store (`functions/src/store.ts`) に対する適合テストとして繋ぎ直されている (→ [ADR-0052](../adr/0052-connect-apex-specs-to-firestore-store.md))。
+
+- **位置づけ**: 約 4,800 行の上流 spec 資産を可能な限り無改変で動かすため、`test/apex-upstream/setup.ts` で Jasmine 互換シム (spy や clock、`done()` コールバック) や Firestore CollectionReference への MongoDB 風ヘルパーメソッド (`findOne`, `insertOne` など) を提供している。
+- **全テスト共通の setupFile**: `test/apex-upstream/setup.ts` は `vitest.config.ts` の `setupFiles` に登録されているため、全テストで有効になっている。
+- **意図的な skip**: 約 210 件中 69 件のテストが skip されている。これは Cloud Tasks による非同期配送 (ADR-0003, ADR-0052) や SSRF ポリシーなど、このプロジェクトの意図的な設計差に起因するものであり、理由がテストコード内に明記されている。
+- **除外してよいケースと含めるべきケース**:
+  - **除外してよいケース**: Mastodon API エンドポイント (`test/unit/mastodon*`, `test/integration/mastodon*`)、WebFinger、各種ユーティリティなど、apex 内部や Store の基本契約に影響しない箇所の変更時。これらを除外することでテスト時間を短縮できる (`--exclude 'test/apex-upstream/**'` または `test/unit test/integration`)。
+  - **含めるべきケース**: `functions/src/apex/` (apex フォーク本体) や `functions/src/store.ts` (Store 実装) を変更したときは、上流互換性を壊していないか確認するため必ず含める。
+  - **PR 作成前**: 原則として必ず全件実行 (`npm test`) に含める。
+
+### 内部動作と並列化
 
 内部では以下を行っている。
 
@@ -56,6 +131,7 @@ npm --prefix functions run test:watch
   - `test/unit/apex/` — apex フォークライブラリ単体のテスト。Firebase / Firestore に依存せず、ライブラリの純粋な機能や通信処理をテストする。
 - `test/integration/` — Express アプリ(`activitypub` / `mastodonApi`)に対して
   `supertest` でリクエストを送るテスト。
+- `test/apex-upstream/` — 上流 `activitypub-express` の適合テスト群 (Jasmine 互換シム駆動、ADR-0052)。
 - `test/helpers/` — テスト共通ヘルパー (`resetFirestore`, `createLocalActor`, `addAccessToken`, `mastodon`)。
 
 Firestore エミュレータを使うテストでは、各テストの `afterEach` でテストヘルパーの

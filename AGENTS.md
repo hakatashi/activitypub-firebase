@@ -81,7 +81,8 @@ npm --prefix functions run build      # tsc
 npm --prefix functions run lint       # oxlint
 npm --prefix functions run format     # oxfmt(自動整形)
 npm --prefix functions run format:check # oxfmt(整形チェックのみ)
-npm --prefix functions test           # Firestore エミュレータ + jest
+npm --prefix functions test           # Firestore エミュレータ + vitest
+npm --prefix functions run test:changed # 変更に関係するテストのみ実行
 ```
 
 ## 現在の最優先事項
