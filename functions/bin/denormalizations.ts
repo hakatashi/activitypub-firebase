@@ -32,8 +32,35 @@ db.runTransaction(async (transaction) => {
 		(streamDoc) => toIdArray(streamDoc.data().actor)[0],
 	);
 
+	// 同じ actor から同じ相手への Follow は最新の 1 件だけ残す (→ ADR-0075)。
+	const supersededFollowIds = new Set<string>();
+	const latestFollows = new Map<string, { id: string; published: string }>();
+	for (const streamDoc of streams.docs) {
+		const stream = streamDoc.data();
+		if (stream.type !== 'Follow') {
+			continue;
+		}
+		const key = `${toIdArray(stream.actor)[0]} ${toIdArray(stream.object)[0]}`;
+		const published = String(stream.published ?? '');
+		const latest = latestFollows.get(key);
+		if (latest === undefined || published > latest.published) {
+			if (latest !== undefined) {
+				supersededFollowIds.add(latest.id);
+			}
+			latestFollows.set(key, { id: streamDoc.id, published });
+		} else {
+			supersededFollowIds.add(streamDoc.id);
+		}
+	}
+	console.log(`superseded follows: ${supersededFollowIds.size}`);
+
 	streams.docs.forEach((streamDoc) => {
 		const stream = streamDoc.data();
+
+		if (supersededFollowIds.has(streamDoc.id)) {
+			transaction.delete(streamDoc.ref);
+			return;
+		}
 
 		const updates: Record<string, unknown> = {};
 

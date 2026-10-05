@@ -5,6 +5,7 @@ import { https, logger, params } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
+import { removeSupersededFollows } from './follows.js';
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
@@ -226,6 +227,16 @@ onApexInbox(app, async (message) => {
 	// Auto-accept follow
 	if (message.activity.type === 'Follow') {
 		logger.info(`New follow request from ${message.actor.id}`);
+
+		// 同じ相手からの再 Follow は古い Follow を置き換える (→ ADR-0075)。
+		const superseded = await removeSupersededFollows(
+			message.actor.id,
+			message.recipient.id,
+			message.activity.id,
+		);
+		if (superseded > 0) {
+			logger.info(`Removed ${superseded} superseded follow(s) from ${message.actor.id}`);
+		}
 
 		const object = { ...message.activity };
 		delete object._meta;

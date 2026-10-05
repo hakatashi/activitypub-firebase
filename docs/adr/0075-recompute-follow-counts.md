@@ -21,7 +21,10 @@ Accept 済みかどうか・同じ相手からの重複 Follow かどうかを�
 2. `onStreamCreated` の `followersDelta` による差分更新は廃止する。
 3. 自分発の Follow も作成時に `markActivityPublic` を呼び、`following` コレクションを
    匿名にも公開する (→ [ADR-0035](0035-mark-accepted-follow-as-public.md) の対象を拡張)。
-4. 既存データは `functions/bin/denormalizations.ts` が同じ再計算を実行して直す。
+4. 同じ actor から同じ相手への Follow を受信したら、古い Follow を削除して最新の 1 件だけ残す
+   (`removeSupersededFollows`)。残すと AP `followers` コレクション (Follow アクティビティから
+   導出される) に同じ actor が重複し、`totalItems` も水増しされる。
+5. 既存データは `functions/bin/denormalizations.ts` が重複 Follow の削除と同じ再計算を実行して直す。
 
 ## 理由
 
@@ -32,8 +35,6 @@ Accept 済みかどうか・同じ相手からの重複 Follow かどうかを�
 
 - リモートアカウントの `followers_count` / `following_count` / `statuses_count` は引き続き 0
   (相手の actor コレクションの `totalItems` を取得する必要がありネットワーク往復を伴うため、別 Issue で扱う)。
-- 同じ相手から複数の Follow が残り、一方だけ Undo された場合はフォロワーのまま残る
-  (一覧と同じ挙動)。
 
 ## 参照
 
