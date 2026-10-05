@@ -9,6 +9,7 @@ import {
 	formatMention,
 	formatPostContent,
 	formatShortenedUrl,
+	isSafeHttpUrl,
 	textToParagraphs,
 } from '../../src/mastodon/statusContent.js';
 
@@ -127,6 +128,12 @@ describe('statusContent unit tests', () => {
 			expect(mentions).toHaveLength(2);
 			expect(mentions[0]?.username).toBe('alice');
 			expect(mentions[1]?.username).toBe('bob');
+		});
+
+		it('skips mentions where domain exceeds RFC 1035 limit (253 chars)', () => {
+			const longDomain = `${'a'.repeat(250)}.com`;
+			const mentions = extractMentions(`Hello @alice@${longDomain}`);
+			expect(mentions).toHaveLength(0);
 		});
 	});
 
@@ -274,6 +281,61 @@ describe('statusContent unit tests', () => {
 			};
 			const { html } = formatMention(mention, resolved, true);
 			expect(html).toContain('@<span>bob@remote.social</span>');
+		});
+
+		it('sanitizes dangerous URL schemes (e.g. javascript:) and falls back to safe actorIri', () => {
+			const mention = {
+				raw: '@attacker@evil.com',
+				username: 'attacker',
+				domain: 'evil.com',
+				indices: [0, 18] as [number, number],
+			};
+			const resolved = {
+				actorIri: 'https://evil.com/users/attacker',
+				url: 'javascript:alert(document.domain)',
+				username: 'attacker',
+				domain: 'evil.com',
+			};
+			const { html } = formatMention(mention, resolved);
+			expect(html).not.toContain('javascript:');
+			expect(html).toContain('href="https://evil.com/users/attacker"');
+		});
+
+		it('returns plain text when both url and actorIri have dangerous schemes', () => {
+			const mention = {
+				raw: '@attacker@evil.com',
+				username: 'attacker',
+				domain: 'evil.com',
+				indices: [0, 18] as [number, number],
+			};
+			const resolved = {
+				actorIri: 'javascript:alert(1)',
+				url: 'data:text/html,<script>alert(1)</script>',
+				username: 'attacker',
+				domain: 'evil.com',
+			};
+			const { html, tag, actorIri } = formatMention(mention, resolved);
+			expect(html).toBe('@attacker@evil.com');
+			expect(tag).toBeUndefined();
+			expect(actorIri).toBeUndefined();
+		});
+	});
+
+	describe('isSafeHttpUrl', () => {
+		it('accepts valid http and https URLs', () => {
+			expect(isSafeHttpUrl('https://example.com')).toBe(true);
+			expect(isSafeHttpUrl('http://example.com/foo?bar=1')).toBe(true);
+		});
+
+		it('rejects non-http/https schemes or invalid URLs', () => {
+			expect(isSafeHttpUrl('javascript:alert(1)')).toBe(false);
+			expect(isSafeHttpUrl('data:text/plain,hello')).toBe(false);
+			expect(isSafeHttpUrl('vbscript:msgbox(1)')).toBe(false);
+			expect(isSafeHttpUrl('file:///etc/passwd')).toBe(false);
+			expect(isSafeHttpUrl('')).toBe(false);
+			expect(isSafeHttpUrl('not a url')).toBe(false);
+			expect(isSafeHttpUrl(undefined)).toBe(false);
+			expect(isSafeHttpUrl(null)).toBe(false);
 		});
 	});
 

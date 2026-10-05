@@ -20,10 +20,10 @@
      Mastodon と同じ prefix / ellipsis / suffix の span 構造とする。
    - ハッシュタグ: `<a href="https://${mastodonDomain}/tags/:tag" class="mention hashtag" rel="tag">#<span>:tag</span></a>`。
    - メンション: 解決できたものは `<span class="h-card" translate="no"><a href=":url" class="u-url mention">@<span>:display</span></a></span>`。
-     解決できなかったものはプレーンテキストとして残す。
+     未解決のものや危険な URL スキーム (XSS 防止) はプレーンテキストとして残す。
 3. **リモート actor の WebFinger 解決 (`webfinger.ts`)**:
    - リモートメンション (`@user@host`) は `https://${host}/.well-known/webfinger` を SSRF セーフ
-     ([[ADR-0050]]) に取得し、`self` リンク (ActivityPub) の IRI を得る。
+     ([[ADR-0050]]) かつホスト一致検証 (RFC 7033 §7) 付きで取得し、`self` リンクの IRI を得る。
    - 取得した IRI を `apex.resolveObject` で取得・保存し、ローカル actor 同様に対処する。
    - 自ホストのメンションは WebFinger を行わず直接ローカル DB を参照する。
 4. **宛先 (`to` / `cc`) と Note `tag` への反映**:

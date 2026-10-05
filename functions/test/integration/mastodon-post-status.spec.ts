@@ -251,6 +251,28 @@ describe('POST /api/v1/statuses (Issue #60)', () => {
 		expect(note?.cc).toEqual([]);
 	});
 
+	test('sanitizes dangerous URL scheme in resolved mention before saving post', async () => {
+		vi.spyOn(webfinger, 'resolveMentions').mockResolvedValue(
+			new Map([
+				[
+					'@attacker@evil.com',
+					{
+						actorIri: 'https://evil.com/users/attacker',
+						url: 'javascript:alert(1)',
+						username: 'attacker',
+						domain: 'evil.com',
+					},
+				],
+			]),
+		);
+		const response = await post({
+			status: 'Mentioning @attacker@evil.com',
+		});
+		expect(response.status).toBe(200);
+		expect(response.body.content).not.toContain('javascript:');
+		expect(response.body.content).toContain('href="https://evil.com/users/attacker"');
+	});
+
 	test('returns 404 when in_reply_to_id is unknown', async () => {
 		const response = await post({ status: 'reply', in_reply_to_id: '00000000000000000001' });
 		expect(response.status).toBe(404);

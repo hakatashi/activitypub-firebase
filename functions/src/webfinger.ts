@@ -2,6 +2,7 @@ import { request } from 'undici';
 import { apex } from './apex.js';
 import { assertSafeUrl, makePinnedAgent, maxRedirects, readBodyWithLimit } from './apex/index.js';
 import { domain, mastodonDomain } from './firebase.js';
+import { isSafeHttpUrl } from './mastodon/statusContent.js';
 import type { ExtractedMention, ResolvedMention } from './mastodon/statusContent.js';
 import { isAPActor } from './utils.js';
 
@@ -22,9 +23,13 @@ export const fetchWebfinger = async (
 	host: string,
 ): Promise<string | undefined> => {
 	const isLocalDev = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test';
-	const isLocalHost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
-	const protocol = (isLocalDev && isLocalHost) || host.startsWith('http://') ? 'http:' : 'https:';
 	const cleanHost = host.replace(/^https?:\/\//, '');
+	const isLocalHost =
+		cleanHost === 'localhost' ||
+		cleanHost.startsWith('localhost:') ||
+		cleanHost === '127.0.0.1' ||
+		cleanHost.startsWith('127.0.0.1:');
+	const protocol = isLocalDev && isLocalHost ? 'http:' : 'https:';
 
 	const targetUrl = `${protocol}//${cleanHost}/.well-known/webfinger?resource=acct:${encodeURIComponent(username)}@${cleanHost}`;
 
@@ -79,16 +84,70 @@ export const fetchWebfinger = async (
 				const links = Array.isArray(data.links) ? (data.links as WebfingerLink[]) : [];
 
 				const selfLink = links.find((link) => {
-					if (link.rel !== 'self' || typeof link.href !== 'string') {
+					if (
+						link.rel !== 'self' ||
+						typeof link.href !== 'string' ||
+						typeof link.type !== 'string'
+					) {
 						return false;
 					}
-					return (
-						link.type === 'application/activity+json' ||
-						link.type === 'application/ld+json; profile="https://www.w3.org/ns/activitystreams"'
-					);
+					const [mediaType] = link.type.split(';');
+					const mime = mediaType?.trim().toLowerCase();
+					if (mime === 'application/activity+json') {
+						return true;
+					}
+					if (
+						mime === 'application/ld+json' &&
+						link.type.includes('https://www.w3.org/ns/activitystreams')
+					) {
+						return true;
+					}
+					return false;
 				});
 
-				return typeof selfLink?.href === 'string' ? selfLink.href : undefined;
+				if (typeof selfLink?.href !== 'string') {
+					return undefined;
+				}
+
+				// RFC 7033 §7: href の安全性の検証 (プロトコル・同一ホスト・自ドメインの不正主張防止)
+				try {
+					const hrefUrl = new URL(selfLink.href);
+					if (hrefUrl.protocol !== 'http:' && hrefUrl.protocol !== 'https:') {
+						apex.logger.warn({
+							type: 'webfingerUnsafeProtocol',
+							href: selfLink.href,
+						});
+						return undefined;
+					}
+
+					const hrefHost = hrefUrl.host.toLowerCase();
+					const targetHost = new URL(targetUrl).host.toLowerCase();
+
+					// 自サーバーのドメインを名乗るリモート WebFinger は拒絶する (自サーバーへのなりすまし防止)
+					if (hrefHost === domain.toLowerCase() || hrefHost === mastodonDomain.toLowerCase()) {
+						apex.logger.warn({
+							type: 'webfingerLocalDomainImpersonation',
+							targetHost,
+							href: selfLink.href,
+						});
+						return undefined;
+					}
+
+					// ホスト一致の検証 (RFC 7033 §7)
+					if (hrefHost !== targetHost) {
+						apex.logger.warn({
+							type: 'webfingerOriginMismatch',
+							targetHost,
+							hrefHost,
+							href: selfLink.href,
+						});
+						return undefined;
+					}
+
+					return selfLink.href;
+				} catch {
+					return undefined;
+				}
 			} finally {
 				await agent.close();
 			}
@@ -107,6 +166,17 @@ export const fetchWebfinger = async (
 	}
 };
 
+const getSafeActorUrl = (actor: { url?: unknown; id?: unknown }): string | undefined => {
+	const candidateUrl = typeof actor.url === 'string' ? actor.url : actor.id;
+	if (isSafeHttpUrl(candidateUrl)) {
+		return candidateUrl;
+	}
+	if (isSafeHttpUrl(actor.id)) {
+		return actor.id;
+	}
+	return undefined;
+};
+
 // メンションから actor を解決する (ローカル actor は DB 直引き、リモートは WebFinger + resolveObject)。
 export const resolveActorByMention = async (
 	username: string,
@@ -121,7 +191,10 @@ export const resolveActorByMention = async (
 		const actorIri = apex.utils.usernameToIRI(username.toLowerCase());
 		const actor = await apex.store.getObject(actorIri);
 		if (actor !== undefined && isAPActor(actor)) {
-			const actorUrl = typeof actor.url === 'string' ? actor.url : actor.id;
+			const actorUrl = getSafeActorUrl(actor);
+			if (actorUrl === undefined || !isSafeHttpUrl(actor.id)) {
+				return undefined;
+			}
 			return {
 				actorIri: actor.id,
 				url: actorUrl,
@@ -134,13 +207,16 @@ export const resolveActorByMention = async (
 
 	try {
 		const actorIri = await fetchWebfinger(username, host);
-		if (actorIri === undefined) {
+		if (actorIri === undefined || !isSafeHttpUrl(actorIri)) {
 			return undefined;
 		}
 
 		const actor = await apex.resolveObject(actorIri);
 		if (actor !== undefined && isAPActor(actor)) {
-			const actorUrl = typeof actor.url === 'string' ? actor.url : actor.id;
+			const actorUrl = getSafeActorUrl(actor);
+			if (actorUrl === undefined || !isSafeHttpUrl(actor.id)) {
+				return undefined;
+			}
 			return {
 				actorIri: actor.id,
 				url: actorUrl,

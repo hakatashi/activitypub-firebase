@@ -30,6 +30,86 @@ describe('webfinger unit tests', () => {
 					);
 					return;
 				}
+				if (resource === `acct:mediatype@${req.headers.host}`) {
+					res.setHeader('Content-Type', 'application/jrd+json');
+					res.end(
+						JSON.stringify({
+							subject: resource,
+							links: [
+								{
+									rel: 'self',
+									type: 'application/activity+json; charset=utf-8',
+									href: `http://${req.headers.host}/users/mediatype`,
+								},
+							],
+						}),
+					);
+					return;
+				}
+				if (resource === `acct:ldjson@${req.headers.host}`) {
+					res.setHeader('Content-Type', 'application/jrd+json');
+					res.end(
+						JSON.stringify({
+							subject: resource,
+							links: [
+								{
+									rel: 'self',
+									type: 'application/ld+json; profile="https://www.w3.org/ns/activitystreams"; charset=utf-8',
+									href: `http://${req.headers.host}/users/ldjson`,
+								},
+							],
+						}),
+					);
+					return;
+				}
+				if (resource === `acct:mismatch@${req.headers.host}`) {
+					res.setHeader('Content-Type', 'application/jrd+json');
+					res.end(
+						JSON.stringify({
+							subject: resource,
+							links: [
+								{
+									rel: 'self',
+									type: 'application/activity+json',
+									href: 'http://evil.com/users/mismatch',
+								},
+							],
+						}),
+					);
+					return;
+				}
+				if (resource === `acct:impersonate@${req.headers.host}`) {
+					res.setHeader('Content-Type', 'application/jrd+json');
+					res.end(
+						JSON.stringify({
+							subject: resource,
+							links: [
+								{
+									rel: 'self',
+									type: 'application/activity+json',
+									href: 'https://hakatashi.com/activitypub/u/hakatashi',
+								},
+							],
+						}),
+					);
+					return;
+				}
+				if (resource === `acct:badproto@${req.headers.host}`) {
+					res.setHeader('Content-Type', 'application/jrd+json');
+					res.end(
+						JSON.stringify({
+							subject: resource,
+							links: [
+								{
+									rel: 'self',
+									type: 'application/activity+json',
+									href: 'javascript:alert(1)',
+								},
+							],
+						}),
+					);
+					return;
+				}
 				if (resource === `acct:redirect@${req.headers.host}`) {
 					res.writeHead(302, {
 						Location: `http://${req.headers.host}/redirected-webfinger`,
@@ -98,6 +178,36 @@ describe('webfinger unit tests', () => {
 			const iri = await fetchWebfinger('unknown', host);
 			expect(iri).toBeUndefined();
 		});
+
+		it('handles media type with parameters (e.g. charset=utf-8)', async () => {
+			const host = `127.0.0.1:${port}`;
+			const iri = await fetchWebfinger('mediatype', host);
+			expect(iri).toBe(`http://${host}/users/mediatype`);
+		});
+
+		it('handles application/ld+json with activitystreams profile and charset', async () => {
+			const host = `127.0.0.1:${port}`;
+			const iri = await fetchWebfinger('ldjson', host);
+			expect(iri).toBe(`http://${host}/users/ldjson`);
+		});
+
+		it('returns undefined when self link origin does not match target host', async () => {
+			const host = `127.0.0.1:${port}`;
+			const iri = await fetchWebfinger('mismatch', host);
+			expect(iri).toBeUndefined();
+		});
+
+		it('returns undefined when remote server tries to impersonate local domain', async () => {
+			const host = `127.0.0.1:${port}`;
+			const iri = await fetchWebfinger('impersonate', host);
+			expect(iri).toBeUndefined();
+		});
+
+		it('returns undefined when self link has unsafe protocol', async () => {
+			const host = `127.0.0.1:${port}`;
+			const iri = await fetchWebfinger('badproto', host);
+			expect(iri).toBeUndefined();
+		});
 	});
 
 	describe('resolveActorByMention', () => {
@@ -145,6 +255,50 @@ describe('webfinger unit tests', () => {
 				username: 'alice',
 				domain: host,
 			});
+
+			resolveObjectSpy.mockRestore();
+		});
+
+		it('sanitizes dangerous remote actor URL and falls back to actor id', async () => {
+			const host = `127.0.0.1:${port}`;
+			const remoteActorIri = `http://${host}/users/alice`;
+			const mockRemoteActor = {
+				id: remoteActorIri,
+				url: 'javascript:alert(1)',
+				type: 'Person',
+				preferredUsername: 'alice',
+			};
+
+			const resolveObjectSpy = vi
+				.spyOn(apex, 'resolveObject')
+				.mockResolvedValueOnce(mockRemoteActor);
+
+			const resolved = await resolveActorByMention('alice', host);
+			expect(resolved).toEqual({
+				actorIri: remoteActorIri,
+				url: remoteActorIri,
+				username: 'alice',
+				domain: host,
+			});
+
+			resolveObjectSpy.mockRestore();
+		});
+
+		it('returns undefined when remote actor has unsafe actor id', async () => {
+			const host = `127.0.0.1:${port}`;
+			const mockRemoteActor = {
+				id: 'javascript:alert(1)',
+				url: 'javascript:alert(1)',
+				type: 'Person',
+				preferredUsername: 'alice',
+			};
+
+			const resolveObjectSpy = vi
+				.spyOn(apex, 'resolveObject')
+				.mockResolvedValueOnce(mockRemoteActor);
+
+			const resolved = await resolveActorByMention('alice', host);
+			expect(resolved).toBeUndefined();
 
 			resolveObjectSpy.mockRestore();
 		});

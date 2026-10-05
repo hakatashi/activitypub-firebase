@@ -60,6 +60,18 @@ export const escapeHtml = (text: string): string =>
 		.replaceAll('"', '&quot;')
 		.replaceAll("'", '&#39;');
 
+export const isSafeHttpUrl = (url: unknown): url is string => {
+	if (typeof url !== 'string' || url.length === 0) {
+		return false;
+	}
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+	} catch {
+		return false;
+	}
+};
+
 const TRAILING_PUNCTUATION = new Set([
 	'.',
 	',',
@@ -196,9 +208,9 @@ export const extractMentions = (text: string): ExtractedMention[] => {
 			domain = content.slice(atIndex + 1);
 		}
 
-		// RFC 1035 ドメイン名長制限
+		// RFC 1035 ドメイン名長制限 (253文字超過は無効なメンションとして除外)
 		if (domain !== undefined && (domain.length === 0 || domain.length > 253)) {
-			domain = undefined;
+			continue;
 		}
 
 		const raw = domain === undefined ? `@${username}` : `@${username}@${domain}`;
@@ -249,7 +261,7 @@ export const extractEntities = (text: string): ExtractedEntity[] => {
 	return removeOverlappingEntities([...urls, ...hashtags, ...mentions]);
 };
 
-const URL_PREFIX_REGEX = /^(?<prefix>https?:\/\/(?:www\.)?|xmpp:)/i;
+const URL_PREFIX_REGEX = /^(?<prefix>https?:\/\/(?:www\.)?)/i;
 
 // Mastodon の TextFormatter.shortened_link と同じ URL 表示構造。
 export const formatShortenedUrl = (url: string): string => {
@@ -261,16 +273,19 @@ export const formatShortenedUrl = (url: string): string => {
 	let suffix = '';
 	let cutoff = false;
 
-	if (rest.length > 30) {
-		displayUrl = rest.slice(0, 30);
-		suffix = rest.slice(30);
+	const chars = [...rest];
+	if (chars.length > 30) {
+		let displayChars = chars.slice(0, 30);
+		let suffixChars = chars.slice(30);
 		cutoff = true;
 		// 省略記号を考慮して suffix が 1 文字なら切り捨てを戻す (Mastodon と同じ)
-		if (suffix.length === 1) {
-			displayUrl += suffix;
-			suffix = '';
+		if (suffixChars.length === 1) {
+			displayChars = chars.slice(0, 31);
+			suffixChars = [];
 			cutoff = false;
 		}
+		displayUrl = displayChars.join('');
+		suffix = suffixChars.join('');
 	}
 
 	const ellipsisClass = cutoff ? 'ellipsis' : '';
@@ -302,12 +317,23 @@ export const formatMention = (
 		return { html: escapeHtml(mention.raw) };
 	}
 
+	let safeUrl: string | undefined;
+	if (isSafeHttpUrl(resolved.url)) {
+		safeUrl = resolved.url;
+	} else if (isSafeHttpUrl(resolved.actorIri)) {
+		safeUrl = resolved.actorIri;
+	}
+
+	if (safeUrl === undefined || !isSafeHttpUrl(resolved.actorIri)) {
+		return { html: escapeHtml(mention.raw) };
+	}
+
 	const displayUsername =
 		withDomain && resolved.domain !== undefined
 			? `${resolved.username}@${resolved.domain}`
 			: resolved.username;
 
-	const html = `<span class="h-card" translate="no"><a href="${escapeHtml(resolved.url)}" class="u-url mention">@<span>${escapeHtml(displayUsername)}</span></a></span>`;
+	const html = `<span class="h-card" translate="no"><a href="${escapeHtml(safeUrl)}" class="u-url mention">@<span>${escapeHtml(displayUsername)}</span></a></span>`;
 	const acct =
 		resolved.domain === undefined
 			? `@${resolved.username}`
