@@ -57,6 +57,10 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx bin/denormalizations.ts
 
 - **`GCLOUD_PROJECT` を必ず指定する。** 指定しないと `gcloud config get-value project`
   (別プロジェクトのことがある)が使われうる。
+- **`src/firebase.ts` の `domain` は `FIREBASE_CONFIG` の `projectId` で決まる。** `GCLOUD_PROJECT` だけでは
+  `projectId` が解決されず、dev ドメインにフォールバックする(dev では偶然一致して気付けない)。
+  prod に対して実行するときは `FIREBASE_CONFIG='{"projectId":"activitypub-firebase"}'` も付けること。
+  実行前に `domain` が意図したドメインになっているか確認する。
 - 調査用に一時スクリプトを `functions/bin/` に置いて実行した場合、恒久的なバックフィルとして
   残す意図がない限り**確認後にファイルを削除する**(コミットしない)。
 

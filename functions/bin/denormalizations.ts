@@ -32,24 +32,42 @@ db.runTransaction(async (transaction) => {
 		(streamDoc) => toIdArray(streamDoc.data().actor)[0],
 	);
 
-	// 同じ actor から同じ相手への Follow は最新の 1 件だけ残す (→ ADR-0075)。
+	// 同じ actor から同じ相手への Follow は 1 件だけ残す (→ ADR-0075)。
+	// 残す Follow は、Undo されていないもの → followers コレクションに所属する (Accept 済みの)
+	// もの → 新しいもの、の順で選ぶ。Undo 済みの古い Follow を残すと、実際にはフォロー中の
+	// 相手がフォロワーから落ちてしまう。`published` は無い Follow が多いので頼りにしない。
+	const undoneFollowIds = new Set(
+		streams.docs
+			.filter((streamDoc) => streamDoc.data().type === 'Undo')
+			.flatMap((streamDoc) => toIdArray(streamDoc.data().object)),
+	);
 	const supersededFollowIds = new Set<string>();
-	const latestFollows = new Map<string, { id: string; published: string }>();
+	const followGroups = new Map<string, typeof streams.docs>();
 	for (const streamDoc of streams.docs) {
 		const stream = streamDoc.data();
 		if (stream.type !== 'Follow') {
 			continue;
 		}
 		const key = `${toIdArray(stream.actor)[0]} ${toIdArray(stream.object)[0]}`;
-		const published = String(stream.published ?? '');
-		const latest = latestFollows.get(key);
-		if (latest === undefined || published > latest.published) {
-			if (latest !== undefined) {
-				supersededFollowIds.add(latest.id);
+		followGroups.set(key, [...(followGroups.get(key) ?? []), streamDoc]);
+	}
+	const followRank = (streamDoc: (typeof streams.docs)[number]) => {
+		const stream = streamDoc.data();
+		return [
+			undoneFollowIds.has(stream.id) ? 0 : 1,
+			toIdArray(stream._meta?.collection).includes(followersId) ? 1 : 0,
+			String(stream.published ?? ''),
+		] as const;
+	};
+	for (const group of followGroups.values()) {
+		const [keep] = [...group].toSorted((x, y) => {
+			const [rx, ry] = [followRank(x), followRank(y)];
+			return ry[0] - rx[0] || ry[1] - rx[1] || ry[2].localeCompare(rx[2]);
+		});
+		for (const streamDoc of group) {
+			if (streamDoc !== keep) {
+				supersededFollowIds.add(streamDoc.id);
 			}
-			latestFollows.set(key, { id: streamDoc.id, published });
-		} else {
-			supersededFollowIds.add(streamDoc.id);
 		}
 	}
 	console.log(`superseded follows: ${supersededFollowIds.size}`);
