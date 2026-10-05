@@ -86,7 +86,7 @@ npm --prefix functions test           # Firestore エミュレータ + jest
 
 ## 現在の最優先事項
 
-**Phase 1(配送)・Phase 2(受信と AP 準拠)・Phase 2.5(apex フォーク)は完了した。**
+**Phase 1(配送)・Phase 2(受信と AP 準拠)・Phase 2.5(apex フォーク)・Phase 3(Mastodon API)は完了した。**
 配送は Cloud Tasks 経由で動作し、dev 環境から実在の Mastodon インスタンスへ
 Follow / Accept / Create が届き、Like / Announce / Undo / Inbox Forwarding の受信も実地で確認済み
 (→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)、
@@ -97,6 +97,11 @@ apex は `functions/src/apex/` にフォークして TypeScript で保守して�
 [ADR-0042](docs/adr/0042-apex-fork-responsibility-boundary.md))。
 **apex の不具合はフォーク側で直す。本体側に回避コードを書かない。**
 
-次は **Phase 3(Mastodon API、Epic
-[#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**。
-Phase 4 は Phase 3 の後に着手する(→ [`docs/roadmap.md`](docs/roadmap.md))。
+Mastodon API は Elk / Phanpy から投稿・閲覧・タイムラインのページングが一通りでき、
+時系列順の Mastodon ID(→ [ADR-0006](docs/adr/0006-mastodon-api-id-scheme.md))で
+ページネーションしている。クライアントでの確認は
+[`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) の手順で行う。
+
+次は **Phase 4(通知・メディア・検索など、Epic
+[#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**。
+Phase 5(引っ越し)は Phase 4 の後に着手する(→ [`docs/roadmap.md`](docs/roadmap.md))。
