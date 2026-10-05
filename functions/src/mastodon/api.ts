@@ -877,12 +877,11 @@ export const getPendingFollowTargetIris = async (actor: APActor): Promise<Set<st
 	return pendingTargetIris;
 };
 
-// カーソルは Follow アクティビティの Mastodon ID (→ ADR-0062)。
-// 返す `cursorIds` は `accounts` と同じ並び (新しい順)。
-export const getFollowingPage = async (
+// フォロー中 (相手が Accept 済みで Undo されていない) の相手ごとに、最初の Follow を返す。
+// 同じ相手への Follow が複数残っていても 1 人として数える (→ ADR-0075)。
+export const collectFollowing = async (
 	actor: APActor,
-	page: PageParams = { limit: FOLLOWERS_PAGE_LIMITS.defaultLimit },
-) => {
+): Promise<Map<string, { followIri: string; published: unknown }>> => {
 	assert(actor.id !== undefined, 'actor.id is undefined');
 	const actorKey = escapeFirestoreKey(actor.id);
 
@@ -890,7 +889,7 @@ export const getFollowingPage = async (
 		.where(metaIndexPath('actors', actorKey), '==', true)
 		.get();
 	if (followStreams.empty) {
-		return { accounts: [], cursorIds: [] };
+		return new Map();
 	}
 
 	const acceptStreams = await Streams.where(
@@ -925,6 +924,16 @@ export const getFollowingPage = async (
 		}
 	}
 
+	return following;
+};
+
+// カーソルは Follow アクティビティの Mastodon ID (→ ADR-0062)。
+// 返す `cursorIds` は `accounts` と同じ並び (新しい順)。
+export const getFollowingPage = async (
+	actor: APActor,
+	page: PageParams = { limit: FOLLOWERS_PAGE_LIMITS.defaultLimit },
+) => {
+	const following = await collectFollowing(actor);
 	const followIds = await getMastodonIds(
 		Array.from(following.values(), ({ followIri, published }) => ({ iri: followIri, published })),
 	);
@@ -1841,6 +1850,8 @@ router.post(
 				object: targetActor.id,
 			});
 			await apex.addToOutbox(actor, activity);
+			// following コレクションを匿名にも公開するため (→ ADR-0035, ADR-0075)。
+			await apex.store.markActivityPublic(activity);
 		}
 
 		const isTargetLocked =

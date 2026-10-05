@@ -1,8 +1,15 @@
 import assert from 'node:assert';
 import type { DocumentReference, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
-import { onStreamCreated, onStreamWritten } from '../../src/denormalizations.js';
-import { escapeFirestoreKey } from '../../src/firebase.js';
+import type { APActor } from 'activitypub-types';
+import { apex } from '../../src/activitypub.js';
+import { buildMetaIndex } from '../../src/meta.js';
+import {
+	onStreamCreated,
+	onStreamWritten,
+	recomputeLocalFollowCounts,
+} from '../../src/denormalizations.js';
+import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { Objects, Streams, UserInfos } from '../../src/schema.js';
 
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -192,109 +199,6 @@ describe('denormalizations', () => {
 
 			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(actorId)));
 			expect(userInfo.statuses_count).toBe(6);
-		});
-
-		test('increments followers_count of the followed actor when a Follow stream is created', async () => {
-			const followerId = 'https://example.com/activitypub/u/follower';
-			const followedId = 'https://example.com/activitypub/u/hakatashi';
-			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
-				id: '1',
-				uid: 'firebase-uid',
-				locked: false,
-				bot: false,
-				created_at: '2023-01-01T00:00:00.000Z',
-				followers_count: 3,
-				following_count: 0,
-				statuses_count: 0,
-				last_status_at: '',
-				emojis: [],
-				fields: [],
-				roles: [],
-			});
-
-			const ref = Streams.doc(escapeFirestoreKey('follow-stream'));
-			await ref.set({
-				id: 'https://example.com/activities/follow-1',
-				type: 'Follow',
-				actor: [followerId],
-				object: [followedId],
-			});
-			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
-
-			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
-
-			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
-			expect(userInfo.followers_count).toBe(4);
-		});
-
-		test('decrements followers_count when an Undo Follow stream is created', async () => {
-			const followerId = 'https://example.com/activitypub/u/follower';
-			const followedId = 'https://example.com/activitypub/u/hakatashi';
-			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
-				id: '1',
-				uid: 'firebase-uid',
-				locked: false,
-				bot: false,
-				created_at: '2023-01-01T00:00:00.000Z',
-				followers_count: 3,
-				following_count: 0,
-				statuses_count: 0,
-				last_status_at: '',
-				emojis: [],
-				fields: [],
-				roles: [],
-			});
-
-			const ref = Streams.doc(escapeFirestoreKey('undo-stream'));
-			await ref.set({
-				id: 'https://example.com/activities/undo-1',
-				type: 'Undo',
-				actor: [followerId],
-				object: [{ type: 'Follow', object: [followedId] }],
-			});
-			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
-
-			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
-
-			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
-			expect(userInfo.followers_count).toBe(2);
-		});
-
-		test('decrements followers_count when the Undo(Follow) target is an embedded object rather than a bare IRI', async () => {
-			// AS2 の object は IRI 文字列だけでなく埋め込みオブジェクトにもなりうる。
-			// toIdArray を介さず直接 escapeFirestoreKey に渡すと例外になっていた(Issue #49 のフォローアップ)。
-			const followerId = 'https://example.com/activitypub/u/follower';
-			const followedId = 'https://example.com/activitypub/u/hakatashi';
-			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
-				id: '1',
-				uid: 'firebase-uid',
-				locked: false,
-				bot: false,
-				created_at: '2023-01-01T00:00:00.000Z',
-				followers_count: 3,
-				following_count: 0,
-				statuses_count: 0,
-				last_status_at: '',
-				emojis: [],
-				fields: [],
-				roles: [],
-			});
-
-			const ref = Streams.doc(escapeFirestoreKey('undo-stream-embedded'));
-			await ref.set({
-				id: 'https://example.com/activities/undo-2',
-				type: 'Undo',
-				actor: [followerId],
-				object: [{ type: 'Follow', object: [{ id: followedId, type: 'Person' }] }],
-			});
-			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
-
-			await expect(
-				onStreamCreated.run(makeCreatedEvent({ data: snapshot })),
-			).resolves.toBeUndefined();
-
-			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
-			expect(userInfo.followers_count).toBe(2);
 		});
 
 		test('does not crash when the actor of a Note stream is an embedded object rather than a bare IRI', async () => {
@@ -491,39 +395,6 @@ describe('denormalizations', () => {
 			expect(userInfo.statuses_count).toBe(0);
 		});
 
-		test('decrements followers_count when stream.type is an array and object.type is an array', async () => {
-			const followerId = 'https://example.com/activitypub/u/follower';
-			const followedId = 'https://example.com/activitypub/u/hakatashi';
-			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
-				id: '1',
-				uid: 'firebase-uid',
-				locked: false,
-				bot: false,
-				created_at: '2023-01-01T00:00:00.000Z',
-				followers_count: 3,
-				following_count: 0,
-				statuses_count: 0,
-				last_status_at: '',
-				emojis: [],
-				fields: [],
-				roles: [],
-			});
-
-			const ref = Streams.doc(escapeFirestoreKey('undo-stream-array-types'));
-			await ref.set({
-				id: 'https://example.com/activities/undo-array',
-				type: ['Undo'],
-				actor: [followerId],
-				object: [{ type: ['Follow'], object: [followedId] }],
-			});
-			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
-
-			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
-
-			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
-			expect(userInfo.followers_count).toBe(2);
-		});
-
 		test('does nothing when the document was deleted', async () => {
 			await expect(
 				onStreamCreated.run(makeCreatedEvent({ data: { data: () => undefined } })),
@@ -699,18 +570,27 @@ describe('denormalizations', () => {
 			const note = await getData(Objects.doc(escapeFirestoreKey(noteId)));
 			expect(note._meta?.sharesCount).toBe(0);
 		});
+	});
 
-		test('does not decrement followers_count below 0 when Undo(Follow) is received with 0 followers', async () => {
-			const followerId = 'https://remote.example/u/alice';
-			const followedId = 'https://example.com/activitypub/u/hakatashi';
-			await UserInfos.doc(escapeFirestoreKey(followedId)).set({
+	// フォロー数は差分ではなく、フォロワー/フォロー一覧と同じ基準で数え直す (→ ADR-0075)。
+	describe('recomputeLocalFollowCounts', () => {
+		const localId = `https://${domain}/activitypub/u/hakatashi`;
+		const localActor = {
+			id: localId,
+			type: 'Person',
+			preferredUsername: 'hakatashi',
+			inbox: `${localId}/inbox`,
+		} as unknown as APActor;
+
+		const setUserInfo = (followers: number, following: number) =>
+			UserInfos.doc(escapeFirestoreKey(localId)).set({
 				id: '1',
 				uid: 'firebase-uid',
 				locked: false,
 				bot: false,
 				created_at: '2023-01-01T00:00:00.000Z',
-				followers_count: 0,
-				following_count: 0,
+				followers_count: followers,
+				following_count: following,
 				statuses_count: 0,
 				last_status_at: '',
 				emojis: [],
@@ -718,19 +598,84 @@ describe('denormalizations', () => {
 				roles: [],
 			});
 
-			const ref = Streams.doc(escapeFirestoreKey('undo-follow-underflow-stream'));
-			await ref.set({
-				id: 'https://remote.example/activities/undo-follow-underflow',
-				type: 'Undo',
-				actor: [followerId],
-				object: [{ type: 'Follow', object: [followedId] }],
+		const saveStream = (docId: string, activity: Record<string, unknown>) =>
+			Streams.doc(escapeFirestoreKey(docId)).set({
+				...activity,
+				_meta: { ...(activity._meta as object), index: buildMetaIndex(activity) },
+			} as never);
+
+		beforeEach(async () => {
+			await apex.store.saveObject(localActor);
+		});
+
+		test('counts each follower once even when the same actor has sent multiple Follows', async () => {
+			await setUserInfo(19, 0);
+			for (const n of [1, 2]) {
+				await saveStream(`follow-alice-${n}`, {
+					id: `https://remote.example/activities/follow-alice-${n}`,
+					type: 'Follow',
+					actor: ['https://remote.example/u/alice'],
+					object: [localId],
+				});
+			}
+			await saveStream('follow-bob', {
+				id: 'https://remote.example/activities/follow-bob',
+				type: 'Follow',
+				actor: ['https://remote.example/u/bob'],
+				object: [localId],
 			});
+
+			await recomputeLocalFollowCounts();
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(localId)));
+			expect(userInfo.followers_count).toBe(2);
+		});
+
+		test('counts only accepted outgoing Follows as following_count', async () => {
+			await setUserInfo(0, 0);
+			const accepted = 'https://remote.example/activities/follow-accepted';
+			await saveStream('follow-accepted', {
+				id: accepted,
+				type: 'Follow',
+				actor: [localId],
+				object: ['https://remote.example/u/alice'],
+			});
+			await saveStream('follow-pending', {
+				id: 'https://remote.example/activities/follow-pending',
+				type: 'Follow',
+				actor: [localId],
+				object: ['https://remote.example/u/bob'],
+			});
+			await saveStream('accept-alice', {
+				id: 'https://remote.example/activities/accept-alice',
+				type: 'Accept',
+				actor: ['https://remote.example/u/alice'],
+				object: [accepted],
+				_meta: { collection: [localActor.inbox] },
+			});
+
+			await recomputeLocalFollowCounts();
+
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(localId)));
+			expect(userInfo.following_count).toBe(1);
+			expect(userInfo.followers_count).toBe(0);
+		});
+
+		test('is refreshed by onStreamWritten for a Follow stream', async () => {
+			await setUserInfo(5, 0);
+			const ref = Streams.doc(escapeFirestoreKey('follow-written'));
+			await ref.set({
+				id: 'https://remote.example/activities/follow-written',
+				type: 'Follow',
+				actor: ['https://remote.example/u/alice'],
+				object: [localId],
+			} as never);
 			const snapshot = (await ref.get()) as QueryDocumentSnapshot;
 
-			await onStreamCreated.run(makeCreatedEvent({ data: snapshot }));
+			await onStreamWritten.run(makeWrittenEvent({ data: { before: undefined, after: snapshot } }));
 
-			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(followedId)));
-			expect(userInfo.followers_count).toBe(0);
+			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(localId)));
+			expect(userInfo.followers_count).toBe(1);
 		});
 	});
 });
