@@ -25,6 +25,8 @@ Accept 済みかどうか・同じ相手からの重複 Follow かどうかを�
    (`removeSupersededFollows`)。残すと AP `followers` コレクション (Follow アクティビティから
    導出される) に同じ actor が重複し、`totalItems` も水増しされる。
 5. 既存データは `functions/bin/denormalizations.ts` が重複 Follow の削除と同じ再計算を実行して直す。
+   残す Follow は Undo されていないもの → followers 所属のもの → 新しいもの、の順で選ぶ
+   (`published` を持たない Follow が多く、Undo 済みを残すと現役のフォロワーが落ちるため)。
 
 ## 理由
 
