@@ -32,6 +32,10 @@ export interface DeliveryResult {
 // Firestore の `in` フィルタは1クエリにつき最大30件までしか指定できない。
 export const FIRESTORE_IN_QUERY_LIMIT = 30;
 
+// getNotes は attributedTo を `in` と `array-contains-any` の OR で引くため、選言数が actor 数の2倍になる。
+// Firestore の選言数の上限 (30) に収まるよう、1回に渡す actor はこの件数までにする (→ ADR-0072)。
+export const NOTE_AUTHORS_QUERY_LIMIT = 15;
+
 // IApexStore (apex/store/interface.ts) を継承しつつ ApexStore (apex が Store に要求する契約) を
 // implements する (→ ADR-0022、ADR-0051)。deliveryDequeue/deliveryRequeue は override しておらず、
 // IApexStore 由来の「呼ばれたら例外を投げる」実装のままになっている。
@@ -160,7 +164,14 @@ export default class Store extends IApexStore implements ApexStore {
 		}
 		let query = Objects.where('type', '==', 'Note');
 		if (actors !== undefined) {
-			query = query.where('attributedTo', 'in', actors);
+			// ローカルの Note は attributedTo が文字列、inbox で受けたリモートの Note は apex が
+			// 配列に正規化して保存するため、両方の形式に一致させる (→ ADR-0072)。
+			query = query.where(
+				firebase.firestore.Filter.or(
+					firebase.firestore.Filter.where('attributedTo', 'in', actors),
+					firebase.firestore.Filter.where('attributedTo', 'array-contains-any', actors),
+				),
+			);
 		}
 		if (lower !== undefined) {
 			query = query.where(PUBLISHED_KEY, '>=', lower);

@@ -133,6 +133,42 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "attributedTo",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "_meta.published",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "objects",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "attributedTo",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "_meta.published",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "objects",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "inReplyTo",
           "order": "ASCENDING"
         },

@@ -162,6 +162,20 @@ describe('Mastodon timelines (Issue #58)', () => {
 		);
 	});
 
+	// inbox で受け取ったリモートの Note は apex が attributedTo を配列に正規化して保存する (→ ADR-0072)
+	test('home timeline and account statuses include notes whose attributedTo is an array', async () => {
+		const mine = await saveNote(me.id, 'public');
+		const remote = await saveNote(REMOTE_A, 'public', { attributedTo: [REMOTE_A] });
+		await saveNote(REMOTE_B, 'public', { attributedTo: [REMOTE_B] });
+		await follow(REMOTE_A, true);
+
+		const home = await getHomeTimeline(me, { limit: 20 });
+		expect(home.map((s) => s.uri)).toEqual([remote, mine]);
+
+		const account = await getAccountStatuses(REMOTE_A, me, { limit: 20 });
+		expect(account.map((s) => s.uri)).toEqual([remote]);
+	});
+
 	describe('pagination (Issue #59)', () => {
 		const seed = async (count: number) => {
 			const uris: string[] = [];

@@ -30,9 +30,9 @@ import { metaIndexPath } from '../meta.js';
 import { deleteNote, htmlToPlainText, plainTextToHtml, publishNote } from '../notes.js';
 import { extractMentions, formatPostContent } from './statusContent.js';
 import * as webfinger from '../webfinger.js';
-import { Clients, Markers, Streams, UserInfo, UserInfos } from '../schema.js';
+import { Clients, Markers, Objects, Streams, UserInfo, UserInfos } from '../schema.js';
 import type { MastodonClient } from '../schema.js';
-import { FIRESTORE_IN_QUERY_LIMIT } from '../store.js';
+import { FIRESTORE_IN_QUERY_LIMIT, NOTE_AUTHORS_QUERY_LIMIT } from '../store.js';
 import type { CamelToSnake } from '../utils.js';
 import {
 	isAPActor,
@@ -144,6 +144,13 @@ export const actorObjectToAccount = async (
 	const isLocal = actorDomain === domain;
 
 	const baseUserInfo = userInfo ?? externalUserInfo;
+	// ローカルは Elk のプロフィールへ誘導する (→ ADR-0004)。リモートは相手サーバーのプロフィール URL。
+	let url = actor.id;
+	if (isLocal) {
+		url = `https://elk.zone/${mastodonDomain}/@${username}@${domain}`;
+	} else if (typeof actor.url === 'string') {
+		url = actor.url;
+	}
 	const accountId =
 		id ?? userInfo?.id ?? (await getOrAssignMastodonId(actor.id, actorObject.published));
 
@@ -153,7 +160,7 @@ export const actorObjectToAccount = async (
 		username,
 		acct: isLocal ? username : `${username}@${actorDomain}`,
 		display_name: actor.name ?? '',
-		url: `https://elk.zone/${mastodonDomain}/@${username}@${domain}`,
+		url,
 		avatar: actor.icon?.url ?? '',
 		avatar_static: actor.icon?.url ?? '',
 		header: actor.image?.url ?? '',
@@ -699,7 +706,7 @@ export const getHomeTimeline = async (viewer: APActor, page: PageParams) => {
 	const authors = [viewer.id, ...viewerFollowing];
 	const entries = (
 		await Promise.all(
-			chunk(authors, FIRESTORE_IN_QUERY_LIMIT).map((actors) =>
+			chunk(authors, NOTE_AUTHORS_QUERY_LIMIT).map((actors) =>
 				collectVisibleNotes({
 					actors,
 					page,
@@ -1117,6 +1124,30 @@ const getOptionalViewer = async (
 	}
 };
 
+// 手元にキャッシュ済みのリモート actor を acct で引く。WebFinger で取りに行くことはしない (→ ADR-0073)。
+// inbox で受けた actor は preferredUsername が配列で保存されるため、両方の形式に一致させる。
+const remoteActorToAccount = async (username: string, lookupDomain: string) => {
+	const snapshot = await Objects.where(
+		firebase.firestore.Filter.or(
+			firebase.firestore.Filter.where('preferredUsername', '==', username),
+			firebase.firestore.Filter.where('preferredUsername', 'array-contains', username),
+		),
+	).get();
+	const actor = snapshot.docs
+		.map((doc) => doc.data())
+		.find(
+			(object) =>
+				isAPActor(object) &&
+				object.id !== undefined &&
+				new URL(object.id).host.toLowerCase() === lookupDomain.toLowerCase(),
+		);
+	if (actor === undefined) {
+		return undefined;
+	}
+	assertIsAPActor(actor);
+	return actorObjectToAccount(actor);
+};
+
 const getAccount = (acct: string) => {
 	const [username, lookupDomain = domain] = acct.split('@');
 
@@ -1125,7 +1156,7 @@ const getAccount = (acct: string) => {
 	}
 
 	if (lookupDomain !== domain) {
-		return undefined;
+		return remoteActorToAccount(username, lookupDomain);
 	}
 
 	return actorUsernameToAccount(username);
@@ -1612,15 +1643,16 @@ router.get('/v1/accounts/:id/statuses', async (req, res) => {
 		return;
 	}
 
-	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
-	const userInfoDoc = userInfo.docs[0];
-	if (userInfoDoc === undefined) {
+	// ローカル (UserInfos の id) とリモート (Mastodon ID の採番) の両方を解決する (→ ADR-0069)
+	const resolved = await resolveAccountActor(parsedParams.data.id);
+	if (resolved === undefined) {
 		res.status(404).json({
 			error: 'Record not found',
 		});
 		return;
 	}
-	const actorId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+	const actorId = resolved.actor.id;
+	assert(actorId !== undefined, 'actor.id is undefined');
 
 	// 認証は任意。トークンがあれば閲覧者として可視性を判定する。
 	const viewer = await getOptionalViewer(req, res);

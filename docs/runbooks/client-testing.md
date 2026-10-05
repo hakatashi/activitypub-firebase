@@ -67,16 +67,17 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
 - [ ] `--write` で `post: found in account statuses`
 
-## 既知の出力(2026-10-03 時点、main)
+## 既知の出力(2026-10-05 時点)
 
 dev の実装が追いつけば消える。消えたらこの節も更新する。
 
 | 出力 | 原因 |
 |---|---|
-| `GET 501 /api/v1/followed_tags` など 501 全般 | 未実装(#63) |
+| `GET 404 /api/v1/notifications` | 通知は未実装(Phase 4、#9) |
+| Phanpy: `GET 404 /api/v2/search?q=from:me...` と `pageerror: _a: Record not found` | 検索は未実装(Phase 4、#9)。プロフィールの投稿統計で叩く。画面は表示される |
 | `GET 404 /api/v1/push/subscription`(Elk) | Web Push 未実装。購読がないときの 404 は Mastodon と同じ挙動 |
-| Phanpy: `Cannot destructure property 'error' of 'this.serializer.deserialize(...)'` | 501 の応答本文が JSON でないため masto.js が例外を出す |
 | `net::ERR_BLOCKED_BY_ORB https://img.pawoo.net/...` | キャッシュしているリモート actor のアバター URL が古い |
+| Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...` | テスト用インスタンスのメディアの配信設定(CORS)。dev とは無関係 |
 
 ## ハマりどころ
 
@@ -89,5 +90,8 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 - Elk の `/` はビルド時に事前描画されており、`NUXT_PUBLIC_DEFAULT_SERVER` が効かない(既定の `m.webtoo.ls` が出る)。
   `/` 以外から入る。
 - Elk が Chrome 内蔵の翻訳 API を呼んで出す `Requires a user gesture ...` は、サーバーと無関係なので除外している。
+  ただし同じ原因で、**`language` が Elk の表示言語(既定は英語)と異なる投稿は、ヘッドレス Chromium では本文が描画されない**
+  (`useTranslation` が `Translator.availability()` を待ったまま進まない)。スクリーンショットで本文が空の投稿があっても、
+  API の `content` が正しく `language` が `ja` などなら dev の不具合ではない。
 - **この仕組みは OAuth の認可画面(アプリ登録 → 認可 → トークン交換)を通らない。**
   ログインまわりの変更は、従来どおりブラウザで1回ログインして確かめる。
