@@ -14,7 +14,7 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 ## Mastodon API
 
-### OAuth トークンを失効できない
+### 期限切れの OAuth トークンが残り続ける
 
-`functions/src/mastodon/oauth2Model.ts` の `revokeToken` が未実装で、
-`POST /oauth/revoke` も 501 を返す。期限切れトークンを掃除する仕組みもない。
+`POST /oauth/revoke` による失効には対応しているが、期限切れのアクセストークン・
+リフレッシュトークン・認可コードを `functions/src/mastodon/oauth2Model.ts` の外から掃除する仕組みがない。

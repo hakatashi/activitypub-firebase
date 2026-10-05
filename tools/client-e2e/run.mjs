@@ -125,7 +125,8 @@ const clients = {
 		async post(page, text) {
 			await page.goto(`${PHANPY_URL}/#/`);
 			await settle(page);
-			await page.locator('#compose-button').click();
+			// 浮動ボタンがスクロール位置によってビューポート外と判定され、click() が待ち続けることがある
+			await page.locator('#compose-button').dispatchEvent('click');
 			const textarea = page.locator('#compose-container textarea').first();
 			await textarea.fill(text);
 			await page.locator('#compose-container button[type="submit"]').click();

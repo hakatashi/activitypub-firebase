@@ -36,9 +36,9 @@
 |---|---|---|---|
 | GET | `/api/v1/accounts/verify_credentials` | ✅ | 完全な CredentialAccount (source, role 含む) を返却 |
 | PATCH | `/api/v1/accounts/update_credentials` | ✅ | 表示名・bio・locked・discoverable・fields 更新、Update 配送 |
-| GET | `/api/v1/accounts/lookup` | ✅ | ローカル acct 解決、未存在・他ドメインは 404 |
-| GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示 |
-| GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ページネーション対応、`?pinned=true` 対応 |
+| GET | `/api/v1/accounts/lookup` | ✅ | ローカル acct と、手元にキャッシュ済みのリモート actor を解決。WebFinger では取りに行かない (→ [ADR-0073](adr/0073-lookup-cached-remote-accounts.md)) |
+| GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示。リモートの `url` は相手サーバーのプロフィール URL |
+| GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ページネーション対応、`?pinned=true` 対応。リモートアカウントにも対応 (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)) |
 | GET | `/api/v1/accounts/:id/followers` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/:id/following` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/relationships` | ✅ | フォロー・被フォロー・申請中の実データから Relationship を返却 |
@@ -49,7 +49,7 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids` / `poll` / `scheduled_at` は 422。メンション・リンクの自動変換は未対応 |
+| POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids` / `poll` / `scheduled_at` は 422。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)) |
 | GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404。favourited / reblogged / bookmarked / pinned を認証ユーザーから判定 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
 | DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却 |
 | GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |
@@ -64,7 +64,7 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | GET | `/api/v1/timelines/public` | ✅ | public のみ。ページネーション対応 |
-| GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ページネーション対応 |
+| GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ページネーション対応。リモートの Note (`attributedTo` が配列) も含む (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)) |
 | GET | `/api/v1/timelines/tag/:hashtag` | ⬜ | |
 | — | ページネーション + `Link` ヘッダ | ✅ | `max_id`/`since_id`/`min_id`/`limit`、`Access-Control-Expose-Headers: Link`(→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md)) |
 
