@@ -52,6 +52,7 @@ export class Oauth2Model
 		const accessTokenData = doc.data();
 		return {
 			...accessTokenData,
+			user: accessTokenData.user ?? {},
 			accessTokenExpiresAt: toDate(accessTokenData.accessTokenExpiresAt),
 			refreshTokenExpiresAt: toDate(accessTokenData.refreshTokenExpiresAt),
 		};

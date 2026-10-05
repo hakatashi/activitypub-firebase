@@ -1,6 +1,11 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
-import { Request as OauthRequest, Response as OauthResponse } from '@node-oauth/oauth2-server';
+import {
+	OAuthError,
+	Request as OauthRequest,
+	Response as OauthResponse,
+} from '@node-oauth/oauth2-server';
+
 import type { APObject as ApexObject, JsonLdActor } from '../apex/index.js';
 import type { APNote, APActor, APObject } from 'activitypub-types';
 import cors from 'cors';
@@ -1033,18 +1038,40 @@ const resolveAccountActor = async (
 	return undefined;
 };
 
+export class AuthenticationError extends Error {
+	readonly statusCode: number;
+
+	constructor(message = 'This method requires an authenticated user', statusCode = 401) {
+		super(message);
+		this.name = 'AuthenticationError';
+		this.statusCode = statusCode;
+	}
+}
+
 // OAuth トークンから、ログイン中のローカル actor の IRI と UserInfo を引く。
 const resolveAuth = async (req: express.Request, res: express.Response) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
-	const token = await oauth.authenticate(request, response);
+	let token;
+	try {
+		token = await oauth.authenticate(request, response);
+	} catch (error) {
+		if (response.headers) {
+			res.set(response.headers);
+		}
+		throw error;
+	}
 
 	const uid = token.user?.userId;
-	assert(typeof uid === 'string');
+	if (typeof uid !== 'string') {
+		throw new AuthenticationError('This method requires an authenticated user', 401);
+	}
 
 	const userInfoDocs = await UserInfos.where('uid', '==', uid).get();
-	assert(!userInfoDocs.empty);
-	assert(userInfoDocs.size === 1);
+	if (userInfoDocs.empty) {
+		throw new AuthenticationError('This method requires an authenticated user', 401);
+	}
+	assert(userInfoDocs.size === 1, `Multiple UserInfos found for uid: ${uid}`);
 
 	const userInfoDoc = userInfoDocs.docs[0];
 	assert(userInfoDoc !== undefined);
@@ -1072,10 +1099,14 @@ const authRequired = async (
 
 		next();
 	} catch (error) {
-		const status = (error as { statusCode?: number }).statusCode ?? 401;
-		res.status(status).json({
-			error: toError(error).message,
-		});
+		if (error instanceof OAuthError || error instanceof AuthenticationError) {
+			const status = (error as { statusCode?: number }).statusCode ?? 401;
+			res.status(status).json({
+				error: error.message,
+			});
+			return;
+		}
+		next(error);
 	}
 };
 
@@ -1216,7 +1247,42 @@ const unprocessable = (res: express.Response, error: string) => {
 	res.status(422).json({ error });
 };
 
-const router = express.Router();
+const wrapAsyncHandler = (h: unknown): unknown => {
+	if (Array.isArray(h)) {
+		return h.map(wrapAsyncHandler);
+	}
+	if (typeof h === 'function') {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return (req: any, res: any, next: any) => {
+			try {
+				const ret = h(req, res, next);
+				if (ret && typeof ret.catch === 'function') {
+					ret.catch(next);
+				}
+			} catch (error) {
+				next(error);
+			}
+		};
+	}
+	return h;
+};
+
+const createAsyncRouter = (): express.Router => {
+	const router = express.Router();
+	const methods = ['get', 'post', 'put', 'delete', 'patch'] as const;
+	for (const method of methods) {
+		const original = router[method].bind(router) as (...args: unknown[]) => express.IRouter;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		router[method] = ((path: any, ...handlers: any[]) => {
+			const wrapped = handlers.map(wrapAsyncHandler);
+			return original(path, ...wrapped);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		}) as any;
+	}
+	return router;
+};
+
+const router = createAsyncRouter();
 
 router.use(
 	'/',
@@ -2718,11 +2784,19 @@ router.post('/v1/apps', async (req, res) => {
 	});
 });
 
-router.get('/v1/apps/verify_credentials', async (req, res) => {
+router.get('/v1/apps/verify_credentials', async (req, res, next) => {
 	try {
 		const request = new OauthRequest(req);
 		const response = new OauthResponse(res);
-		const token = await oauth.authenticate(request, response);
+		let token;
+		try {
+			token = await oauth.authenticate(request, response);
+		} catch (error) {
+			if (response.headers) {
+				res.set(response.headers);
+			}
+			throw error;
+		}
 		const client = token.client as MastodonClient;
 
 		let redirectUris: string[] = [];
@@ -2742,10 +2816,14 @@ router.get('/v1/apps/verify_credentials', async (req, res) => {
 			vapid_key: client.vapidKey,
 		});
 	} catch (error) {
-		const status = (error as { statusCode?: number }).statusCode ?? 401;
-		res.status(status).json({
-			error: toError(error).message,
-		});
+		if (error instanceof OAuthError || error instanceof AuthenticationError) {
+			const status = (error as { statusCode?: number }).statusCode ?? 401;
+			res.status(status).json({
+				error: error.message,
+			});
+			return;
+		}
+		next(error);
 	}
 });
 
@@ -2753,5 +2831,28 @@ router.get('/v1/apps/verify_credentials', async (req, res) => {
 router.use('/', (req, res) => {
 	res.status(404).json({ error: 'Record not found' });
 });
+
+// Mastodon API error handling middleware (→ ADR-0074)
+router.use(
+	// oxlint-disable-next-line max-params -- Express のエラーハンドリングミドルウェアは4引数が必須
+	(err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+		logger.error({
+			type: 'mastodonApiError',
+			method: req.method,
+			path: req.path,
+			error: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
+		});
+		if (res.headersSent) {
+			return;
+		}
+		const status =
+			typeof (err as { statusCode?: number }).statusCode === 'number'
+				? (err as { statusCode: number }).statusCode
+				: 500;
+		res.status(status).json({
+			error: status === 500 ? 'Internal server error' : toError(err).message,
+		});
+	},
+);
 
 export default router;

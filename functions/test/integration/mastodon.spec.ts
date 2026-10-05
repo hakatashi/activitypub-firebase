@@ -1,6 +1,6 @@
 import firebase from 'firebase-admin';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
@@ -32,6 +32,7 @@ describe('mastodon', () => {
 
 	// Teardown firestore database after each test
 	afterEach(async () => {
+		vi.restoreAllMocks();
 		await fetch(
 			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
 			{
@@ -465,6 +466,141 @@ describe('mastodon', () => {
 				});
 				expect(response.body.client_id).toBeUndefined();
 				expect(response.body.client_secret).toBeUndefined();
+			});
+		});
+
+		describe('Authentication (authRequired) (Issue #157, ADR-0074)', () => {
+			test('returns 401 with JSON error when no authorization header is provided', async () => {
+				const resVerify = await request(mastodon).get('/api/v1/accounts/verify_credentials');
+				expect(resVerify.status).toBe(401);
+				expect(resVerify.body).toEqual({
+					error: 'Unauthorized request: no authentication given',
+				});
+
+				const resTimeline = await request(mastodon).get('/api/v1/timelines/home');
+				expect(resTimeline.status).toBe(401);
+				expect(resTimeline.body).toEqual({
+					error: 'Unauthorized request: no authentication given',
+				});
+
+				const resPrefs = await request(mastodon).get('/api/v1/preferences');
+				expect(resPrefs.status).toBe(401);
+				expect(resPrefs.body).toEqual({
+					error: 'Unauthorized request: no authentication given',
+				});
+
+				const resPost = await request(mastodon).post('/api/v1/statuses').send({ status: 'hello' });
+				expect(resPost.status).toBe(401);
+				expect(resPost.body).toEqual({
+					error: 'Unauthorized request: no authentication given',
+				});
+			});
+
+			test('returns 401 with WWW-Authenticate header when invalid token is provided', async () => {
+				const resVerify = await request(mastodon)
+					.get('/api/v1/accounts/verify_credentials')
+					.set('Authorization', 'Bearer invalid-token');
+				expect(resVerify.status).toBe(401);
+				expect(resVerify.body).toEqual({
+					error: 'Invalid token: access token is invalid',
+				});
+				expect(resVerify.headers['www-authenticate']).toContain('invalid_token');
+
+				const resTimeline = await request(mastodon)
+					.get('/api/v1/timelines/home')
+					.set('Authorization', 'Bearer invalid-token');
+				expect(resTimeline.status).toBe(401);
+				expect(resTimeline.body).toEqual({
+					error: 'Invalid token: access token is invalid',
+				});
+				expect(resTimeline.headers['www-authenticate']).toContain('invalid_token');
+			});
+
+			test('returns 401 with WWW-Authenticate header when expired token is provided', async () => {
+				const past = firebase.firestore.Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
+				await AccessTokens.add({
+					accessToken: 'expired-token',
+					accessTokenExpiresAt: past,
+					refreshTokenExpiresAt: past,
+					scope: 'read write',
+					client: { id: '1', grants: [] },
+					user: { userId: UID_ME },
+				} as never);
+
+				const res = await request(mastodon)
+					.get('/api/v1/accounts/verify_credentials')
+					.set('Authorization', 'Bearer expired-token');
+				expect(res.status).toBe(401);
+				expect(res.body).toEqual({
+					error: 'Invalid token: access token has expired',
+				});
+				expect(res.headers['www-authenticate']).toContain('invalid_token');
+			});
+
+			test('returns 401 when token has non-existent user in UserInfos', async () => {
+				await addToken('token-with-no-user', 'read write', 'non-existent-uid');
+
+				const resVerify = await request(mastodon)
+					.get('/api/v1/accounts/verify_credentials')
+					.set('Authorization', 'Bearer token-with-no-user');
+				expect(resVerify.status).toBe(401);
+				expect(resVerify.body).toEqual({
+					error: 'This method requires an authenticated user',
+				});
+
+				const resTimeline = await request(mastodon)
+					.get('/api/v1/timelines/home')
+					.set('Authorization', 'Bearer token-with-no-user');
+				expect(resTimeline.status).toBe(401);
+				expect(resTimeline.body).toEqual({
+					error: 'This method requires an authenticated user',
+				});
+			});
+
+			test('returns 401 when token has no user context (e.g. client credentials token)', async () => {
+				const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
+				await AccessTokens.add({
+					accessToken: 'client-credentials-token',
+					accessTokenExpiresAt: farFuture,
+					refreshTokenExpiresAt: farFuture,
+					scope: 'read write',
+					client: { id: '1', grants: [] },
+					user: null,
+				} as never);
+
+				const res = await request(mastodon)
+					.get('/api/v1/accounts/verify_credentials')
+					.set('Authorization', 'Bearer client-credentials-token');
+				expect(res.status).toBe(401);
+				expect(res.body).toEqual({
+					error: 'This method requires an authenticated user',
+				});
+			});
+
+			test('returns 401 with WWW-Authenticate header for apps/verify_credentials with invalid token', async () => {
+				const res = await request(mastodon)
+					.get('/api/v1/apps/verify_credentials')
+					.set('Authorization', 'Bearer invalid-app-token');
+				expect(res.status).toBe(401);
+				expect(res.body).toEqual({
+					error: 'Invalid token: access token is invalid',
+				});
+				expect(res.headers['www-authenticate']).toContain('invalid_token');
+			});
+
+			test('returns 500 JSON error when unexpected internal error occurs during authentication', async () => {
+				await addToken('valid-token-for-error-test', 'read write');
+				vi.spyOn(UserInfos, 'where').mockImplementationOnce(() => {
+					throw new Error('Database connection failed');
+				});
+
+				const res = await request(mastodon)
+					.get('/api/v1/accounts/verify_credentials')
+					.set('Authorization', 'Bearer valid-token-for-error-test');
+				expect(res.status).toBe(500);
+				expect(res.body).toEqual({
+					error: 'Internal server error',
+				});
 			});
 		});
 	});
