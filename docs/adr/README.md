@@ -106,3 +106,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0078](0078-consolidate-local-actor-configuration.md) | 単一ユーザー前提のローカルアクター設定の集約 | Accepted |
 | [0079](0079-typecheck-tests-and-bin.md) | テストと bin/ を型チェックの対象にし、PR の CI で build と typecheck を実行する | Accepted |
 | [0080](0080-social-domain-layer-and-dependency-direction.md) | ソーシャルドメイン層の切り出しと依存方向の単方向化 | Accepted |
+| [0081](0081-mastodon-http-errors-validation-and-loaders.md) | Mastodon API の HttpError、検証ミドルウェア、リソースローダーの導入 | Accepted |
