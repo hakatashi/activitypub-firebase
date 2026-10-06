@@ -27,7 +27,3 @@ export const respondWithStatuses = (
 	);
 	res.json(statuses);
 };
-
-export const unprocessable = (res: express.Response, error: string) => {
-	res.status(422).json({ error });
-};

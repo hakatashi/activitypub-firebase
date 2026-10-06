@@ -81,7 +81,7 @@ export const validate =
 
 export const getValidParams = <T extends z.ZodTypeAny>(
 	res: express.Response,
-	_schema?: T,
+	_schema: T,
 ): z.infer<T> => {
 	assert(res.locals.valid?.params !== undefined, 'Validated params not found in res.locals');
 	return res.locals.valid.params as z.infer<T>;
@@ -89,7 +89,7 @@ export const getValidParams = <T extends z.ZodTypeAny>(
 
 export const getValidQuery = <T extends z.ZodTypeAny>(
 	res: express.Response,
-	_schema?: T,
+	_schema: T,
 ): z.infer<T> => {
 	assert(res.locals.valid?.query !== undefined, 'Validated query not found in res.locals');
 	return res.locals.valid.query as z.infer<T>;
@@ -97,7 +97,7 @@ export const getValidQuery = <T extends z.ZodTypeAny>(
 
 export const getValidBody = <T extends z.ZodTypeAny>(
 	res: express.Response,
-	_schema?: T,
+	_schema: T,
 ): z.infer<T> => {
 	assert(res.locals.valid?.body !== undefined, 'Validated body not found in res.locals');
 	return res.locals.valid.body as z.infer<T>;

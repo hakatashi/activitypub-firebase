@@ -236,11 +236,62 @@ describe('Mastodon Resource Loaders', () => {
 			await expect(loadVisibleStatus('12345')).rejects.toThrow(NotFoundError);
 		});
 
-		it('returns note and viewerFollowing when visible', async () => {
+		it('does not fetch following for public notes by default', async () => {
 			const note = {
 				type: 'Note',
 				id: 'https://example.com/note/1',
 				content: 'test',
+				to: ['https://www.w3.org/ns/activitystreams#Public'],
+			};
+			const viewer = {
+				type: 'Person',
+				id: 'https://example.com/users/alice',
+			} as const;
+			vi.spyOn(mastodonId, 'getIriByMastodonId').mockResolvedValueOnce(
+				'https://example.com/note/1',
+			);
+			vi.spyOn(apex.store, 'getObject').mockResolvedValueOnce(note);
+			const getFollowingSpy = vi.spyOn(follows, 'getFollowing');
+			vi.spyOn(statusAttributes, 'isNoteVisibleTo').mockReturnValueOnce(true);
+
+			const result = await loadVisibleStatus('12345', viewer as unknown as APActor);
+			expect(result.note).toEqual(note);
+			expect(getFollowingSpy).not.toHaveBeenCalled();
+			expect(result.viewerFollowing.size).toBe(0);
+		});
+
+		it('fetches following when loadFollowing is true', async () => {
+			const note = {
+				type: 'Note',
+				id: 'https://example.com/note/1',
+				content: 'test',
+				to: ['https://www.w3.org/ns/activitystreams#Public'],
+			};
+			const viewer = {
+				type: 'Person',
+				id: 'https://example.com/users/alice',
+			} as const;
+			vi.spyOn(mastodonId, 'getIriByMastodonId').mockResolvedValueOnce(
+				'https://example.com/note/1',
+			);
+			vi.spyOn(apex.store, 'getObject').mockResolvedValueOnce(note);
+			vi.spyOn(follows, 'getFollowing').mockResolvedValueOnce(['https://example.com/users/bob']);
+			vi.spyOn(statusAttributes, 'isNoteVisibleTo').mockReturnValueOnce(true);
+
+			const result = await loadVisibleStatus('12345', viewer as unknown as APActor, {
+				loadFollowing: true,
+			});
+			expect(result.note).toEqual(note);
+			expect(result.viewerFollowing.has('https://example.com/users/bob')).toBe(true);
+		});
+
+		it('fetches following for private notes from other authors', async () => {
+			const note = {
+				type: 'Note',
+				id: 'https://example.com/note/1',
+				content: 'test',
+				attributedTo: 'https://example.com/users/bob',
+				to: ['https://example.com/users/bob/followers'],
 			};
 			const viewer = {
 				type: 'Person',

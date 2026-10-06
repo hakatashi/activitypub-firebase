@@ -5,10 +5,10 @@ import type { APObject as ApexObject } from '../../apex/index.js';
 import { getIriByMastodonId } from '../../mastodonId.js';
 import { getFollowing } from '../../social/follows.js';
 import type { NoteObject } from '../../social/types.js';
-import { isAPNote } from '../../utils.js';
+import { isAPNote, toIdArray } from '../../utils.js';
 import { assertIsAPActor, resolveAccountActor } from '../presenters/account.js';
 import type { ResolvedAccountActor } from '../presenters/account.js';
-import { isNoteVisibleTo } from '../statusAttributes.js';
+import { isNoteVisibleTo, noteToVisibility } from '../statusAttributes.js';
 import { getAuthActorId } from './auth.js';
 import { NotFoundError } from './errors.js';
 import { idParamSchema } from './params.js';
@@ -31,12 +31,22 @@ export interface VisibleStatusResult {
 	viewerFollowing: Set<string>;
 }
 
+export interface LoadVisibleStatusOptions {
+	loadFollowing?: boolean;
+}
+
 export const loadVisibleStatus = async (
 	id: string,
 	viewer?: (ApexObject & APActor) | APActor | undefined,
+	options?: LoadVisibleStatusOptions,
 ): Promise<VisibleStatusResult> => {
 	const note = await loadStatus(id);
-	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+	const visibility = noteToVisibility(note);
+	const author = toIdArray(note.attributedTo)[0];
+	const needsFollowing =
+		options?.loadFollowing === true ||
+		(visibility === 'private' && viewer !== undefined && author !== viewer.id);
+	const viewerFollowing = new Set(needsFollowing && viewer ? await getFollowing(viewer) : []);
 	if (!isNoteVisibleTo(note, viewer?.id, viewerFollowing)) {
 		throw new NotFoundError();
 	}

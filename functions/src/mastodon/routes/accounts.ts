@@ -19,7 +19,7 @@ import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadAccount, loadViewer } from '../http/loaders.js';
 import { idParamSchema, toBoolean } from '../http/params.js';
 import { respondWithStatuses, setLinkHeader } from '../http/responses.js';
-import { getValidBody, getValidQuery, validate } from '../http/validation.js';
+import { getValidBody, getValidParams, getValidQuery, validate } from '../http/validation.js';
 import { parsePageParams } from '../pagination.js';
 import {
 	FOLLOWERS_PAGE_LIMITS,
@@ -192,68 +192,70 @@ router.get('/v1/accounts/:id/statuses', async (req, res) => {
 	);
 });
 
-router.get('/v1/accounts/:id/followers', async (req, res) => {
-	const parsedParams = accountParamsSchema.safeParse(req.params);
-	if (!parsedParams.success) {
-		throw new NotFoundError();
-	}
+router.get(
+	'/v1/accounts/:id/followers',
+	validate({ params: accountParamsSchema }),
+	async (req, res) => {
+		const { id } = getValidParams(res, accountParamsSchema);
 
-	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
+		const userInfo = await UserInfos.where('id', '==', id).get();
 
-	if (userInfo.docs.length !== 1) {
-		throw new NotFoundError();
-	}
+		if (userInfo.docs.length !== 1) {
+			throw new NotFoundError();
+		}
 
-	const userInfoDoc = userInfo.docs[0];
-	assert(userInfoDoc !== undefined);
+		const userInfoDoc = userInfo.docs[0];
+		assert(userInfoDoc !== undefined);
 
-	const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
-	const actorObject = await apex.store.getObject(userId);
+		const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const actorObject = await apex.store.getObject(userId);
 
-	if (actorObject === undefined) {
-		res.sendStatus(500);
-		return;
-	}
-	assertIsAPActor(actorObject);
+		if (actorObject === undefined) {
+			res.sendStatus(500);
+			return;
+		}
+		assertIsAPActor(actorObject);
 
-	const { accounts, cursorIds } = await getFollowersPage(
-		actorObject,
-		parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
-	);
-	setLinkHeader(req, res, cursorIds);
-	res.json(accounts);
-});
+		const { accounts, cursorIds } = await getFollowersPage(
+			actorObject,
+			parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
+		);
+		setLinkHeader(req, res, cursorIds);
+		res.json(accounts);
+	},
+);
 
-router.get('/v1/accounts/:id/following', async (req, res) => {
-	const parsedParams = accountParamsSchema.safeParse(req.params);
-	if (!parsedParams.success) {
-		throw new NotFoundError();
-	}
+router.get(
+	'/v1/accounts/:id/following',
+	validate({ params: accountParamsSchema }),
+	async (req, res) => {
+		const { id } = getValidParams(res, accountParamsSchema);
 
-	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
-	if (userInfo.docs.length !== 1) {
-		throw new NotFoundError();
-	}
+		const userInfo = await UserInfos.where('id', '==', id).get();
+		if (userInfo.docs.length !== 1) {
+			throw new NotFoundError();
+		}
 
-	const userInfoDoc = userInfo.docs[0];
-	assert(userInfoDoc !== undefined);
+		const userInfoDoc = userInfo.docs[0];
+		assert(userInfoDoc !== undefined);
 
-	const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
-	const actorObject = await apex.store.getObject(userId);
+		const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const actorObject = await apex.store.getObject(userId);
 
-	if (actorObject === undefined) {
-		res.sendStatus(500);
-		return;
-	}
-	assertIsAPActor(actorObject);
+		if (actorObject === undefined) {
+			res.sendStatus(500);
+			return;
+		}
+		assertIsAPActor(actorObject);
 
-	const { accounts, cursorIds } = await getFollowingPage(
-		actorObject,
-		parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
-	);
-	setLinkHeader(req, res, cursorIds);
-	res.json(accounts);
-});
+		const { accounts, cursorIds } = await getFollowingPage(
+			actorObject,
+			parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
+		);
+		setLinkHeader(req, res, cursorIds);
+		res.json(accounts);
+	},
+);
 
 router.post(
 	'/v1/accounts/:id/follow',

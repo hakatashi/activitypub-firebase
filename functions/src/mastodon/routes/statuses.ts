@@ -14,7 +14,7 @@ import { createAsyncRouter } from '../http/asyncRouter.js';
 import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadStatus, loadViewer, loadVisibleStatus } from '../http/loaders.js';
-import { idParamSchema, isPresent, toBoolean } from '../http/params.js';
+import { isPresent, toBoolean } from '../http/params.js';
 import { getValidBody, validate } from '../http/validation.js';
 import { instanceV2 } from '../instanceInformation.js';
 import {
@@ -142,11 +142,11 @@ router.post(
 	},
 );
 
-export const statusParamsSchema = idParamSchema;
-
 router.get('/v1/statuses/:id/context', async (req, res) => {
 	const viewer = await getOptionalViewer(req, res);
-	const { note, viewerFollowing } = await loadVisibleStatus(req.params.id ?? '', viewer);
+	const { note, viewerFollowing } = await loadVisibleStatus(req.params.id ?? '', viewer, {
+		loadFollowing: true,
+	});
 
 	const [ancestors, descendants] = await Promise.all([
 		getStatusAncestors(note, viewer, viewerFollowing),
