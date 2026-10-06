@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import type { APActor } from 'activitypub-types';
+import { apex } from '../apex.js';
 import { escapeFirestoreKey } from '../firebase.js';
 import { getMastodonIds } from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
@@ -22,7 +23,8 @@ export const removeSupersededFollows = async (
 		.where(metaIndexPath('objects', escapeFirestoreKey(objectId)), '==', true)
 		.get();
 	const stale = docs.docs.filter((doc) => doc.data().id !== keepFollowId);
-	await Promise.all(stale.map((doc) => doc.ref.delete()));
+	// Store 経由で消し、フォロー関係の射影も同じトランザクションで更新する (→ ADR-0082)。
+	await Promise.all(stale.map((doc) => apex.store.removeActivity(doc.data(), actorId)));
 	return stale.length;
 };
 

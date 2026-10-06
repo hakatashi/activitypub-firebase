@@ -133,6 +133,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `deliveries` | エスケープした `アクティビティ ID + 宛先` | 配送結果(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
+| `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
 | `markers` | `エスケープした actor IRI_タイムライン名` | `/api/v1/markers` の既読位置(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
 | `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
@@ -186,6 +187,14 @@ apex のストア抽象では集計ができないため、フォロワー数・
 投稿数は差分更新、フォロー数・フォロワー数はソーシャルグラフ層 (`functions/src/social/follows.ts`) の関数で数え直す再計算で持つ
 (→ [ADR-0075](adr/0075-recompute-follow-counts.md)、[ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
 既存データの再計算には `functions/bin/denormalizations.ts` を使う。
+
+フォロー関係は、これとは別に `userInfos/{actor}/followers`・`following` に射影している
+(`functions/src/projections/follows.ts`)。Store の `saveActivity` / `updateActivityMeta` / `removeActivity` が
+Follow を書き換えるとき、同じトランザクションで射影と `followers_count` / `following_count` を差分更新する
+(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md))。判定は Follow の `_meta.collection`
+(apex の followers / following / rejections への所属)による。読み取り側はまだ射影を使っておらず、
+カウンタは上記の再計算も並行して書いている。既存データからの組み立て直しには
+`functions/bin/backfillFollowProjection.ts` を使う。
 
 ## ソーシャル・タイムライン層 (social/)
 

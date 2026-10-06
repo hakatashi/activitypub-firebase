@@ -100,10 +100,11 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0072](0072-match-array-attributed-to-in-note-queries.md) | Note の投稿者検索は配列形式の `attributedTo` にも一致させる | Accepted |
 | [0073](0073-lookup-cached-remote-accounts.md) | `accounts/lookup` は手元にキャッシュ済みのリモート actor を返す | Accepted |
 | [0074](0074-mastodon-api-authentication-error-handling.md) | Mastodon API の認証エラーハンドリングと統一的なエラー応答 | Accepted |
-| [0075](0075-recompute-follow-counts.md) | フォロー数・フォロワー数は差分更新ではなく再計算で持つ | Accepted |
+| [0075](0075-recompute-follow-counts.md) | フォロー数・フォロワー数は差分更新ではなく再計算で持つ | Superseded by ADR-0082 |
 | [0076](0076-pregenerated-test-actor-keys.md) | テスト時の Actor 鍵ペアに事前生成した固定鍵を使う | Accepted |
 | [0077](0077-isolate-test-firestore-by-worker-project-id.md) | ワーカー固有の projectId によるテスト並列化とテストヘルパー共通化 | Accepted |
 | [0078](0078-consolidate-local-actor-configuration.md) | 単一ユーザー前提のローカルアクター設定の集約 | Accepted |
 | [0079](0079-typecheck-tests-and-bin.md) | テストと bin/ を型チェックの対象にし、PR の CI で build と typecheck を実行する | Accepted |
 | [0080](0080-social-domain-layer-and-dependency-direction.md) | ソーシャルドメイン層の切り出しと依存方向の単方向化 | Accepted |
 | [0081](0081-mastodon-http-errors-validation-and-loaders.md) | Mastodon API の HttpError、検証ミドルウェア、リソースローダーの導入 | Accepted |
+| [0082](0082-project-follow-relations-in-store.md) | フォロー関係を userInfos のサブコレクションに射影し、Store で差分更新する | Accepted |

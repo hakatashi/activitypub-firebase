@@ -44,6 +44,32 @@ export type UserInfo = Pick<
 
 export const UserInfos = db.collection('userInfos') as CollectionReference<UserInfo>;
 
+// フォロー関係の射影 (→ ADR-0082)。`userInfos/{ローカル actor}/following|followers/{相手}`。
+export type FollowRelationSide = 'followers' | 'following';
+export type FollowState = 'pending' | 'accepted';
+
+// 相手への生きている Follow 1 件分。
+export interface FollowRelationEntry {
+	iri: string;
+	state: FollowState;
+	mastodonId: string | null;
+}
+
+export interface FollowRelation {
+	// 相手の actor IRI
+	actor: string;
+	// 代表の Follow (承認済みを優先し、同順位なら Mastodon ID が最大のもの)
+	followIri: string;
+	followMastodonId: string | null;
+	// followers は常に 'accepted'
+	state: FollowState;
+	createdAt: Timestamp;
+	follows: FollowRelationEntry[];
+}
+
+export const FollowRelations = (userInfoKey: FirestoreKey, side: FollowRelationSide) =>
+	UserInfos.doc(userInfoKey).collection(side) as CollectionReference<FollowRelation>;
+
 export interface MastodonClient extends Client {
 	clientId: string;
 	clientSecret: string;

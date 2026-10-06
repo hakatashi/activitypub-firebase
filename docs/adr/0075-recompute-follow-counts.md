@@ -1,6 +1,6 @@
 # ADR-0075: フォロー数・フォロワー数は差分更新ではなく再計算で持つ
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0082
 - **Date:** 2026-10-06
 
 ## 背景
