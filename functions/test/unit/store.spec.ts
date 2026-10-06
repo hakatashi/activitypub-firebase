@@ -1,6 +1,8 @@
 import { describe, expect, test, afterEach } from 'vitest';
+import { db, escapeFirestoreKey } from '../../src/firebase.js';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
+import { Objects } from '../../src/schema.js';
 import Store from '../../src/store.js';
 import { resetFirestore } from '../helpers/index.js';
 
@@ -87,7 +89,9 @@ describe('Store', () => {
 				{ id: 'https://example.com/objects/a', type: 'Note' },
 				{ id: 'https://example.com/objects/b', type: 'Note' },
 			];
-			await Promise.all(objects.map((object) => store.saveObject(object)));
+			for (const object of objects) {
+				await store.saveObject(object);
+			}
 
 			const result = await store.getObjects(objects.map((object) => object.id));
 			expect(result).toEqual(expect.arrayContaining(objects));
@@ -101,7 +105,11 @@ describe('Store', () => {
 				id: `https://example.com/objects/chunk-${i}`,
 				type: 'Note',
 			}));
-			await Promise.all(objects.map((object) => store.saveObject(object)));
+			const batch = db.batch();
+			for (const object of objects) {
+				batch.set(Objects.doc(escapeFirestoreKey(object.id)), object);
+			}
+			await batch.commit();
 
 			const result = await store.getObjects(objects.map((object) => object.id));
 			expect(result).toEqual(expect.arrayContaining(objects));
@@ -380,15 +388,13 @@ describe('Store', () => {
 		});
 
 		test('respects the limit argument', async () => {
-			await Promise.all(
-				['1', '2', '3'].map((suffix) =>
-					store.saveActivity({
-						id: `https://example.com/activities/limit-${suffix}`,
-						type: 'Create',
-						_meta: { collection: ['https://example.com/inbox'] },
-					}),
-				),
-			);
+			for (const suffix of ['1', '2', '3']) {
+				await store.saveActivity({
+					id: `https://example.com/activities/limit-${suffix}`,
+					type: 'Create',
+					_meta: { collection: ['https://example.com/inbox'] },
+				});
+			}
 
 			const stream = await store.getStream('https://example.com/inbox', 2, null);
 			expect(stream).toHaveLength(2);
@@ -408,15 +414,13 @@ describe('Store', () => {
 		});
 
 		test('pages through a collection using the _id cursor without duplicates or gaps', async () => {
-			await Promise.all(
-				['1', '2', '3', '4', '5'].map((suffix) =>
-					store.saveActivity({
-						id: `https://example.com/activities/page-${suffix}`,
-						type: 'Create',
-						_meta: { collection: ['https://example.com/inbox'] },
-					}),
-				),
-			);
+			for (const suffix of ['1', '2', '3', '4', '5']) {
+				await store.saveActivity({
+					id: `https://example.com/activities/page-${suffix}`,
+					type: 'Create',
+					_meta: { collection: ['https://example.com/inbox'] },
+				});
+			}
 
 			const collected: string[] = [];
 			let after: string | null = null;
@@ -443,15 +447,13 @@ describe('Store', () => {
 		});
 
 		test('limit === null (page === Infinity) still returns every matching activity', async () => {
-			await Promise.all(
-				['1', '2', '3'].map((suffix) =>
-					store.saveActivity({
-						id: `https://example.com/activities/all-${suffix}`,
-						type: 'Create',
-						_meta: { collection: ['https://example.com/inbox'] },
-					}),
-				),
-			);
+			for (const suffix of ['1', '2', '3']) {
+				await store.saveActivity({
+					id: `https://example.com/activities/all-${suffix}`,
+					type: 'Create',
+					_meta: { collection: ['https://example.com/inbox'] },
+				});
+			}
 
 			const stream = await store.getStream('https://example.com/inbox', null, null);
 			expect(stream).toHaveLength(3);

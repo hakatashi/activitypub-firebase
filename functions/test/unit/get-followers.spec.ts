@@ -1,11 +1,12 @@
 import type { APActor } from 'activitypub-types';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { apex } from '../../src/activitypub.js';
-import { escapeFirestoreKey } from '../../src/firebase.js';
+import { db, escapeFirestoreKey } from '../../src/firebase.js';
 import { getFollowers, getFollowersPage } from '../../src/mastodon/api.js';
+import { buildMastodonId } from '../../src/mastodonId.js';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
-import { Streams } from '../../src/schema.js';
+import { MastodonIds, MastodonIdsByIri, Objects, Streams } from '../../src/schema.js';
 import { resetFirestore } from '../helpers/index.js';
 
 const actor = {
@@ -192,25 +193,30 @@ describe('getFollowers', () => {
 			{ length: 31 },
 			(_, i) => `https://remote.example/u/follower-${i}`,
 		);
-		await Promise.all(
-			followerIds.map((followerId, i) =>
-				apex.store.saveObject({
-					id: followerId,
-					type: 'Person',
-					preferredUsername: `follower-${i}`,
-				}),
-			),
-		);
-		await Promise.all(
-			followerIds.map((followerId, i) =>
-				saveFollow(
-					`follow-chunk-${i}`,
-					`https://remote.example/activities/follow-chunk-${i}`,
-					followerId,
-					actor.id,
-				),
-			),
-		);
+		const baseTime = Date.parse('2023-01-01T00:00:00.000Z');
+		const batch = db.batch();
+		for (const [i, followerId] of followerIds.entries()) {
+			batch.set(Objects.doc(escapeFirestoreKey(followerId)), {
+				id: followerId,
+				type: 'Person',
+				preferredUsername: `follower-${i}`,
+			});
+			const activityId = `https://remote.example/activities/follow-chunk-${i}`;
+			const activity = {
+				id: activityId,
+				type: 'Follow',
+				actor: [followerId],
+				object: [actor.id],
+			};
+			batch.set(Streams.doc(escapeFirestoreKey(`follow-chunk-${i}`)), {
+				...activity,
+				_meta: { index: buildMetaIndex(activity) },
+			});
+			const mastodonId = buildMastodonId(baseTime + i * 1000, 0);
+			batch.set(MastodonIds.doc(escapeFirestoreKey(mastodonId)), { iri: activityId });
+			batch.set(MastodonIdsByIri.doc(escapeFirestoreKey(activityId)), { mastodonId });
+		}
+		await batch.commit();
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(31);
