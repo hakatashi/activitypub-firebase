@@ -40,10 +40,3 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 投稿本文のハッシュタグは `https://<Mastodon ドメイン>/tags/<名前>` にリンクするが、
 そのページもハッシュタグタイムライン(`/api/v1/timelines/tag/:hashtag`)も未実装。
-
-## テスト
-
-### `mastodon-post-status.spec.ts` が CI でタイムアウトすることがある
-
-`sanitizes dangerous URL scheme in resolved mention before saving post` が CI 上で既定の 10 秒を超えて
-落ちたことがある(main の Deploy、2026-10-05)。直後の main の実行では通っている。
