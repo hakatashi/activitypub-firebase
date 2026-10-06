@@ -57,7 +57,10 @@
 | POST | `/api/v1/statuses/:id/reblog` / `unreblog` | ✅ | `write:statuses` 必須。Announce / Undo(Announce) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | POST | `/api/v1/statuses/:id/bookmark` / `unbookmark` | ✅ | `write:bookmarks` 必須。`userInfos/{actor}/bookmarks` 保存・削除、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
 | POST | `/api/v1/statuses/:id/pin` / `unpin` | ✅ | `write:accounts` 必須。自分の投稿のみ(上限5件)、`userInfos/{actor}/pins` 保存・削除、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
-| POST | `/api/v2/media` | ⬜ | Cloud Storage 連携が必要 |
+| POST | `/api/v2/media` | ✅ | `write:media` 必須。同期的に画像処理(EXIF除去・サムネイル・blurhash)を行い Cloud Storage に保存、MediaAttachment 返却 (→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
+| POST | `/api/v1/media` | ✅ | `write:media` 必須。v2 と同一処理で 200 返却 (→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
+| GET | `/api/v1/media/:id` | ✅ | `write:media` 必須。自分のメディアのみ取得可能 (他人は 404) |
+| PUT | `/api/v1/media/:id` | ✅ | `write:media` 必須。description / focus の更新。未添付の自分のメディアのみ更新可能 (→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
 
 ## タイムライン
 

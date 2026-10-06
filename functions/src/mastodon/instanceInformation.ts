@@ -12,6 +12,8 @@ import {
 import { UserInfos } from '../schema.js';
 import type { CamelToSnake } from '../utils.js';
 
+import { IMAGE_MATRIX_LIMIT, IMAGE_SIZE_LIMIT, SUPPORTED_MIME_TYPES } from './mediaProcessing.js';
+
 export type ExtendedInstanceV2 = Omit<CamelToSnake<mastodon.v2.Instance>, 'configuration'> & {
 	api_versions: {
 		mastodon: number;
@@ -58,9 +60,9 @@ const instanceV2: ExtendedInstanceV2 = {
 			characters_reserved_per_url: 23,
 		},
 		media_attachments: {
-			supported_mime_types: [],
-			image_size_limit: 0,
-			image_matrix_limit: 0,
+			supported_mime_types: [...SUPPORTED_MIME_TYPES],
+			image_size_limit: IMAGE_SIZE_LIMIT,
+			image_matrix_limit: IMAGE_MATRIX_LIMIT,
 			video_size_limit: 0,
 			video_frame_rate_limit: 0,
 			video_matrix_limit: 0,

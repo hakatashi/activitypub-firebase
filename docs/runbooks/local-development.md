@@ -143,6 +143,11 @@ Firestore エミュレータを使うテストでは、各テストの `afterEac
 `vitest.config.ts` は Vite のネイティブな TypeScript/ESM 変換を使うため、
 Jest 時代のような `moduleNameMapper` での `./x.js` → `./x` 解決は不要。
 
+### Cloud Storage のテスト差し替え
+
+Cloud Storage へのアップロード処理は薄い抽象化モジュール (`functions/src/storage/media.ts`) に集約されている (→ [ADR-0091](../adr/0091-media-upload-and-storage.md))。
+テスト実行時に Storage エミュレータを起動する必要はなく、テストコード内で `setMediaStorageDriver()` を使ってインメモリストレージに差し替える。テスト終了後は `resetMediaStorageDriver()` で元に戻す。
+
 ## エミュレータでの手動確認
 
 ```bash

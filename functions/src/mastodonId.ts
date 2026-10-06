@@ -139,3 +139,35 @@ export const getIriByMastodonId = async (mastodonId: string) => {
 	const doc = await MastodonIds.doc(escapeFirestoreKey(mastodonId)).get();
 	return doc.data()?.iri;
 };
+
+// メディア添付用の Mastodon ID を採番する (→ ADR-0091)。
+// 投稿前は AP IRI が存在しないため、`mediaAttachment:${id}` をダミー IRI として MastodonIds に登録し、
+// Status などの ID との衝突を防ぐ。
+export const assignMediaMastodonIdInTransaction = async (
+	transaction: Transaction,
+	now = Date.now(),
+) => {
+	const timestamp = toIdTimestamp(now);
+	for (let start = 0; start <= MAX_SEQUENCE; start += PROBE_BATCH_SIZE) {
+		const candidates = Array.from(
+			{ length: Math.min(PROBE_BATCH_SIZE, MAX_SEQUENCE - start + 1) },
+			(_, offset) => buildMastodonId(timestamp, start + offset),
+		);
+		const candidateDocs = await transaction.getAll(
+			...candidates.map((candidate) => MastodonIds.doc(escapeFirestoreKey(candidate))),
+		);
+		const freeIndex = candidateDocs.findIndex((doc) => !doc.exists);
+		const mastodonId = candidates[freeIndex];
+		if (mastodonId !== undefined) {
+			transaction.create(MastodonIds.doc(escapeFirestoreKey(mastodonId)), {
+				iri: `mediaAttachment:${mastodonId}`,
+			});
+			return mastodonId;
+		}
+	}
+
+	throw new Error(`Mastodon ID sequence exhausted at ${timestamp} for mediaAttachment`);
+};
+
+export const assignMediaMastodonId = (now = Date.now()) =>
+	db.runTransaction((transaction) => assignMediaMastodonIdInTransaction(transaction, now));

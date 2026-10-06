@@ -188,3 +188,43 @@ export interface MarkerRecord {
 }
 
 export const Markers = db.collection('markers') as CollectionReference<MarkerRecord>;
+
+// メディア添付レコード (→ ADR-0091)。`mediaAttachments/{Mastodon ID}`。
+export interface MediaAttachmentMetaDimensions {
+	width: number;
+	height: number;
+	size: string;
+	aspect: number;
+}
+
+export interface MediaAttachmentMeta {
+	original?: MediaAttachmentMetaDimensions;
+	small?: MediaAttachmentMetaDimensions;
+	focus?: {
+		x: number;
+		y: number;
+	};
+}
+
+export interface MediaAttachmentRecord {
+	id: string;
+	actorId: string;
+	type: 'image';
+	storagePath: string;
+	previewStoragePath: string;
+	url: string;
+	previewUrl: string;
+	remoteUrl: string | null;
+	textUrl: string | null;
+	mimeType: string;
+	meta: MediaAttachmentMeta;
+	description: string;
+	blurhash: string;
+	statusIri: string | null;
+	createdAt: Timestamp;
+	updatedAt: Timestamp;
+}
+
+export const MediaAttachments = db.collection(
+	'mediaAttachments',
+) as CollectionReference<MediaAttachmentRecord>;
