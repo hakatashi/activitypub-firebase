@@ -6,7 +6,7 @@ import firebase from 'firebase-admin';
 import ActivitypubExpress from '../../src/apex/index.js';
 import { computeHttpSignatureHeaders } from '../../src/apex/pub/federation.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
-import Store from '../../src/store.js';
+import Store from '../../src/store/index.js';
 import { resetFirestore } from '../helpers/index.js';
 
 // MongoDB native driver compatibility for upstream specs

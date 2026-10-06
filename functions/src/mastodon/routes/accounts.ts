@@ -33,6 +33,7 @@ import {
 } from '../presenters/account.js';
 import type { RelationshipEntity } from '../presenters/account.js';
 import { STATUS_PAGE_LIMITS, getAccountStatuses } from '../presenters/status.js';
+import { markActivityPublic } from '../../store/activities.js';
 
 const router = createAsyncRouter();
 
@@ -279,7 +280,7 @@ router.post(
 			});
 			await apex.addToOutbox(actor, activity);
 			// following コレクションを匿名にも公開するため (→ ADR-0035, ADR-0075)。
-			await apex.store.markActivityPublic(activity);
+			await markActivityPublic(activity);
 		}
 
 		const isTargetLocked =

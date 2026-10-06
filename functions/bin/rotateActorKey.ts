@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { LOCAL_USERNAME, localActorIri } from '../src/localActor.js';
-import Store from '../src/store.js';
+import Store from '../src/store/index.js';
 
 // ADR-0009: 配送が未実装の Phase 0 のうちに actor の秘密鍵をローテーションする、使い捨てスクリプト。
 // ts-node 等で手動実行する。実行対象プロジェクトは firebase-admin の Application Default

@@ -5,6 +5,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { app } from '../../src/activitypub.js';
 import { apex } from '../../src/apex.js';
 import { runPostWorkBeforeSend } from '../../src/postWork.js';
+import { markActivityPublic } from '../../src/store/activities.js';
+
+vi.mock('../../src/store/activities.js', () => ({ markActivityPublic: vi.fn() }));
 
 describe('apex-inbox event: Follow auto-accept', () => {
 	afterEach(() => {
@@ -32,9 +35,7 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			.spyOn(apex, 'acceptFollow')
 			.mockResolvedValue({ postTask, updated: { id: activity.id, type: 'Follow' } });
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
-		const markActivityPublicSpy = vi
-			.spyOn(apex.store, 'markActivityPublic')
-			.mockResolvedValue(undefined);
+		const markActivityPublicSpy = vi.mocked(markActivityPublic).mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);

@@ -20,7 +20,7 @@ import {
 } from '../../firebase.js';
 import { getMastodonIds } from '../../mastodonId.js';
 import { UserInfos } from '../../schema.js';
-import { FIRESTORE_IN_QUERY_LIMIT } from '../../store.js';
+import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { getAttributedTo, isAPNote, toIdArray, toStringValue } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
@@ -37,6 +37,7 @@ import {
 } from '../statusAttributes.js';
 import type { StatusViewerContext } from '../statusAttributes.js';
 import { resolveAccountIds, userIdsToAccounts } from './account.js';
+import { getObjects } from '../../store/objects.js';
 
 // `id` には AP IRI ではなく、時系列順に採番した Mastodon ID を渡す (→ ADR-0006、ADR-0058)。
 // 取得は `getMastodonIds` で行う。
@@ -189,7 +190,7 @@ export const notesToStatuses = async (notes: NoteObject[], viewer?: APActor | un
 
 	// リプライ先は手元に保存済みのものだけ解決する (リモートへは取りに行かない → ADR-0059)。
 	const replyTargetIris = uniq(validNotes.flatMap((note) => toIdArray(note.inReplyTo).slice(0, 1)));
-	const replyTargets = (await apex.store.getObjects(replyTargetIris)).filter(isAPNote);
+	const replyTargets = (await getObjects(replyTargetIris)).filter(isAPNote);
 	const replyTargetMap = new Map(replyTargets.map((target) => [target.id, target]));
 
 	const authorIris = uniq([

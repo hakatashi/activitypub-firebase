@@ -1,6 +1,5 @@
 import assert from 'node:assert';
 import { chunk } from 'lodash-es';
-import { apex } from '../apex.js';
 import type { APActor } from 'activitypub-types';
 import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../firebase.js';
 import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
@@ -11,13 +10,15 @@ import { getAttributedTo, isAPNote } from '../utils.js';
 import { getFollowing } from './follows.js';
 import type { NoteObject } from './types.js';
 import { isNotePublicTimelineEligible, isNoteVisibleTo } from './visibility.js';
+import { getObjects } from '../store/objects.js';
+import { NOTE_AUTHORS_QUERY_LIMIT } from '../store/limits.js';
+import { getNotes } from '../store/notes.js';
 
 // 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
 const TIMELINE_FETCH_FACTOR = 3;
 // 小さい limit でも読み足しラウンドを使い切って空ページになりにくいよう、1回に読む件数の下限を設ける。
 const MIN_TIMELINE_FETCH_SIZE = 100;
 const MAX_TIMELINE_FETCH_ROUNDS = 10;
-const NOTE_AUTHORS_QUERY_LIMIT = 30;
 
 // ID のタイムスタンプ部は `_meta.published` (→ ADR-0062) と同じ規則で決まるので、そのまま範囲の端にできる。
 const idToPublishedBound = (id: string) => new Date(mastodonIdToTimestamp(id)).toISOString();
@@ -47,7 +48,7 @@ export const collectVisibleNotes = async ({
 	const collected: PagedNote[] = [];
 	let cursor: string | undefined;
 	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < page.limit; round++) {
-		const rows = await apex.store.getNotes({
+		const rows = await getNotes({
 			actors,
 			limit: fetchSize,
 			order: ascending ? 'asc' : 'desc',
@@ -92,7 +93,7 @@ export const getAccountNotes = async (
 			return [];
 		}
 		const noteIris = pinsSnap.docs.map((doc) => unescapeFirestoreKey(toFirestoreKey(doc.id)));
-		const notes = (await apex.store.getObjects(noteIris)).filter(isAPNote);
+		const notes = (await getObjects(noteIris)).filter(isAPNote);
 		return notes.filter((note) => isNoteVisibleTo(note, viewer?.id, viewerFollowing));
 	}
 	const notes = await collectVisibleNotes({

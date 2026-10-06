@@ -20,10 +20,11 @@ import {
 import { getIriByMastodonId, getMastodonIds, getOrAssignMastodonId } from '../../mastodonId.js';
 import { htmlToPlainText } from '../../notes.js';
 import { Objects, UserInfo, UserInfos } from '../../schema.js';
-import { FIRESTORE_IN_QUERY_LIMIT } from '../../store.js';
+import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { isAPActor } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
+import { getObjects } from '../../store/objects.js';
 
 export const assertIsAPActor: (
 	object: ApexObject | undefined,
@@ -201,7 +202,7 @@ export const userIdsToAccounts = async (
 	}
 
 	const [actorObjects, userInfoDocsChunks, accountIds] = await Promise.all([
-		apex.store.getObjects(userIds),
+		getObjects(userIds),
 		Promise.all(
 			chunk(userIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
 				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),

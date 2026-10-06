@@ -3,6 +3,7 @@ import { apex } from '../../src/apex.js';
 import { deliveryTask, pingTask } from '../../src/tasks.js';
 
 import { resetFirestore } from '../helpers/index.js';
+import { getDelivery } from '../../src/store/deliveries.js';
 
 const actorId = 'https://example.com/activitypub/u/hakatashi';
 const address = 'https://remote.example/u/alice/inbox';
@@ -45,7 +46,7 @@ describe('deliveryTask', () => {
 			address,
 			'test-private-key',
 		);
-		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
+		expect(await getDelivery(activityId, address)).toMatchObject({
 			status: 'success',
 			attempts: 1,
 			statusCode: 202,
@@ -60,7 +61,7 @@ describe('deliveryTask', () => {
 			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
 		).resolves.toBeUndefined();
 
-		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
+		expect(await getDelivery(activityId, address)).toMatchObject({
 			status: 'permanent_failure',
 			attempts: 1,
 			statusCode: 410,
@@ -74,7 +75,7 @@ describe('deliveryTask', () => {
 			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
 		).rejects.toThrow();
 
-		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
+		expect(await getDelivery(activityId, address)).toMatchObject({
 			status: 'retrying',
 			attempts: 1,
 			statusCode: 503,
@@ -88,7 +89,7 @@ describe('deliveryTask', () => {
 			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
 		).rejects.toThrow('ETIMEDOUT');
 
-		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({
+		expect(await getDelivery(activityId, address)).toMatchObject({
 			status: 'retrying',
 			attempts: 1,
 			statusCode: null,
@@ -105,7 +106,7 @@ describe('deliveryTask', () => {
 			),
 		).rejects.toThrow();
 
-		expect(await apex.store.getDelivery(activityId, address)).toMatchObject({ attempts: 3 });
+		expect(await getDelivery(activityId, address)).toMatchObject({ attempts: 3 });
 	});
 
 	test('does nothing when apex.deliver returns null (localhost address in production)', async () => {
@@ -115,7 +116,7 @@ describe('deliveryTask', () => {
 			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
 		).resolves.toBeUndefined();
 
-		expect(await apex.store.getDelivery(activityId, address)).toBeUndefined();
+		expect(await getDelivery(activityId, address)).toBeUndefined();
 	});
 
 	test('does nothing when the actor cannot be found', async () => {
@@ -132,7 +133,7 @@ describe('deliveryTask', () => {
 		).resolves.toBeUndefined();
 
 		expect(deliverSpy).not.toHaveBeenCalled();
-		expect(await apex.store.getDelivery(activityId, address)).toBeUndefined();
+		expect(await getDelivery(activityId, address)).toBeUndefined();
 	});
 
 	test('discards the task when payload structure is invalid', async () => {

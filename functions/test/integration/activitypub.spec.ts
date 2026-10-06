@@ -4,6 +4,7 @@ import { activitypub } from '../../src/activitypub.js';
 import { apex } from '../../src/apex.js';
 
 import { resetFirestore } from '../helpers/index.js';
+import { recordDeliveryResult } from '../../src/store/deliveries.js';
 
 const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 
@@ -167,7 +168,7 @@ describe('activitypub', () => {
 		});
 
 		test('GET /failed lists only permanent_failure/retrying deliveries', async () => {
-			await apex.store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId: 'https://example.com/activities/1',
 				actorId: 'https://example.com/users/hakatashi',
 				address: 'https://remote.example/u/alice/inbox',
@@ -176,7 +177,7 @@ describe('activitypub', () => {
 				status: 'permanent_failure',
 				statusCode: 410,
 			});
-			await apex.store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId: 'https://example.com/activities/2',
 				actorId: 'https://example.com/users/hakatashi',
 				address: 'https://remote.example/u/bob/inbox',
@@ -199,7 +200,7 @@ describe('activitypub', () => {
 			const actorId = 'https://example.com/users/hakatashi';
 			const address = 'https://remote.example/u/carol/inbox';
 			const body = `{"id":"${activityId}","type":"Create"}`;
-			await apex.store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
