@@ -31,7 +31,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ |
 | `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ |
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
-| `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化し、Follow / Accept / Undo の書き込み時に `userInfos` のフォロー数・フォロワー数を再計算 |
+| `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
@@ -179,21 +179,21 @@ IRI はドットを含むので、クエリのフィールドパスは必ず
 (→ [ADR-0021](adr/0021-meta-index-as-maps.md)、ヘルパーは `functions/src/meta.ts`)。
 
 このインデックスは **Firestore に絞り込ませるためだけに使う。** 取得済みドキュメントに対する
-判定(`removeActivity` の actor 照合、`getFollowers` の Undo 突き合わせなど)は、トリガーの遅延に
+判定(`removeActivity` の actor 照合など)は、トリガーの遅延に
 依存しないよう生の `actor`/`object` を `toIdArray` で解決して行う。
 
-apex のストア抽象では集計ができないため、フォロワー数・投稿数は Firestore Trigger
-(`functions/src/denormalizations.ts`)で `userInfos` に非正規化している。
-投稿数は差分更新、フォロー数・フォロワー数はソーシャルグラフ層 (`functions/src/social/follows.ts`) の関数で数え直す再計算で持つ
-(→ [ADR-0075](adr/0075-recompute-follow-counts.md)、[ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
+apex のストア抽象では集計ができないため、投稿数は Firestore Trigger
+(`functions/src/denormalizations.ts`)で `userInfos` に差分更新で非正規化している。
 既存データの再計算には `functions/bin/denormalizations.ts` を使う。
 
-フォロー関係は、これとは別に `userInfos/{actor}/followers`・`following` に射影している
+フォロー関係は `userInfos/{actor}/followers`・`following` に射影している
 (`functions/src/projections/follows.ts`)。Store の `saveActivity` / `updateActivityMeta` / `removeActivity` が
 Follow を書き換えるとき、同じトランザクションで射影と `followers_count` / `following_count` を差分更新する
 (→ [ADR-0082](adr/0082-project-follow-relations-in-store.md))。判定は Follow の `_meta.collection`
-(apex の followers / following / rejections への所属)による。読み取り側はまだ射影を使っておらず、
-カウンタは上記の再計算も並行して書いている。既存データからの組み立て直しには
+(apex の followers / following / rejections への所属)による。Mastodon API のフォロー関係の読み取りは
+すべてこの射影から行い、streams の Follow / Accept / Undo は引かない
+(→ [ADR-0083](adr/0083-read-follow-relations-from-projection.md))。
+射影はローカル actor の分しかない。既存データからの組み立て直し(カウンタを含む)には
 `functions/bin/backfillFollowProjection.ts` を使う。
 
 ## ソーシャル・タイムライン層 (social/)
@@ -202,13 +202,13 @@ Follow を書き換えるとき、同じトランザクションで射影と `fo
 
 | ファイル | 役割 |
 |---|---|
-| `follows.ts` | フォロー判定の集約(`resolveOutgoingFollows` / `collectFollowers`)、フォロー中・フォロワー一覧、および古い重複 Follow の削除(`removeSupersededFollows`) |
+| `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
 | `timelines.ts` | Note コレクションのカーソル走査(`collectVisibleNotes`)、アカウント投稿・公開・ホームタイムラインの Note 収集 |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
-フォロー関係の判定は、自分発のフォロー状態を `resolveOutgoingFollows`、自分宛のフォロワー状態を `collectFollowers` のそれぞれ単一の関数に集約し、重複する Follow/Accept/Undo クエリの発行を排除している。Firestore トリガー(`denormalizations.ts`)のフォロー数・フォロワー数再計算もこの層を呼び出し、Mastodon API ルーターモジュールを読み込まない。
+フォロー関係は射影(→ [ADR-0083](adr/0083-read-follow-relations-from-projection.md))から読み、この層は Mastodon API ルーターモジュールを読み込まない。
 
 ## Mastodon API 層
 

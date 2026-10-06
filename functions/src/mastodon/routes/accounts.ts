@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
-import { getFollowerActorIris, getFollowing } from '../../social/follows.js';
+import { getFollowFlags } from '../../social/follows.js';
 import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../../firebase.js';
 import { plainTextToHtml } from '../../notes.js';
 import { Streams, UserInfo, UserInfos } from '../../schema.js';
@@ -270,10 +270,10 @@ router.post(
 			throw new UnprocessableError('You cannot follow yourself');
 		}
 
-		const followingSet = new Set(await getFollowing(actor));
-		const isAlreadyFollowing = followingSet.has(targetActor.id);
+		const [flags] = await getFollowFlags(actor, [targetActor.id]);
+		assert(flags !== undefined);
 
-		if (!isAlreadyFollowing) {
+		if (!flags.following) {
 			const activity = await apex.buildActivity('Follow', actor.id, targetActor.id, {
 				object: targetActor.id,
 			});
@@ -284,14 +284,13 @@ router.post(
 
 		const isTargetLocked =
 			targetActor.manuallyApprovesFollowers === true || resolved.userInfo?.locked === true;
-		const followerIris = await getFollowerActorIris(actor);
 		const relationship: RelationshipEntity = {
 			id: req.params.id ?? '',
 			following: !isTargetLocked,
 			showing_reblogs: !isTargetLocked,
 			notifying: false,
 			languages: [],
-			followed_by: followerIris.includes(targetActor.id),
+			followed_by: flags.followedBy,
 			blocking: false,
 			blocked_by: false,
 			muting: false,
@@ -354,14 +353,15 @@ router.post(
 			await apex.store.removeActivity(follow, actor.id);
 		}
 
-		const followerIris = await getFollowerActorIris(actor);
+		const [flags] = await getFollowFlags(actor, [targetActor.id]);
+		assert(flags !== undefined);
 		const relationship: RelationshipEntity = {
 			id: req.params.id ?? '',
 			following: false,
 			showing_reblogs: false,
 			notifying: false,
 			languages: [],
-			followed_by: followerIris.includes(targetActor.id),
+			followed_by: flags.followedBy,
 			blocking: false,
 			blocked_by: false,
 			muting: false,

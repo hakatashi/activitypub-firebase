@@ -1,7 +1,6 @@
 import firebase from 'firebase-admin';
 import { countBy, isEqual } from 'lodash-es';
 import { db, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
-import { recomputeLocalFollowCounts } from '../src/denormalizations.js';
 import { localFollowersId, localFollowingId } from '../src/localActor.js';
 import { buildMetaIndex } from '../src/meta.js';
 import { Streams, UserInfos } from '../src/schema.js';
@@ -140,8 +139,5 @@ db.runTransaction(async (transaction) => {
 			});
 		}
 	});
-}).then(async () => {
-	// followers_count / following_count は一覧と同じ基準で数え直す (→ ADR-0075)。
-	// `_meta.index` の更新がトリガー経由で反映された後に実行すること。
-	await recomputeLocalFollowCounts();
 });
+// followers_count / following_count は bin/backfillFollowProjection.ts が射影から書き直す (→ ADR-0082)。

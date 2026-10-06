@@ -12,7 +12,11 @@ import { buildMetaIndex } from '../../src/meta.js';
 import { followContributions, rebuildFollowProjection } from '../../src/projections/follows.js';
 import { FollowRelations, Streams, UserInfos } from '../../src/schema.js';
 import type { FollowRelation, FollowRelationSide } from '../../src/schema.js';
-import { collectFollowers, resolveOutgoingFollows } from '../../src/social/follows.js';
+import {
+	getFollowerActorIris,
+	getFollowing,
+	getPendingFollowTargetIris,
+} from '../../src/social/follows.js';
 import { toIdArray } from '../../src/utils.js';
 import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
 import type { LocalActor } from '../helpers/index.js';
@@ -77,7 +81,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 		return { followers: userInfo?.followers_count, following: userInfo?.following_count };
 	};
 
-	// 既存の関数は onStreamWritten が書く `_meta.index` を引くので、トリガーの代わりに書いておく。
+	// removeSupersededFollows は onStreamWritten が書く `_meta.index` を引くので、トリガーの代わりに書いておく。
 	const reindexStreams = async () => {
 		const docs = await Streams.get();
 		await Promise.all(
@@ -85,26 +89,37 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 		);
 	};
 
-	// 射影と既存の関数 (collectFollowers / resolveOutgoingFollows) の結果を突き合わせる。
-	const expectConsistentWithLegacy = async () => {
-		await reindexStreams();
-		const [followers, following, legacyFollowers, legacyOutgoing, counts] = await Promise.all([
-			getRelations('followers'),
-			getRelations('following'),
-			collectFollowers(me),
-			resolveOutgoingFollows(me),
-			getCounts(),
-		]);
-		expect(new Set(followers.keys())).toEqual(new Set(legacyFollowers.keys()));
+	// apex の AP コレクション (`_meta.collection` から作られる) の中身を IRI の集合で返す。
+	// `totalItems` はページを指定しないコレクションの説明だけに載る (apex の JSON-LD 形式で配列になる)。
+	const apCollection = async (side: FollowRelationSide) => {
+		const get = (page?: number) =>
+			side === 'followers' ? apex.getFollowers(me, page, true) : apex.getFollowing(me, page, true);
+		const [description, all] = await Promise.all([get(), get(Infinity)]);
+		const items = toIdArray(all.orderedItems);
+		expect([description.totalItems].flat()).toEqual([items.length]);
+		return new Set(items);
+	};
+
+	// 射影・読み取り関数・カウンタ・AP の followers / following コレクションが食い違わないことを確かめる
+	// (→ ADR-0082, ADR-0083)。
+	const expectConsistent = async () => {
+		const [followers, following, followerIris, followingIris, pendingIris, counts] =
+			await Promise.all([
+				getRelations('followers'),
+				getRelations('following'),
+				getFollowerActorIris(me),
+				getFollowing(me),
+				getPendingFollowTargetIris(me),
+				getCounts(),
+			]);
 		const accepted = [...following.values()].filter(({ state }) => state === 'accepted');
 		const pending = [...following.values()].filter(({ state }) => state === 'pending');
-		expect(new Set(accepted.map(({ actor }) => actor))).toEqual(
-			new Set(legacyOutgoing.following.keys()),
-		);
-		expect(new Set(pending.map(({ actor }) => actor))).toEqual(
-			new Set([...legacyOutgoing.pending].filter((iri) => !legacyOutgoing.following.has(iri))),
-		);
+		expect(new Set(followerIris)).toEqual(new Set(followers.keys()));
+		expect(new Set(followingIris)).toEqual(new Set(accepted.map(({ actor }) => actor)));
+		expect(pendingIris).toEqual(new Set(pending.map(({ actor }) => actor)));
 		expect(counts).toEqual({ followers: followers.size, following: accepted.length });
+		expect(await apCollection('followers')).toEqual(new Set(followers.keys()));
+		expect(await apCollection('following')).toEqual(new Set(accepted.map(({ actor }) => actor)));
 	};
 
 	beforeEach(async () => {
@@ -149,7 +164,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 			});
 			expect(followers.get(ALICE)?.followMastodonId).toMatch(/^\d{20}$/);
 			expect(await getCounts()).toEqual({ followers: 1, following: 0 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 
 		test('ignores redelivery of the same Follow', async () => {
@@ -158,7 +173,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 
 			expect((await getRelations('followers')).size).toBe(1);
 			expect(await getCounts()).toEqual({ followers: 1, following: 0 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 
 		test('replaces a superseded Follow from the same actor without double counting', async () => {
@@ -173,7 +188,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 			expect(followers.get(ALICE)?.followIri).toBe('https://remote.example/follows/alice-2');
 			expect(followers.get(ALICE)?.follows).toHaveLength(1);
 			expect(await getCounts()).toEqual({ followers: 2, following: 0 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 
 		test('removes a follower on Undo(Follow), and a repeated Undo is a no-op', async () => {
@@ -190,7 +205,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 
 			expect([...(await getRelations('followers')).keys()]).toEqual([BOB]);
 			expect(await getCounts()).toEqual({ followers: 1, following: 0 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 
 		test('removes a follower when the local actor rejects it (outbox Reject)', async () => {
@@ -202,6 +217,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 
 			expect((await getRelations('followers')).size).toBe(0);
 			expect(await getCounts()).toEqual({ followers: 0, following: 0 });
+			await expectConsistent();
 		});
 	});
 
@@ -215,7 +231,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 			let following = await getRelations('following');
 			expect(following.get(BOB)).toMatchObject({ actor: BOB, state: 'pending' });
 			expect(await getCounts()).toEqual({ followers: 0, following: 0 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 
 			const [followIri] = await outgoingFollowIris(BOB);
 			expect(followIri).toBeDefined();
@@ -226,7 +242,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 			following = await getRelations('following');
 			expect(following.get(BOB)).toMatchObject({ state: 'accepted', followIri });
 			expect(await getCounts()).toEqual({ followers: 0, following: 1 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 
 		test('removes the entry on unfollow', async () => {
@@ -239,7 +255,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 
 			expect((await getRelations('following')).size).toBe(0);
 			expect(await getCounts()).toEqual({ followers: 0, following: 0 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 
 		test('keeps the remaining pending Follow when one of duplicate Follows is undone', async () => {
@@ -256,7 +272,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 				followIri: followIris[0],
 			});
 			expect(await getCounts()).toEqual({ followers: 0, following: 1 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 
 			// unfollow は承認済みの Follow を Undo する。もう一方は承認待ちとして残る。
 			await mastodonFollow(BOB, 'unfollow');
@@ -265,7 +281,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 				followIri: followIris[1],
 			});
 			expect(await getCounts()).toEqual({ followers: 0, following: 0 });
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 
 		test('removes the entry when the remote rejects a pending or accepted Follow', async () => {
@@ -286,6 +302,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 
 			expect((await getRelations('following')).size).toBe(0);
 			expect(await getCounts()).toEqual({ followers: 0, following: 0 });
+			await expectConsistent();
 		});
 	});
 
@@ -325,7 +342,7 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 			expect(strip(await getRelations('followers'))).toEqual(strip(incremental.followers));
 			expect(strip(await getRelations('following'))).toEqual(strip(incremental.following));
 			expect(await getCounts()).toEqual(incremental.counts);
-			await expectConsistentWithLegacy();
+			await expectConsistent();
 		});
 	});
 

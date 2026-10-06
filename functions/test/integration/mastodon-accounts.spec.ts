@@ -381,6 +381,9 @@ describe('Mastodon Accounts API (Issue #62)', () => {
 				},
 			};
 			await apex.store.saveActivity(accept);
+			// Accept を受信した apex と同じく、Follow を following コレクションに加える
+			// (フォロー一覧はこれを反映した射影から読む → ADR-0083)。
+			await apex.store.updateActivityMeta(follow, 'collection', `${me.id}/following`, false);
 
 			const res = await request(mastodon).get('/api/v1/accounts/1/following');
 			expect(res.status).toBe(200);

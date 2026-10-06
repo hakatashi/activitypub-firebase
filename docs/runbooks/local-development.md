@@ -180,13 +180,16 @@ Functions エミュレータが Cloud Tasks 用のキューを自動検出し、
 
 ## 非正規化データの再計算
 
-`userInfos` の投稿数・フォロワー数や `streams` の `_meta.objectType` は
+`userInfos` の投稿数や `streams` の `_meta.objectType` は
 Firestore Trigger で非正規化されている。既存データを再計算するワンショットスクリプトがある。
 
 ```bash
 # functions/bin/denormalizations.ts
 # npm scripts には登録されていない。ts-node 等で手動実行する
 ```
+
+フォロー関係の射影と `followers_count` / `following_count` は `functions/bin/backfillFollowProjection.ts` で
+streams の Follow から組み立て直す(→ [ADR-0082](../adr/0082-project-follow-relations-in-store.md))。
 
 対象プロジェクトを間違えないよう、実行前に `GCLOUD_PROJECT` を確認すること。
 
