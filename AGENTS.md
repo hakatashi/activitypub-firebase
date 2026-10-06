@@ -105,15 +105,6 @@ Mastodon API は Elk / Phanpy から投稿・閲覧・タイムラインのペ�
 ページネーションしている。クライアントでの確認は
 [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) の手順で行う。
 
-コードは `entrypoints` → `mastodon/` → `social/` → `store/` の一方向に依存し(oxlint で強制。
-→ [ADR-0080](docs/adr/0080-social-domain-layer-and-dependency-direction.md))、
-フォロー関係・お気に入り・ブーストは `userInfos` のサブコレクションへの射影から読む
-(→ [ADR-0082](docs/adr/0082-project-follow-relations-in-store.md)、
-[ADR-0083](docs/adr/0083-read-follow-relations-from-projection.md)、
-[ADR-0084](docs/adr/0084-project-favourites-and-reblogs.md))。
-**Mastodon API のリクエスト処理で streams のアクティビティを全件クエリしない。**
-ユーザー別の状態が必要になったら、同じ形の射影を足す。
-
 次は **Phase 4(通知・メディア・検索など、Epic
 [#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**。
 その後 Phase 5(引っ越し)に進む(→ [`docs/roadmap.md`](docs/roadmap.md))。
