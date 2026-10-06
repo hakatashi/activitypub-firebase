@@ -6,6 +6,13 @@ import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { removeSupersededFollows } from './follows.js';
+import {
+	LOCAL_DISPLAY_NAME,
+	LOCAL_ICON_URL,
+	LOCAL_SUMMARY,
+	LOCAL_USERNAME,
+	localActorId,
+} from './localActor.js';
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { enqueuePingTask } from './tasks.js';
@@ -118,10 +125,10 @@ app.get(
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
 		const actor = await apex.createActor(
-			'hakatashi',
-			'hakatashi',
-			'博多市です。',
-			'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+			LOCAL_USERNAME,
+			LOCAL_DISPLAY_NAME,
+			LOCAL_SUMMARY,
+			LOCAL_ICON_URL,
 			'Person',
 		);
 		await apex.store.setup(actor);
@@ -142,8 +149,7 @@ app.post(
 
 		const { text } = parsedBody.data;
 
-		const actorId = `https://${domain}/activitypub/u/hakatashi`;
-		const actor = await apex.store.getObject(actorId, true);
+		const actor = await apex.store.getObject(localActorId, true);
 		assert(actor !== undefined, 'actor is undefined');
 		const { activity } = await publishNote(actor, { content: text, visibility: 'public' });
 
@@ -166,9 +172,8 @@ app.get(
 	'/activitypub/publishProfileUpdate',
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
-		const actorId = `https://${domain}/activitypub/u/hakatashi`;
-		const actor = await apex.store.getObject(actorId);
-		const actorWithMeta = await apex.store.getObject(actorId, true);
+		const actor = await apex.store.getObject(localActorId);
+		const actorWithMeta = await apex.store.getObject(localActorId, true);
 		assert(actor !== undefined, 'actor is undefined');
 		assert(actorWithMeta !== undefined, 'actorWithMeta is undefined');
 		await apex.publishUpdate(actorWithMeta, actor);

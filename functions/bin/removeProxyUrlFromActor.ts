@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { LOCAL_USERNAME, localActorIri } from '../src/localActor.js';
 import Store from '../src/store.js';
 
 // dev/prod の Firestore に保存されている actor オブジェクトから endpoints (proxyUrl) を削除する使い捨てスクリプト。
@@ -11,7 +12,7 @@ assert(
 const domain =
 	projectId === 'activitypub-firebase' ? 'hakatashi.com' : 'activitypub-dev.hakatashi.com';
 
-const actorId = `https://${domain}/activitypub/u/hakatashi`;
+const actorId = localActorIri(LOCAL_USERNAME, domain);
 
 const main = async () => {
 	const store = new Store();

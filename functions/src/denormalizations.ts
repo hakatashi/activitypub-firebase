@@ -2,7 +2,8 @@ import assert from 'node:assert';
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { isEqual } from 'lodash-es';
 import { apex } from './activitypub.js';
-import { db, domain, escapeFirestoreKey } from './firebase.js';
+import { db, escapeFirestoreKey } from './firebase.js';
+import { localActorId } from './localActor.js';
 import { collectFollowing, getFollowerActorIris } from './mastodon/api.js';
 import { buildMetaIndex } from './meta.js';
 import { Objects, UserInfos } from './schema.js';
@@ -15,9 +16,6 @@ import {
 	toIdArray,
 	toTypeArray,
 } from './utils.js';
-
-// 単一ユーザー運用 (AGENTS.md) の前提で決め打ち。
-const localActorId = `https://${domain}/activitypub/u/hakatashi`;
 
 // ローカルユーザーの followers_count / following_count を、Mastodon API のフォロワー/
 // フォロー一覧と同じ基準 (Accept 済み・Undo されていない・相手ごとに 1 件) で数え直す。

@@ -1,0 +1,16 @@
+export const routes = {
+	actor: '/activitypub/u/:actor',
+	object: '/activitypub/o/:id',
+	activity: '/activitypub/s/:id',
+	inbox: '/activitypub/u/:actor/inbox',
+	outbox: '/activitypub/u/:actor/outbox',
+	followers: '/activitypub/u/:actor/followers',
+	following: '/activitypub/u/:actor/following',
+	liked: '/activitypub/u/:actor/liked',
+	collections: '/activitypub/u/:actor/c/:id',
+	blocked: '/activitypub/u/:actor/blocked',
+	rejections: '/activitypub/u/:actor/rejections',
+	rejected: '/activitypub/u/:actor/rejected',
+	shares: '/activitypub/s/:id/shares',
+	likes: '/activitypub/s/:id/likes',
+};
