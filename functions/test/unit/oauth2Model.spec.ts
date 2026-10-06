@@ -158,12 +158,14 @@ describe('Oauth2Model', () => {
 		test('finds the user referenced by client.userId', async () => {
 			await Users.add({ id: 'user-1', username: 'hakatashi', password: 'hunter2' });
 
-			const user = await model.getUserFromClient({ userId: 'user-1' } as Client);
+			const user = await model.getUserFromClient({ userId: 'user-1' } as unknown as Client);
 			expect(user).toMatchObject({ id: 'user-1', username: 'hakatashi' });
 		});
 
 		test('returns false when no user matches', async () => {
-			expect(await model.getUserFromClient({ userId: 'missing-user' } as Client)).toBe(false);
+			expect(await model.getUserFromClient({ userId: 'missing-user' } as unknown as Client)).toBe(
+				false,
+			);
 		});
 	});
 

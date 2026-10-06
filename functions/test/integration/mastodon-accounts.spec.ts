@@ -6,12 +6,13 @@ import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getOrAssignMastodonId } from '../../src/mastodonId.js';
 import { Streams } from '../../src/schema.js';
 import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
+import type { LocalActor } from '../helpers/index.js';
 
 const UID_ME = 'uid-hakatashi';
 const UID_ALICE = 'uid-alice';
 
 describe('Mastodon Accounts API (Issue #62)', () => {
-	let me: Awaited<ReturnType<typeof apex.createActor>>;
+	let me: LocalActor;
 
 	const addToken = (token: string, scope: string, uid = UID_ME) =>
 		addAccessToken(token, scope, uid);
@@ -359,7 +360,9 @@ describe('Mastodon Accounts API (Issue #62)', () => {
 				...follow._meta,
 				actors: [me.id],
 				index: {
+					collections: {},
 					actors: { [escapeFirestoreKey(me.id)]: true },
+					objects: {},
 				},
 			};
 			await apex.store.saveActivity(follow);
@@ -373,6 +376,8 @@ describe('Mastodon Accounts API (Issue #62)', () => {
 				collection: [meInbox],
 				index: {
 					collections: { [escapeFirestoreKey(meInbox)]: true },
+					actors: {},
+					objects: {},
 				},
 			};
 			await apex.store.saveActivity(accept);

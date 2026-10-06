@@ -256,13 +256,6 @@ export async function initApex() {
 			oauthAuthorizationEndpoint: 'https://localhost/auth/authorize',
 			proxyUrl: 'https://localhost/proxy',
 		},
-		info: {
-			softwareName: 'ActivityPub Express',
-			version: '2.3.0',
-			metadata: {
-				foo: 'bar',
-			},
-		},
 	});
 
 	// 上流テストでは Cloud Tasks への配送キューイングを行わないためスタブ化する (ADR-0003, ADR-0052)

@@ -65,8 +65,8 @@ describe('apex federation (undici)', () => {
 			});
 			req.on('end', () => {
 				lastReceivedRequest = {
-					method: req.method,
-					url: req.url,
+					...(req.method === undefined ? {} : { method: req.method }),
+					...(req.url === undefined ? {} : { url: req.url }),
 					headers: req.headers,
 					body,
 				};
@@ -213,8 +213,8 @@ describe('apex federation (undici)', () => {
 			});
 
 			const obj = await apex.requestObject(`${serverUrl}/o/test-note`);
-			expect(obj.id).toBe(`${serverUrl}/o/test-note`);
-			expect(obj.type).toBe('Note');
+			expect(obj?.id).toBe(`${serverUrl}/o/test-note`);
+			expect(obj?.type).toBe('Note');
 
 			expect(lastReceivedRequest.method).toBe('GET');
 			expect(lastReceivedRequest.url).toBe('/o/test-note');

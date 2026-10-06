@@ -378,10 +378,10 @@ describe('noteObjectToStatus attribute derivation', () => {
 
 		const withViewer = noteObjectToStatus(note, account, '1', {
 			viewer: {
-				favourited: new Set([note.id]),
-				reblogged: new Set([note.id]),
-				bookmarked: new Set([note.id]),
-				pinned: new Set([note.id]),
+				favourited: new Set([note.id as string]),
+				reblogged: new Set([note.id as string]),
+				bookmarked: new Set([note.id as string]),
+				pinned: new Set([note.id as string]),
 			},
 		});
 		expect(withViewer.favourited).toBe(true);
@@ -539,10 +539,10 @@ describe('noteToViewerAttributes', () => {
 
 	test('resolves attributes from Sets of IRIs in viewer context', () => {
 		const viewer: StatusViewerContext = {
-			favourited: new Set([note.id]),
+			favourited: new Set([note.id as string]),
 			reblogged: new Set(),
-			bookmarked: new Set([note.id]),
-			pinned: new Set([note.id]),
+			bookmarked: new Set([note.id as string]),
+			pinned: new Set([note.id as string]),
 		};
 		expect(noteToViewerAttributes(note, viewer)).toEqual({
 			favourited: true,

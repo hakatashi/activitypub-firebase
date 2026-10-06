@@ -9,6 +9,7 @@ import { getFollowers } from '../../src/mastodon/api.js';
 import { Streams, UserInfos } from '../../src/schema.js';
 
 import { createLocalActor, resetFirestore } from '../helpers/index.js';
+import type { LocalActor } from '../helpers/index.js';
 
 const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 const RECIPIENT_ID = `https://${DEV_DOMAIN}/activitypub/u/hakatashi`;
@@ -46,7 +47,7 @@ const wrapWithRawBody = (target: unknown) => {
 
 describe('inbox Undo(Follow) processing (Issue #53)', () => {
 	let originalEnv: string;
-	let actor: Awaited<ReturnType<typeof apex.createActor>>;
+	let actor: LocalActor;
 
 	beforeEach(async () => {
 		actor = await createLocalActor('hakatashi', {
@@ -115,7 +116,7 @@ describe('inbox Undo(Follow) processing (Issue #53)', () => {
 
 		const mstdnFollowers1 = await getFollowers(actor);
 		expect(mstdnFollowers1).toHaveLength(1);
-		expect(mstdnFollowers1[0].acct).toBe('alice@remote.example');
+		expect(mstdnFollowers1[0]?.acct).toBe('alice@remote.example');
 
 		// 2. Send bare IRI Undo(Follow) to inbox
 		const undoId = 'https://remote.example/activities/undo-1';

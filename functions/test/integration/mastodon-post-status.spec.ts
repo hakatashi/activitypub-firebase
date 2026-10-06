@@ -1,4 +1,4 @@
-import type { APObject } from 'activitypub-types';
+import type { APObject } from '../../src/apex/index.js';
 import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -9,6 +9,7 @@ import { getMastodonIds } from '../../src/mastodonId.js';
 import { IdempotencyKeys, Objects, Streams } from '../../src/schema.js';
 import * as webfinger from '../../src/webfinger.js';
 import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
+import type { LocalActor } from '../helpers/index.js';
 
 const PUBLIC = 'as:Public';
 const REMOTE = 'https://remote.example/u/alice';
@@ -19,7 +20,7 @@ const countNotes = async () =>
 	(await Objects.where('type', 'array-contains', 'Note').get()).docs.length;
 
 describe('POST /api/v1/statuses (Issue #60)', () => {
-	let me: Awaited<ReturnType<typeof apex.createActor>>;
+	let me: LocalActor;
 
 	const addToken = (token: string, scope: string) => addAccessToken(token, scope, UID);
 

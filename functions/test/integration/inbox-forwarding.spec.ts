@@ -130,7 +130,7 @@ describe('/inbox forwarding (W3C ActivityPub 7.1.2, Issue #54)', () => {
 			);
 
 			// エンキューされた body を検証 (元の Create アクティビティが含まれる)
-			const deliveredBody = JSON.parse(deliveryEnqueueSpy.mock.calls[0][1] as string);
+			const deliveredBody = JSON.parse(deliveryEnqueueSpy.mock.calls[0]?.[1] as string);
 			expect(deliveredBody.id).toBe(replyActivityId);
 			expect(deliveredBody.type).toBe('Create');
 		},

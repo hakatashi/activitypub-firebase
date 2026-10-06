@@ -25,7 +25,9 @@ npm --prefix functions run format:check  # oxfmt --check
 
 lint/format の構成は [ADR-0018](../adr/0018-eslint-to-oxlint-oxfmt.md) を参照。
 
-`tsconfig.json` の `include` は `src` のみ。`test/` と `bin/` はビルド対象外。
+`tsconfig.json` は型チェック用(`noEmit`、`src` / `test` / `bin` が対象)、`tsconfig.build.json` は出力用(`src` のみ)。
+`build` は後者、`typecheck` は前者を使う。Vitest は型を検査しないため、テストの型エラーは `typecheck` でのみ検出される。
+PR の CI では `build` と `typecheck` が走る([ADR-0079](../adr/0079-typecheck-tests-and-bin.md))。
 
 ## テスト
 

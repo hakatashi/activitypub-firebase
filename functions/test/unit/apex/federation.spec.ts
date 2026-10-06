@@ -24,6 +24,8 @@ describe('apex pub/federation resolveReferences (ADR-0055)', () => {
 			getStreamCount: vi.fn().mockResolvedValue(0),
 			deliveryEnqueue: vi.fn().mockResolvedValue(true),
 			deliveryRequeue: vi.fn().mockResolvedValue(true),
+			deliveryDequeue: vi.fn().mockResolvedValue(null),
+			getUserCount: vi.fn().mockResolvedValue(0),
 			findActivityByCollectionAndObjectId: vi.fn().mockResolvedValue(undefined),
 			findActivityByCollectionAndActorId: vi.fn().mockResolvedValue(undefined),
 		}) as IApexStore;
@@ -114,7 +116,7 @@ describe('apex pub/federation resolveReferences (ADR-0055)', () => {
 		});
 
 		expect(result).toHaveLength(1);
-		expect(result[0].id).toBe('https://remote.example/s/self');
+		expect(result[0]?.id).toBe('https://remote.example/s/self');
 		expect(requestSpy).toHaveBeenCalledTimes(1);
 	});
 
@@ -176,7 +178,7 @@ describe('apex pub/federation resolveReferences (ADR-0055)', () => {
 		});
 
 		expect(result).toHaveLength(1);
-		expect(result[0].id).toBe('https://remote.example/s/child');
+		expect(result[0]?.id).toBe('https://remote.example/s/child');
 		expect(requestSpy).toHaveBeenCalledTimes(1);
 		expect(requestSpy).toHaveBeenCalledWith('https://remote.example/s/child');
 	});
