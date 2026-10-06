@@ -1,3 +1,4 @@
+import type { EventEmitter } from 'node:events';
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -28,7 +29,7 @@ describe('apex-inbox event: Follow auto-accept', () => {
 		const buildActivitySpy = vi.spyOn(apex, 'buildActivity').mockResolvedValue(acceptActivity);
 		const acceptFollowSpy = vi
 			.spyOn(apex, 'acceptFollow')
-			.mockResolvedValue({ postTask, updated: true });
+			.mockResolvedValue({ postTask, updated: { id: activity.id, type: 'Follow' } });
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
 		const markActivityPublicSpy = vi
 			.spyOn(apex.store, 'markActivityPublic')
@@ -49,10 +50,13 @@ describe('apex-inbox event: Follow auto-accept', () => {
 	});
 
 	test('does not treat non-Follow activities as follow requests', async () => {
-		const buildActivitySpy = vi.spyOn(apex, 'buildActivity').mockResolvedValue({});
-		const acceptFollowSpy = vi
-			.spyOn(apex, 'acceptFollow')
-			.mockResolvedValue({ postTask: vi.fn(), updated: true });
+		const buildActivitySpy = vi
+			.spyOn(apex, 'buildActivity')
+			.mockResolvedValue({ id: 'https://example.com/activitypub/s/unused', type: 'Accept' });
+		const acceptFollowSpy = vi.spyOn(apex, 'acceptFollow').mockResolvedValue({
+			postTask: vi.fn(),
+			updated: { id: 'https://remote.example/activities/other-1', type: 'Follow' },
+		});
 		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
@@ -102,11 +106,11 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 		expect(order).toEqual(['task1', 'task2']);
 	});
 
-	test('dispatches apexLocal.eventMessage to listeners of apexLocal.eventName on the owning app', async () => {
+	test('dispatches apexLocal.eventMessage to listeners of apexLocal?.eventName on the owning app', async () => {
 		const testApp = express();
 		const received: unknown[] = [];
 		testApp.use(runPostWorkBeforeSend);
-		testApp.on('custom-apex-event', (message: unknown) => {
+		(testApp as EventEmitter).on('custom-apex-event', (message: unknown) => {
 			received.push(message);
 		});
 		testApp.get('/test', (req, res) => {
@@ -130,7 +134,7 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 		const received: unknown[] = [];
 		let apexLocal: Record<string, unknown> | undefined;
 		testApp.use(runPostWorkBeforeSend);
-		testApp.on('custom-apex-event', (message: unknown) => {
+		(testApp as EventEmitter).on('custom-apex-event', (message: unknown) => {
 			received.push(message);
 		});
 		testApp.get('/test', (req, res) => {
@@ -147,8 +151,8 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 
 		expect(task).toHaveBeenCalledTimes(1);
 		expect(received).toHaveLength(1);
-		expect(apexLocal.postWork).toEqual([]);
-		expect(apexLocal.eventName).toBeNull();
+		expect(apexLocal?.postWork).toEqual([]);
+		expect(apexLocal?.eventName).toBeNull();
 	});
 
 	test('still sends the response even if a postWork task throws', async () => {

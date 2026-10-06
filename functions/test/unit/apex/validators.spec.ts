@@ -57,6 +57,8 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 		getStreamCount: vi.fn().mockResolvedValue(0),
 		deliveryEnqueue: vi.fn().mockResolvedValue(true),
 		deliveryRequeue: vi.fn().mockResolvedValue(true),
+		deliveryDequeue: vi.fn().mockResolvedValue(null),
+		getUserCount: vi.fn().mockResolvedValue(0),
 		findActivityByCollectionAndObjectId: vi.fn().mockResolvedValue(undefined),
 		findActivityByCollectionAndActorId: vi.fn().mockResolvedValue(undefined),
 	};

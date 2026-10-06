@@ -65,7 +65,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 - 秘密鍵・アクセストークン・`Authorization` ヘッダをログに出力しない。
 - Firestore へのクライアントからの直接アクセスは全面禁止されている。
   すべて Cloud Functions 経由。
-- **PR を作成する前に `build` / `lint` / `format:check` / `test` を全て実行し、
+- **PR を作成する前に `build` / `typecheck` / `lint` / `format:check` / `test` を全て実行し、
   通ることを確認する。**
 - **apex のフォーク (`functions/src/apex/`) から `firebase-admin` / `firebase-functions` /
   本体のモジュールを import しない。** フォークと本体の責務境界は
@@ -77,7 +77,8 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 
 ```bash
 npm --prefix functions ci             # 依存のインストール
-npm --prefix functions run build      # tsc
+npm --prefix functions run build      # tsc(src のみ、lib/ へ出力)
+npm --prefix functions run typecheck  # tsc --noEmit(src / test / bin)
 npm --prefix functions run lint       # oxlint
 npm --prefix functions run format     # oxfmt(自動整形)
 npm --prefix functions run format:check # oxfmt(整形チェックのみ)

@@ -104,3 +104,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0076](0076-pregenerated-test-actor-keys.md) | テスト時の Actor 鍵ペアに事前生成した固定鍵を使う | Accepted |
 | [0077](0077-isolate-test-firestore-by-worker-project-id.md) | ワーカー固有の projectId によるテスト並列化とテストヘルパー共通化 | Accepted |
 | [0078](0078-consolidate-local-actor-configuration.md) | 単一ユーザー前提のローカルアクター設定の集約 | Accepted |
+| [0079](0079-typecheck-tests-and-bin.md) | テストと bin/ を型チェックの対象にし、PR の CI で build と typecheck を実行する | Accepted |

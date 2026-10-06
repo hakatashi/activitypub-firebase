@@ -97,7 +97,7 @@ db.runTransaction(async (transaction) => {
 		// ADR-0021 で廃止した _meta.actorIds / objectIds / objectType / objectTypes を削除する
 		for (const field of LEGACY_META_FIELDS) {
 			const [, key] = field.split('.');
-			if (stream._meta?.[key] !== undefined) {
+			if (key !== undefined && stream._meta?.[key] !== undefined) {
 				updates[field] = firebase.firestore.FieldValue.delete();
 			}
 		}

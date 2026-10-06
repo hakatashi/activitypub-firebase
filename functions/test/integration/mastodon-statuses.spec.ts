@@ -1,4 +1,4 @@
-import type { APObject } from 'activitypub-types';
+import type { APObject } from '../../src/apex/index.js';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/activitypub.js';
@@ -13,14 +13,15 @@ import {
 	mastodon as mastodonReq,
 	resetFirestore,
 } from '../helpers/index.js';
+import type { LocalActor } from '../helpers/index.js';
 
 const UID_ME = 'uid-hakatashi';
 const UID_ALICE = 'uid-alice';
 const REMOTE_BOB = 'https://remote.example/u/bob';
 
 describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
-	let me: Awaited<ReturnType<typeof apex.createActor>>;
-	let alice: Awaited<ReturnType<typeof apex.createActor>>;
+	let me: LocalActor;
+	let alice: LocalActor;
 
 	const addToken = (token: string, scope: string, uid = UID_ME) =>
 		addAccessToken(token, scope, uid);
@@ -320,7 +321,7 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 				content: '<p>Cycle A</p>',
 				published: new Date().toISOString(),
 				inReplyTo: idB,
-			} as APObject);
+			} as unknown as APObject);
 
 			await apex.store.saveObject({
 				id: idB,
@@ -330,7 +331,7 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 				content: '<p>Cycle B</p>',
 				published: new Date().toISOString(),
 				inReplyTo: idA,
-			} as APObject);
+			} as unknown as APObject);
 
 			const ids = await getMastodonIds([
 				{ iri: idA, published: undefined },

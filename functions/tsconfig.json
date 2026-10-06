@@ -4,6 +4,7 @@
 		"moduleResolution": "NodeNext",
 		"noImplicitReturns": true,
 		"noUnusedLocals": true,
+		"noEmit": true,
 		"outDir": "lib",
 		"sourceMap": true,
 		"strict": true,
@@ -21,5 +22,5 @@
 		"require": ["tsconfig-paths/register"]
 	},
 	"compileOnSave": true,
-	"include": ["src"]
+	"include": ["src", "test/**/*.ts", "bin/**/*.ts"]
 }

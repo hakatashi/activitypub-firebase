@@ -1,4 +1,4 @@
-import type { APObject } from 'activitypub-types';
+import type { APObject } from '../../src/apex/index.js';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
@@ -11,13 +11,14 @@ import {
 import { toIdIndex } from '../../src/meta.js';
 import { Streams } from '../../src/schema.js';
 import { resetFirestore } from '../helpers/index.js';
+import type { LocalActor } from '../helpers/index.js';
 
 const PUBLIC = 'https://www.w3.org/ns/activitystreams#Public';
 const REMOTE_A = 'https://remote.example/u/alice';
 const REMOTE_B = 'https://remote.example/u/bob';
 
 describe('Mastodon timelines (Issue #58)', () => {
-	let me: Awaited<ReturnType<typeof apex.createActor>>;
+	let me: LocalActor;
 	let n = 0;
 
 	const saveNote = async (
@@ -47,7 +48,7 @@ describe('Mastodon timelines (Issue #58)', () => {
 	};
 
 	beforeEach(async () => {
-		me = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
+		me = (await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person')) as LocalActor;
 		await apex.store.saveObject(me);
 		for (const [id, name] of [
 			[REMOTE_A, 'alice'],

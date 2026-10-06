@@ -134,7 +134,7 @@ describe('Store', () => {
 			});
 
 			const fetched = await store.getActivity(activity.id, true);
-			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
+			expect(fetched?._meta?.collection).toEqual(['https://example.com/inbox']);
 		});
 
 		test('returns "new collection" and adds to _meta.collection when a new collection is delivered', async () => {
@@ -153,13 +153,13 @@ describe('Store', () => {
 				_meta: { collection: ['https://example.com/inbox-2'] },
 			});
 			expect(updated.isNew).toBe('new collection');
-			expect(updated.activity._meta?.collection).toEqual([
+			expect(updated.activity?._meta?.collection).toEqual([
 				'https://example.com/inbox-1',
 				'https://example.com/inbox-2',
 			]);
 
 			const fetched = await store.getActivity(activity.id, true);
-			expect(fetched?._meta.collection).toEqual([
+			expect(fetched?._meta?.collection).toEqual([
 				'https://example.com/inbox-1',
 				'https://example.com/inbox-2',
 			]);
@@ -185,7 +185,7 @@ describe('Store', () => {
 
 			const fetched = await store.getActivity(activity.id, true);
 			expect(fetched?.type).toBe('Create');
-			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox-1']);
+			expect(fetched?._meta?.collection).toEqual(['https://example.com/inbox-1']);
 		});
 
 		test('does not overwrite an existing activity with the same id when no collection specified', async () => {
@@ -366,8 +366,8 @@ describe('Store', () => {
 
 			const stream = await store.getStream('https://example.com/inbox', null, null);
 			expect(stream).toHaveLength(1);
-			expect(stream[0].id).toBe('https://example.com/activities/in-inbox');
-			expect(stream[0]._meta.collection).toEqual(['https://example.com/inbox']);
+			expect(stream[0]?.id).toBe('https://example.com/activities/in-inbox');
+			expect(stream[0]?._meta?.collection).toEqual(['https://example.com/inbox']);
 		});
 
 		test('returns an activity that belongs to multiple collections for each of them', async () => {
@@ -383,8 +383,8 @@ describe('Store', () => {
 			const followersStream = await store.getStream('https://example.com/followers', null, null);
 			expect(inboxStream).toHaveLength(1);
 			expect(followersStream).toHaveLength(1);
-			expect(inboxStream[0].id).toBe('https://example.com/activities/in-both');
-			expect(followersStream[0].id).toBe('https://example.com/activities/in-both');
+			expect(inboxStream[0]?.id).toBe('https://example.com/activities/in-both');
+			expect(followersStream[0]?.id).toBe('https://example.com/activities/in-both');
 		});
 
 		test('respects the limit argument', async () => {
@@ -409,8 +409,8 @@ describe('Store', () => {
 
 			const stream = await store.getStream('https://example.com/inbox', null, null);
 			expect(stream).toHaveLength(1);
-			expect(typeof stream[0]._id).toBe('string');
-			expect(stream[0]._id.length).toBeGreaterThan(0);
+			expect(typeof stream[0]?._id).toBe('string');
+			expect(stream[0]?._id.length).toBeGreaterThan(0);
 		});
 
 		test('pages through a collection using the _id cursor without duplicates or gaps', async () => {
@@ -478,7 +478,7 @@ describe('Store', () => {
 			]);
 
 			expect(stream).toHaveLength(1);
-			expect(stream[0].id).toBe('https://example.com/activities/from-someone');
+			expect(stream[0]?.id).toBe('https://example.com/activities/from-someone');
 		});
 
 		test('excludes activities whose actor (as an array) is in the blockList', async () => {
@@ -529,10 +529,10 @@ describe('Store', () => {
 			);
 
 			const fetched = await store.getActivity(activity.id, true);
-			expect(fetched?._meta.collection).toEqual(
+			expect(fetched?._meta?.collection).toEqual(
 				expect.arrayContaining(['https://example.com/inbox', 'https://example.com/followers']),
 			);
-			expect(fetched?._meta.collection).toHaveLength(2);
+			expect(fetched?._meta?.collection).toHaveLength(2);
 		});
 
 		test('does not add a duplicate when the value is already present', async () => {
@@ -546,7 +546,7 @@ describe('Store', () => {
 			await store.updateActivityMeta(activity, 'collection', 'https://example.com/inbox', false);
 
 			const fetched = await store.getActivity(activity.id, true);
-			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
+			expect(fetched?._meta?.collection).toEqual(['https://example.com/inbox']);
 		});
 
 		test('removes only the given value, leaving other collections intact', async () => {
@@ -560,7 +560,7 @@ describe('Store', () => {
 			await store.updateActivityMeta(activity, 'collection', 'https://example.com/followers', true);
 
 			const fetched = await store.getActivity(activity.id, true);
-			expect(fetched?._meta.collection).toEqual(['https://example.com/inbox']);
+			expect(fetched?._meta?.collection).toEqual(['https://example.com/inbox']);
 		});
 
 		// acceptFollow (activitypub-express/pub/activity.js) は inbox 受信時に保存された、
@@ -580,13 +580,13 @@ describe('Store', () => {
 			);
 
 			const fetched = await store.getActivity(activity.id, true);
-			expect(fetched?._meta.collection).toEqual(['https://example.com/followers']);
+			expect(fetched?._meta?.collection).toEqual(['https://example.com/followers']);
 		});
 
 		test('throws when the activity does not exist', async () => {
 			await expect(
 				store.updateActivityMeta(
-					{ id: 'https://example.com/activities/missing' },
+					{ id: 'https://example.com/activities/missing', type: 'Follow' },
 					'collection',
 					'https://example.com/inbox',
 					false,

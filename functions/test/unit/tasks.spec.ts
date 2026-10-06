@@ -31,7 +31,9 @@ describe('deliveryTask', () => {
 	});
 
 	test('does nothing on a 2xx response', async () => {
-		const deliverSpy = vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 202 });
+		const deliverSpy = vi
+			.spyOn(apex, 'deliver')
+			.mockResolvedValue({ statusCode: 202, headers: {} });
 
 		await expect(
 			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
@@ -52,7 +54,7 @@ describe('deliveryTask', () => {
 	});
 
 	test('discards the task without throwing on a permanent-failure 4xx response', async () => {
-		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 410 });
+		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 410, headers: {} });
 
 		await expect(
 			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
@@ -66,7 +68,7 @@ describe('deliveryTask', () => {
 	});
 
 	test('throws to trigger a retry on a 5xx response', async () => {
-		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 503 });
+		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 503, headers: {} });
 
 		await expect(
 			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
@@ -95,7 +97,7 @@ describe('deliveryTask', () => {
 	});
 
 	test('uses Cloud Tasks retryCount to compute the attempt number', async () => {
-		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 503 });
+		vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 503, headers: {} });
 
 		await expect(
 			deliveryTask.run(
@@ -117,7 +119,9 @@ describe('deliveryTask', () => {
 	});
 
 	test('does nothing when the actor cannot be found', async () => {
-		const deliverSpy = vi.spyOn(apex, 'deliver').mockResolvedValue({ statusCode: 202 });
+		const deliverSpy = vi
+			.spyOn(apex, 'deliver')
+			.mockResolvedValue({ statusCode: 202, headers: {} });
 
 		await expect(
 			deliveryTask.run(

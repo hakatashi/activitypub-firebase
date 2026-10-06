@@ -1,4 +1,3 @@
-import type { APActor } from 'activitypub-types';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { db, escapeFirestoreKey } from '../../src/firebase.js';
@@ -8,13 +7,14 @@ import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import { MastodonIds, MastodonIdsByIri, Objects, Streams } from '../../src/schema.js';
 import { resetFirestore } from '../helpers/index.js';
+import type { LocalActor } from '../helpers/index.js';
 
 const actor = {
 	id: 'https://example.com/activitypub/u/hakatashi',
 	type: 'Person',
 	preferredUsername: 'hakatashi',
 	inbox: 'https://example.com/activitypub/u/hakatashi/inbox',
-} as unknown as APActor;
+} as unknown as LocalActor;
 
 // getFollowers は生の object/actor フィールドではなく denormalizations.ts が書き込む
 // map 形式の _meta.index を等価条件で引く(→ ADR-0021)。このテストはトリガーが動かない
@@ -24,7 +24,7 @@ const saveStream = (docId: string, activity: Record<string, unknown> & { _meta?:
 	Streams.doc(escapeFirestoreKey(docId)).set({
 		...activity,
 		_meta: { ...activity._meta, index: buildMetaIndex(activity) },
-	});
+	} as never);
 
 // eslint-disable-next-line max-params
 const saveFollow = (docId: string, activityId: string, followerId: string, objectId: string) =>
@@ -49,7 +49,7 @@ const saveUndoFollow = (
 		type: 'Undo',
 		actor: [followerId],
 		object: [undoneFollow],
-		_meta: { collection: [actor.inbox] },
+		_meta: { collection: [actor.inbox as string] },
 	});
 
 describe('getFollowers', () => {
@@ -78,7 +78,7 @@ describe('getFollowers', () => {
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(1);
-		expect(followers[0].acct).toBe('alice@remote.example');
+		expect(followers[0]?.acct).toBe('alice@remote.example');
 	});
 
 	test('finds a follower even when the Follow object is an embedded object rather than a bare IRI', async () => {
@@ -96,7 +96,7 @@ describe('getFollowers', () => {
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(1);
-		expect(followers[0].acct).toBe('alice@remote.example');
+		expect(followers[0]?.acct).toBe('alice@remote.example');
 	});
 
 	test('excludes a follower whose Follow was later undone', async () => {
@@ -156,7 +156,7 @@ describe('getFollowers', () => {
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(1);
-		expect(followers[0].acct).toBe('alice@remote.example');
+		expect(followers[0]?.acct).toBe('alice@remote.example');
 	});
 
 	test('keeps a follower who unfollowed and followed again', async () => {
@@ -183,7 +183,7 @@ describe('getFollowers', () => {
 
 		const followers = await getFollowers(actor);
 		expect(followers).toHaveLength(1);
-		expect(followers[0].acct).toBe('alice@remote.example');
+		expect(followers[0]?.acct).toBe('alice@remote.example');
 	});
 
 	test('handles more than 30 followers by chunking the "in" query', async () => {

@@ -102,7 +102,7 @@ describe('/inbox Update / Delete same-origin check (Issue #51)', () => {
 		expect(response.status).toBe(403);
 
 		const stored = await apex.store.getObject(LOCAL_OBJECT_ID);
-		expect(stored?.content?.[0]).toBe('original local content');
+		expect((stored?.content as unknown[] | undefined)?.[0]).toBe('original local content');
 	});
 
 	test('allows a Delete for a remote object signed by its own-origin actor', async () => {
@@ -137,6 +137,6 @@ describe('/inbox Update / Delete same-origin check (Issue #51)', () => {
 		expect(response.status).toBe(200);
 
 		const stored = await apex.store.getObject(REMOTE_OBJECT_ID);
-		expect(stored?.content?.[0]).toBe('edited remote content');
+		expect((stored?.content as unknown[] | undefined)?.[0]).toBe('edited remote content');
 	});
 });

@@ -1,8 +1,12 @@
+import type { APActor } from 'activitypub-types';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/activitypub.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { UserInfos } from '../../src/schema.js';
 import type { UserInfo } from '../../src/schema.js';
+
+// apex のオブジェクトであり、かつ Mastodon API 層が要求する APActor でもある (api.ts の assertIsAPActor と同じ形)
+export type LocalActor = APObject & APActor;
 
 export interface CreateLocalActorOptions {
 	id?: string;
@@ -21,13 +25,13 @@ export interface CreateLocalActorOptions {
 export const createLocalActor = async (
 	name: string,
 	options: CreateLocalActorOptions = {},
-): Promise<APObject> => {
+): Promise<LocalActor> => {
 	const displayName = options.displayName ?? name;
 	const summary = options.summary ?? '';
 	const icon = options.icon ?? '';
 	const type = options.type ?? 'Person';
 
-	const actor = (await apex.createActor(name, displayName, summary, icon, type)) as APObject;
+	const actor = (await apex.createActor(name, displayName, summary, icon, type)) as LocalActor;
 
 	if (options.save !== false) {
 		await apex.store.saveObject(actor);

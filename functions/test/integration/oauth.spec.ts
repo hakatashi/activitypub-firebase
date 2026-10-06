@@ -483,7 +483,7 @@ describe('oauth', () => {
 			expect(approveResponse.status).toBe(302);
 			const location = approveResponse.headers.location;
 			expect(location).toBeDefined();
-			const redirectUrl = new URL(location);
+			const redirectUrl = new URL(location as string);
 			expect(redirectUrl.searchParams.get('state')).toBe(state);
 			const authCode = redirectUrl.searchParams.get('code');
 			expect(authCode).toBeTruthy();

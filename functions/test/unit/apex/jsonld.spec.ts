@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import ActivitypubExpress from '../../../src/apex/index.js';
+import type { APObject } from '../../../src/apex/index.js';
 import type IApexStore from '../../../src/apex/store/interface.js';
 
 describe('apex JSON-LD public address normalization (ADR-0045)', () => {
@@ -35,13 +36,21 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 		offlineMode: false,
 	});
 
+	const fromJSONLD = async (doc: Record<string, unknown>) => {
+		const processed = await apex.fromJSONLD(doc);
+		if (!processed) {
+			throw new Error('fromJSONLD returned no object');
+		}
+		return processed;
+	};
+
 	describe('fromJSONLD addressing normalization', () => {
 		test.each([
 			['bare Public', 'Public'],
 			['full URI', 'https://www.w3.org/ns/activitystreams#Public'],
 			['compact as:Public', 'as:Public'],
 		])('normalizes %s in "to" array to "as:Public"', async (_label, publicTarget) => {
-			const processed = await apex.fromJSONLD({
+			const processed = await fromJSONLD({
 				'@context': 'https://www.w3.org/ns/activitystreams',
 				type: 'Create',
 				to: [publicTarget],
@@ -58,7 +67,7 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 			['full URI', 'https://www.w3.org/ns/activitystreams#Public'],
 			['compact as:Public', 'as:Public'],
 		])('normalizes %s in "to" single string to "as:Public"', async (_label, publicTarget) => {
-			const processed = await apex.fromJSONLD({
+			const processed = await fromJSONLD({
 				'@context': 'https://www.w3.org/ns/activitystreams',
 				type: 'Create',
 				to: publicTarget,
@@ -69,7 +78,7 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 		});
 
 		test('normalizes all audience fields: to, cc, bto, bcc, audience', async () => {
-			const processed = await apex.fromJSONLD({
+			const processed = await fromJSONLD({
 				'@context': 'https://www.w3.org/ns/activitystreams',
 				type: 'Create',
 				to: ['Public'],
@@ -87,7 +96,7 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 		});
 
 		test('normalizes nested object addressing', async () => {
-			const processed = await apex.fromJSONLD({
+			const processed = await fromJSONLD({
 				'@context': 'https://www.w3.org/ns/activitystreams',
 				type: 'Create',
 				to: ['Public'],
@@ -99,14 +108,14 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 			});
 
 			expect(processed.to).toEqual(['as:Public']);
-			const obj = (processed.object as Record<string, unknown>[])[0];
+			const obj = (processed.object as APObject[])[0] as APObject;
 			expect(obj.to).toEqual(['as:Public']);
 			expect(obj.cc).toEqual(['as:Public', 'https://example.com/followers']);
 			expect(apex.isPublic(obj)).toBe(true);
 		});
 
 		test('normalizes array of nested objects', async () => {
-			const processed = await apex.fromJSONLD({
+			const processed = await fromJSONLD({
 				'@context': 'https://www.w3.org/ns/activitystreams',
 				type: 'Create',
 				object: [
@@ -121,11 +130,11 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 				],
 			});
 
-			const objects = processed.object as Record<string, unknown>[];
-			expect(objects[0].to).toEqual(['as:Public']);
-			expect(objects[1].audience).toEqual(['as:Public']);
-			expect(apex.isPublic(objects[0])).toBe(true);
-			expect(apex.isPublic(objects[1])).toBe(true);
+			const objects = processed.object as APObject[];
+			expect(objects[0]?.to).toEqual(['as:Public']);
+			expect(objects[1]?.audience).toEqual(['as:Public']);
+			expect(apex.isPublic(objects[0] as APObject)).toBe(true);
+			expect(apex.isPublic(objects[1] as APObject)).toBe(true);
 		});
 	});
 

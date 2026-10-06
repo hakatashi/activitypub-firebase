@@ -25,6 +25,8 @@ describe('apex pub/object resolveObject & resolveUnknown (ADR-0053)', () => {
 			getStreamCount: vi.fn().mockResolvedValue(0),
 			deliveryEnqueue: vi.fn().mockResolvedValue(true),
 			deliveryRequeue: vi.fn().mockResolvedValue(true),
+			deliveryDequeue: vi.fn().mockResolvedValue(null),
+			getUserCount: vi.fn().mockResolvedValue(0),
 			findActivityByCollectionAndObjectId: vi.fn().mockResolvedValue(undefined),
 			findActivityByCollectionAndActorId: vi.fn().mockResolvedValue(undefined),
 		}) as IApexStore;

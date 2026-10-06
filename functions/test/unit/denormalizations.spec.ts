@@ -1,9 +1,9 @@
 import assert from 'node:assert';
 import type { DocumentReference, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
-import type { APActor } from 'activitypub-types';
 import { apex } from '../../src/activitypub.js';
 import { buildMetaIndex } from '../../src/meta.js';
+import type { MetaIndex } from '../../src/meta.js';
 import {
 	onStreamCreated,
 	onStreamWritten,
@@ -13,6 +13,7 @@ import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { Objects, Streams, UserInfos } from '../../src/schema.js';
 
 import { resetFirestore } from '../helpers/index.js';
+import type { LocalActor } from '../helpers/index.js';
 
 const getData = async <T>(ref: DocumentReference<T>): Promise<T> => {
 	const data = (await ref.get()).data();
@@ -57,7 +58,7 @@ describe('denormalizations', () => {
 			await onStreamWritten.run(makeWrittenEvent({ data: { before: undefined, after } }));
 
 			const updated = await getData(ref);
-			expect(updated._meta.index).toEqual({
+			expect(updated._meta?.index).toEqual({
 				collections: {
 					[escapeFirestoreKey('https://example.com/activitypub/u/hakatashi/inbox')]: true,
 				},
@@ -82,10 +83,10 @@ describe('denormalizations', () => {
 			await onStreamWritten.run(makeWrittenEvent({ data: { before: undefined, after } }));
 
 			const updated = await getData(ref);
-			expect(updated._meta.index.actors).toEqual({
+			expect(updated._meta?.index?.actors).toEqual({
 				[escapeFirestoreKey('https://remote.example/u/alice')]: true,
 			});
-			expect(updated._meta.index.objects).toEqual({
+			expect(updated._meta?.index?.objects).toEqual({
 				[escapeFirestoreKey('https://example.com/users/hakatashi')]: true,
 			});
 		});
@@ -104,14 +105,14 @@ describe('denormalizations', () => {
 			await onStreamWritten.run(makeWrittenEvent({ data: { before: undefined, after } }));
 
 			const updated = await getData(ref);
-			expect(Object.keys(updated._meta.index.objects)).toEqual([
+			expect(Object.keys(updated._meta?.index?.objects ?? {})).toEqual([
 				'https:%2F%2Fmstdn%2Ejp%2Fusers%2Fhakatashi%2Fstatuses%2F1',
 			]);
 		});
 
 		test('does not write when the index is already up to date', async () => {
 			const ref = Streams.doc(escapeFirestoreKey('stream-4'));
-			const index = {
+			const index: MetaIndex = {
 				collections: {},
 				actors: { [escapeFirestoreKey('https://remote.example/u/alice')]: true },
 				objects: { [escapeFirestoreKey('https://example.com/users/hakatashi')]: true },
@@ -152,7 +153,7 @@ describe('denormalizations', () => {
 			await onStreamWritten.run(makeWrittenEvent({ data: { before: undefined, after } }));
 
 			const updated = await getData(ref);
-			expect(updated._meta.index).toEqual({ collections: {}, actors: {}, objects: {} });
+			expect(updated._meta?.index).toEqual({ collections: {}, actors: {}, objects: {} });
 		});
 	});
 
@@ -243,7 +244,7 @@ describe('denormalizations', () => {
 			const ref = Streams.doc(escapeFirestoreKey('note-stream-array-type'));
 			await ref.set({
 				id: 'https://example.com/activities/note-array',
-				type: ['Create'],
+				type: ['Create'] as unknown as string,
 				actor: [actorId],
 				object: [{ type: ['Note'] }],
 			});
@@ -339,7 +340,7 @@ describe('denormalizations', () => {
 			const ref = Streams.doc(escapeFirestoreKey('delete-note-stream'));
 			await ref.set({
 				id: 'https://example.com/activities/delete-2',
-				type: ['Delete'],
+				type: ['Delete'] as unknown as string,
 				actor: [actorId],
 				object: [{ id: 'https://example.com/notes/2', type: ['Note'] }],
 			});
@@ -568,7 +569,7 @@ describe('denormalizations', () => {
 			type: 'Person',
 			preferredUsername: 'hakatashi',
 			inbox: `${localId}/inbox`,
-		} as unknown as APActor;
+		} as unknown as LocalActor;
 
 		const setUserInfo = (followers: number, following: number) =>
 			UserInfos.doc(escapeFirestoreKey(localId)).set({
