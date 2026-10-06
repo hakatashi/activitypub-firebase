@@ -70,6 +70,20 @@ export interface FollowRelation {
 export const FollowRelations = (userInfoKey: FirestoreKey, side: FollowRelationSide) =>
 	UserInfos.doc(userInfoKey).collection(side) as CollectionReference<FollowRelation>;
 
+// お気に入り・ブーストの射影 (→ ADR-0084)。`userInfos/{ローカル actor}/favourites|reblogs/{Note}`。
+export type ReactionKind = 'favourites' | 'reblogs';
+
+export interface ReactionRelation {
+	// 対象の Note IRI
+	object: string;
+	// その Note への生きている Like / Announce の IRI
+	activityIris: string[];
+	createdAt: Timestamp;
+}
+
+export const ReactionRelations = (userInfoKey: FirestoreKey, kind: ReactionKind) =>
+	UserInfos.doc(userInfoKey).collection(kind) as CollectionReference<ReactionRelation>;
+
 export interface MastodonClient extends Client {
 	clientId: string;
 	clientSecret: string;

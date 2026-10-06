@@ -24,6 +24,9 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 `noteObjectToStatus`(`functions/src/mastodon/presenters/status.ts`)は `reblog` を常に `null` で返し、
 タイムラインと `accounts/:id/statuses` は Note だけを集める。自分やフォロー中のアカウントの
 `Announce` はタイムラインに現れない(ブーストの実行と `reblogged` の判定はできる)。
+`POST /api/v1/statuses/:id/reblog` も、Mastodon のようにブーストを包んだ Status ではなく元の Status を返す。
+Elk は応答の `reblog` を元の Status として読むため、ブーストのたびに `pageerror: Cannot read properties of null (reading 'id')`
+が出る(ブースト自体は成功し、再読み込みすれば表示は正しい)。
 
 ### リモートアカウントのカウントと登録日が固定値
 

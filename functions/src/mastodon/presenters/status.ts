@@ -4,6 +4,7 @@ import firebase from 'firebase-admin';
 import { chunk, uniq, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
+import { getReactedNoteIris } from '../../social/reactions.js';
 import { getThreadAncestors, getThreadDescendants } from '../../social/threads.js';
 import {
 	getAccountNotes,
@@ -18,18 +19,10 @@ import {
 	unescapeFirestoreKey,
 } from '../../firebase.js';
 import { getMastodonIds } from '../../mastodonId.js';
-import { Streams, UserInfos } from '../../schema.js';
+import { UserInfos } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store.js';
 import type { CamelToSnake } from '../../utils.js';
-import {
-	getAttributedTo,
-	isAPAnnounce,
-	isAPLike,
-	isAPNote,
-	isAPUndo,
-	toIdArray,
-	toStringValue,
-} from '../../utils.js';
+import { getAttributedTo, isAPNote, toIdArray, toStringValue } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
 import {
 	getMentionIris,
@@ -126,7 +119,7 @@ export interface ViewerRelationships {
 	pinned: Set<string>;
 }
 
-// 認証ユーザー (viewer) と対象 Note 群との関係 (favourite / reblog / bookmark / pin) を一括解決する (→ ADR-0070)。
+// 認証ユーザー (viewer) と対象 Note 群との関係 (favourite / reblog / bookmark / pin) を一括解決する (→ ADR-0070, ADR-0084)。
 export const getViewerRelationships = async (
 	viewer: APActor | undefined,
 	notes: NoteObject[],
@@ -148,44 +141,11 @@ export const getViewerRelationships = async (
 		.map((note) => note.id)
 		.filter((id): id is string => id !== undefined);
 
-	// 1. Like, Announce, Undo from streams
-	const [likeStreams, announceStreams, undoStreams] = await Promise.all([
-		Streams.where('type', '==', 'Like').where('actor', 'array-contains', viewer.id).get(),
-		Streams.where('type', '==', 'Announce').where('actor', 'array-contains', viewer.id).get(),
-		Streams.where('type', '==', 'Undo').where('actor', 'array-contains', viewer.id).get(),
+	// 1. Favourites / reblogs from the projection (→ ADR-0084)
+	const [favourited, reblogged] = await Promise.all([
+		getReactedNoteIris(viewer.id, 'favourites', noteIris),
+		getReactedNoteIris(viewer.id, 'reblogs', noteIris),
 	]);
-
-	const undoneActivityIds = new Set(
-		undoStreams.docs.flatMap((doc) => {
-			const data = doc.data();
-			if (!isAPUndo(data)) {
-				return [];
-			}
-			return toIdArray(data.object);
-		}),
-	);
-
-	const favourited = new Set<string>();
-	for (const doc of likeStreams.docs) {
-		const data = doc.data();
-		if (undoneActivityIds.has(data.id) || !isAPLike(data)) {
-			continue;
-		}
-		for (const targetId of toIdArray(data.object)) {
-			favourited.add(targetId);
-		}
-	}
-
-	const reblogged = new Set<string>();
-	for (const doc of announceStreams.docs) {
-		const data = doc.data();
-		if (undoneActivityIds.has(data.id) || !isAPAnnounce(data)) {
-			continue;
-		}
-		for (const targetId of toIdArray(data.object)) {
-			reblogged.add(targetId);
-		}
-	}
 
 	// 2. Bookmarks from userInfos/{actorKey}/bookmarks
 	const bookmarked = new Set<string>();

@@ -134,6 +134,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
 | `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
+| `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | `markers` | `エスケープした actor IRI_タイムライン名` | `/api/v1/markers` の既読位置(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
 | `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
@@ -195,6 +196,13 @@ Follow を書き換えるとき、同じトランザクションで射影と `fo
 (→ [ADR-0083](adr/0083-read-follow-relations-from-projection.md))。
 射影はローカル actor の分しかない。既存データからの組み立て直し(カウンタを含む)には
 `functions/bin/backfillFollowProjection.ts` を使う。
+
+お気に入り・ブーストも同じ形で `userInfos/{actor}/favourites`・`reblogs` に射影している
+(`functions/src/projections/reactions.ts`)。ローカル actor 発の Like / Announce が streams に存在する間だけ、
+対象 Note のドキュメントにそのアクティビティの IRI が載る。Undo の送信と同時に元のアクティビティを
+`Store#removeActivity` で消すので、Undo とは突き合わせない(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md))。
+Store が呼ぶ射影は `functions/src/projections/index.ts` でまとめている。
+既存データからの組み立て直しには `functions/bin/backfillReactionProjection.ts` を使う。
 
 ## ソーシャル・タイムライン層 (social/)
 
@@ -265,8 +273,10 @@ Mastodon ID から Note を引いて処理する。削除時は Note を Tombsto
 
 ローカルアカウントの Account ID は `userInfos` の `id`、リモートアカウントは Mastodon ID で採番した値を使い、
 Status の `mentions[].id` もこれに揃える(→ [ADR-0069](adr/0069-mastodon-account-id-and-status-mentions.md))。
-Status の `favourited` / `reblogged` / `bookmarked` / `pinned` は認証ユーザーの Like / Announce と
-`userInfos/{actor}/bookmarks`・`pins` から判定する(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。
+Status の `favourited` / `reblogged` / `bookmarked` / `pinned` は認証ユーザーの
+`userInfos/{actor}/favourites`・`reblogs`・`bookmarks`・`pins` から判定する
+(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md))。
+unfavourite / unreblog は射影に載っている Like / Announce をすべて Undo する。
 認証・スコープのエラーは Mastodon と同じく 401 / 403 を JSON で返す(→ [ADR-0074](adr/0074-mastodon-api-authentication-error-handling.md))。
 
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。

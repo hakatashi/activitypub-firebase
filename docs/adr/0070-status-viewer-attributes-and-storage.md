@@ -1,6 +1,6 @@
 # ADR-0070: Status の認証ユーザー依存属性の導出と保存形式
 
-- **Status:** Accepted
+- **Status:** Accepted(favourited / reblogged の判定は ADR-0084 で superseded)
 - **Date:** 2026-10-04
 
 ## 背景

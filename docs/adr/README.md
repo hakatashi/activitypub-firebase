@@ -95,7 +95,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0067](0067-stubs-markers-and-instance-info.md) | クライアント起動用スタブ・既読マーカー・インスタンス情報の整備 | Accepted |
 | [0068](0068-app-registration-oauth-revocation-and-pkce.md) | アプリ登録の配列対応・トランザクション採番・OAuth トークン失効と PKCE | Accepted |
 | [0069](0069-mastodon-account-id-and-status-mentions.md) | アカウント ID の採番と Status mentions の実 ID 解決 | Accepted |
-| [0070](0070-status-viewer-attributes-and-storage.md) | Status の認証ユーザー依存属性の導出と保存形式 | Accepted |
+| [0070](0070-status-viewer-attributes-and-storage.md) | Status の認証ユーザー依存属性の導出と保存形式 | Partially superseded by ADR-0084 |
 | [0071](0071-post-content-formatting-and-mentions.md) | 投稿本文の解析・自動変換とメンション解決 | Accepted |
 | [0072](0072-match-array-attributed-to-in-note-queries.md) | Note の投稿者検索は配列形式の `attributedTo` にも一致させる | Accepted |
 | [0073](0073-lookup-cached-remote-accounts.md) | `accounts/lookup` は手元にキャッシュ済みのリモート actor を返す | Accepted |
@@ -109,3 +109,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0081](0081-mastodon-http-errors-validation-and-loaders.md) | Mastodon API の HttpError、検証ミドルウェア、リソースローダーの導入 | Accepted |
 | [0082](0082-project-follow-relations-in-store.md) | フォロー関係を userInfos のサブコレクションに射影し、Store で差分更新する | Accepted |
 | [0083](0083-read-follow-relations-from-projection.md) | フォロー関係の読み取りを射影に切り替え、全件の再計算を撤去する | Accepted |
+| [0084](0084-project-favourites-and-reblogs.md) | お気に入り・ブーストの閲覧者状態を userInfos のサブコレクションに射影する | Accepted |
