@@ -114,3 +114,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0086](0086-normalize-object-query-fields-into-meta.md) | objects の検索用フィールドを `_meta` に正規化し、OR クエリをなくす | Accepted |
 | [0087](0087-upgrade-to-express-5.md) | Express 5 に上げ、async ハンドラの独自ラッパーを撤去する | Accepted |
 | [0088](0088-project-notifications-in-store.md) | 受信したアクティビティを通知として userInfos に射影し、Store で差分更新する | Accepted |
+| [0089](0089-notifications-api.md) | 通知 API の実装と組み立て・ページネーション・未読管理の仕様 | Accepted |

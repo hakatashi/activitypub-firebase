@@ -70,4 +70,15 @@ describe('buildLinkHeader', () => {
 			`<${base}?limit=2&max_id=${id(4)}>; rel="next", <${base}?limit=2&min_id=${id(5)}>; rel="prev"`,
 		);
 	});
+
+	test('preserves array query parameters such as types[]', () => {
+		const link = buildLinkHeader(
+			base,
+			{ limit: '2', types: ['mention', 'favourite'], max_id: id(9) },
+			[id(5), id(4)],
+		);
+		expect(link).toBe(
+			`<${base}?limit=2&types%5B%5D=mention&types%5B%5D=favourite&max_id=${id(4)}>; rel="next", <${base}?limit=2&types%5B%5D=mention&types%5B%5D=favourite&min_id=${id(5)}>; rel="prev"`,
+		);
+	});
 });

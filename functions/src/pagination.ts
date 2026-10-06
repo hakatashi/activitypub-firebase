@@ -74,8 +74,18 @@ export const buildLinkHeader = (
 	const build = (key: 'max_id' | 'min_id', id: string) => {
 		const url = new URL(baseUrl);
 		for (const [name, value] of Object.entries(query)) {
-			if (typeof value === 'string' && !PAGINATION_KEYS.includes(name)) {
+			if (PAGINATION_KEYS.includes(name)) {
+				continue;
+			}
+			if (typeof value === 'string') {
 				url.searchParams.set(name, value);
+			} else if (Array.isArray(value)) {
+				const paramName = name.endsWith('[]') ? name : `${name}[]`;
+				for (const item of value) {
+					if (typeof item === 'string') {
+						url.searchParams.append(paramName, item);
+					}
+				}
 			}
 		}
 		url.searchParams.set(key, id);
