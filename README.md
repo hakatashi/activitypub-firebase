@@ -17,10 +17,11 @@ Firebase (Hosting + Cloud Functions + Firestore) 上に、ActivityPub と Mastod
 - [docs/mastodon-api-coverage.md](docs/mastodon-api-coverage.md) — Mastodon API の実装状況
 - [docs/runbooks/local-development.md](docs/runbooks/local-development.md) — ビルド・テスト・デプロイ
 - [docs/runbooks/federation-testing.md](docs/runbooks/federation-testing.md) — 連合の動作確認
+- [docs/runbooks/client-testing.md](docs/runbooks/client-testing.md) — Elk などのクライアントでの動作確認
 
 ## 状態
 
-**他の Mastodon インスタンスとの連合が双方向で動作します。**
+**他の Mastodon インスタンスとの連合が双方向で動作し、Elk / Phanpy などのクライアントから投稿・閲覧・タイムラインのページングが一通り動作します。**
 
 - **配送(Phase 1 / [#6](https://github.com/hakatashi/activitypub-firebase/issues/6))**:
   配送は Cloud Tasks に載せ替えられ([ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md))、
@@ -31,19 +32,23 @@ Firebase (Hosting + Cloud Functions + Firestore) 上に、ActivityPub と Mastod
   Inbox Forwarding (7.1.2) といった MUST 要件を実装し、`Like` / `Announce` / `Undo` の
   受信までを実インスタンス相手に確認済みです
   ([docs/runbooks/federation-testing.md](docs/runbooks/federation-testing.md))。
-
 - **apex フォーク(Phase 2.5 / [#103](https://github.com/hakatashi/activitypub-firebase/issues/103))**:
   `activitypub-express` を `functions/src/apex/` に取り込んで TypeScript 化し
   ([ADR-0040](docs/adr/0040-fork-activitypub-express.md))、本体側にあった apex の回避コードを
   すべてフォーク内へ移して撤去しました。あわせて上流由来の SSRF・署名検証の不備を塞ぎ、
   移行後も dev 環境で連合が実地で動作することを確認済みです。
+- **Mastodon API(Phase 3 / [#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**:
+  Elk や Phanpy などのサードパーティクライアントから投稿・閲覧・タイムラインのページングが一通り動作し、
+  時系列順の Mastodon ID([ADR-0006](docs/adr/0006-mastodon-api-id-scheme.md))で
+  ページネーションしています([docs/runbooks/client-testing.md](docs/runbooks/client-testing.md))。
 
-現在は **Phase 3(Mastodon API / [#8](https://github.com/hakatashi/activitypub-firebase/issues/8))**
-を進めています。
+現在は **Phase 3.5(リファクタリング / [#181](https://github.com/hakatashi/activitypub-firebase/issues/181))**
+を進めています。Phase 4 / 5 の妨げになる構造的な問題(モジュールの肥大化、遅いテスト、フォロー関係の再計算など)を解消したのち、
+**Phase 4(通知・メディア・検索など / [#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**、
+Phase 5(引っ越し / [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))
+の順に進めます([docs/roadmap.md](docs/roadmap.md))。
 
-**Mastodon API はまだ日常利用に耐えません**(投稿 API が未実装、タイムラインに
-ページネーションと公開範囲判定がないなど)。残っている不具合は
-[docs/known-issues.md](docs/known-issues.md) を参照。
+残っている課題や技術的負債は [docs/known-issues.md](docs/known-issues.md) を参照。
 
 ## クローン
 
