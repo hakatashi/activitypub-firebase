@@ -307,6 +307,8 @@ describe('inbox', function () {
         })
         .then(obj => {
           delete obj._id
+          // Store が検索用に非正規化した `_meta` を除いて比較する (ADR-0086)
+          delete obj._meta
           expect(obj).toEqual(activityNormalized.object[0])
           done()
         })

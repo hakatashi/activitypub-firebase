@@ -368,14 +368,9 @@ export const resolveAccountActor = async (
 };
 
 // 手元にキャッシュ済みのリモート actor を acct で引く。WebFinger で取りに行くことはしない (→ ADR-0073)。
-// inbox で受けた actor は preferredUsername が配列で保存されるため、両方の形式に一致させる。
+// inbox で受けた actor は preferredUsername が配列で保存されるため、正規化した写しで引く (→ ADR-0086)。
 const remoteActorToAccount = async (username: string, lookupDomain: string) => {
-	const snapshot = await Objects.where(
-		firebase.firestore.Filter.or(
-			firebase.firestore.Filter.where('preferredUsername', '==', username),
-			firebase.firestore.Filter.where('preferredUsername', 'array-contains', username),
-		),
-	).get();
+	const snapshot = await Objects.where('_meta.preferredUsername', '==', username).get();
 	const actor = snapshot.docs
 		.map((doc) => doc.data())
 		.find(

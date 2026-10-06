@@ -174,6 +174,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.isPublic` | `streams` | `boolean` | apex の `isPublic()` (`pub/utils.ts`) が `to`/`cc` の `as:Public` と並んで読む宛先判定のショートカット。`Follow` は `to`/`cc` を持たないため、承認時に `Store#markActivityPublic` (`activitypub.ts` の Follow 自動承認処理) が明示的に `true` を書き込み、匿名の `/followers` コレクションに表示されるようにする (→ [ADR-0035](adr/0035-mark-accepted-follow-as-public.md))。 |
 | `_meta.likesCount` / `_meta.sharesCount` | `objects` | `number` | `Like` / `Announce` の受信カウント。apex 本体の likes/shares コレクション機構は activity (streams) 専用で Note のような object を対象にすると機能しないため使わず、`onStreamCreated` トリガーが対象オブジェクトへ直接インクリメント/デクリメントする (→ [ADR-0037](adr/0037-denormalize-like-announce-counts.md))。 |
 | `_meta.published` | `objects` | `string` | タイムラインの並べ替え・範囲指定用の `published`。ミリ秒つき ISO 8601 (UTC) で、Mastodon ID のタイムスタンプと同じ規則で決める(未来は現在時刻に丸める)。AP の `published` は apex の `fromJSONLD` が配列に展開する (`compactArrays: false`) ため Firestore のクエリには使えず、`Store#saveObject` / `updateObject` が非正規化して書く。既存データの再計算は `functions/bin/backfillPublishedMeta.ts` (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。 |
+| `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
 
@@ -265,7 +266,7 @@ API で露出する Status などの ID は AP IRI とは別に採番した、�
 コレクション系エンドポイント(`timelines/public`・`timelines/home`・`accounts/:id/statuses`・`accounts/:id/followers`・`accounts/:id/following`)は
 `max_id` / `since_id` / `min_id` / `limit` でページングし、`Link` ヘッダ(`next` / `prev`)で次のページを示す
 (`Access-Control-Expose-Headers: Link` を付ける)。カーソルは Mastodon ID で、応答は常に新しい順。
-Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [attributedTo +] _meta.published` の昇順・降順の複合インデックス)、
+Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [_meta.attributedTo +] _meta.published` の昇順・降順の複合インデックス)、
 可視性の判定と ID の厳密な比較は取得後にアプリケーション側で行う。followers / following のカーソルは Follow アクティビティの Mastodon ID
 (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。
 
@@ -278,7 +279,7 @@ Mastodon と同じ規則で決め、リプライ先の投稿者を宛先に加�
 個別投稿の取得(`GET /api/v1/statuses/:id`)・削除(`DELETE /api/v1/statuses/:id`)・スレッド表示(`GET /api/v1/statuses/:id/context`)は
 Mastodon ID から Note を引いて処理する。削除時は Note を Tombstone 化して `Delete` を outbox に積み、
 `onStreamCreated` で `statuses_count` を減算する。context は手元に存在する Note のみ `inReplyTo` を祖先方向(最大40件)・
-子返信方向(DFS、深さ20・件数60上限、`type + inReplyTo + _meta.published` 複合インデックス)に探索し、
+子返信方向(DFS、深さ20・件数60上限、`type + _meta.inReplyTo + _meta.published` 複合インデックス)に探索し、
 循環参照を防ぎつつ可視性フィルタを通す(→ [ADR-0064](adr/0064-get-delete-statuses-and-context.md))。
 
 アカウント系エンドポイント(`GET /api/v1/accounts/verify_credentials`・`PATCH /api/v1/accounts/update_credentials`・`GET /api/v1/accounts/:id`・`GET /api/v1/accounts/relationships`・`POST /api/v1/accounts/:id/follow`・`POST /api/v1/accounts/:id/unfollow`)は、

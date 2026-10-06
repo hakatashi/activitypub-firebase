@@ -1,6 +1,6 @@
 # ADR-0072: Note の投稿者検索は配列形式の `attributedTo` にも一致させる
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0086
 - **Date:** 2026-10-05
 
 ## 背景

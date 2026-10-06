@@ -191,6 +191,10 @@ Firestore Trigger で非正規化されている。既存データを再計算�
 フォロー関係の射影と `followers_count` / `following_count` は `functions/bin/backfillFollowProjection.ts` で
 streams の Follow から組み立て直す(→ [ADR-0082](../adr/0082-project-follow-relations-in-store.md))。
 
+`objects` の検索用フィールド(`_meta.attributedTo` / `inReplyTo` / `preferredUsername`)は
+`functions/bin/backfillObjectQueryMeta.ts` で埋め直す(`--dry-run` で件数だけ確認できる。
+→ [ADR-0086](../adr/0086-normalize-object-query-fields-into-meta.md))。
+
 対象プロジェクトを間違えないよう、実行前に `GCLOUD_PROJECT` を確認すること。
 
 ## デプロイ

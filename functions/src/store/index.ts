@@ -4,9 +4,10 @@ import type { APObject, ApexStore, SaveActivityResult } from '../apex/index.js';
 import IApexStore from '../apex/store/interface.js';
 import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
+import { isEmpty, omit } from 'lodash-es';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from '../mastodonId.js';
-import { metaIndexPath } from '../meta.js';
+import { OBJECT_QUERY_META_KEYS, buildObjectQueryMeta, metaIndexPath } from '../meta.js';
 import { prepareProjectionUpdates } from '../projections/index.js';
 import { Contexts, Objects, Streams } from '../schema.js';
 import { toIdArray } from '../utils.js';
@@ -71,17 +72,14 @@ export default class Store extends IApexStore implements ApexStore {
 
 	override async saveObject(object: APObject) {
 		const objectId = object.id ?? this.generateId();
-		const objectWithId = object.id ? object : { ...object, id: objectId };
+		// apex は Create に埋め込んだオブジェクトをそのまま渡してくるため、`_meta` を書き足しても
+		// 呼び出し側 (アクティビティの埋め込み) を汚さないよう複製してから扱う。
+		const objectWithId: APObject = { ...object, id: objectId };
 		const publishedKey = toPublishedSortKey(objectWithId.published);
 		if (publishedKey !== undefined) {
 			objectWithId._meta = { ...objectWithId._meta, published: publishedKey };
 		}
-		if (objectWithId.inReplyTo !== undefined) {
-			const inReplyTo = toIdArray(objectWithId.inReplyTo);
-			if (inReplyTo.length > 0) {
-				objectWithId.inReplyTo = inReplyTo;
-			}
-		}
+		const queryMeta = buildObjectQueryMeta(objectWithId);
 		const docRef = Objects.doc(escapeFirestoreKey(objectId));
 		await this.db.runTransaction(async (transaction) => {
 			const doc = await transaction.get(docRef);
@@ -95,6 +93,10 @@ export default class Store extends IApexStore implements ApexStore {
 						...objectWithId._meta,
 					};
 				}
+			}
+			// 検索用の `_meta` は既存の値を引き継がず、保存する内容から計算し直す (→ ADR-0086)。
+			if (objectWithId._meta !== undefined || !isEmpty(queryMeta)) {
+				objectWithId._meta = { ...omit(objectWithId._meta, OBJECT_QUERY_META_KEYS), ...queryMeta };
 			}
 			// 新規・既存を問わず Mastodon ID のマッピングを保証する (→ ADR-0058)。
 			// 読み取りを伴うため、トランザクション内の書き込みより前に呼ぶ。
@@ -193,12 +195,17 @@ export default class Store extends IApexStore implements ApexStore {
 	override async updateObject(obj: APObject, actorId: string | null, fullReplace: boolean) {
 		const objectDoc = Objects.doc(escapeFirestoreKey(obj.id));
 		const publishedKey = toPublishedSortKey(obj.published);
+		const queryMeta = buildObjectQueryMeta(obj);
 		if (fullReplace) {
+			const meta = {
+				...omit(obj._meta, OBJECT_QUERY_META_KEYS),
+				...(publishedKey === undefined ? {} : { published: publishedKey }),
+				...queryMeta,
+			};
 			await replaceKeepingMeta(
 				objectDoc,
-				publishedKey === undefined
-					? obj
-					: { ...obj, _meta: { ...obj._meta, published: publishedKey } },
+				obj._meta === undefined && isEmpty(meta) ? obj : { ...obj, _meta: meta },
+				OBJECT_QUERY_META_KEYS,
 			);
 			await updateObjectCopies(obj);
 			return obj;
@@ -207,6 +214,13 @@ export default class Store extends IApexStore implements ApexStore {
 			...objectToUpdateDoc(obj),
 			// `_meta` はドット記法で更新し、既存のカウンタなどを消さない。
 			...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
+			// 更新するフィールドに対応する検索用の `_meta` だけを書き直す (→ ADR-0086)。
+			...Object.fromEntries(
+				OBJECT_QUERY_META_KEYS.filter((key) => key in obj).map((key) => [
+					`_meta.${key}`,
+					queryMeta[key] ?? firebase.firestore.FieldValue.delete(),
+				]),
+			),
 		});
 		await updateObjectCopies(obj);
 		return objectDoc.get().then((doc) => {

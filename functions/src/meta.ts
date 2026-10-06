@@ -1,7 +1,7 @@
 import firebase from 'firebase-admin';
 import type { FirestoreKey } from './firebase.js';
 import { escapeFirestoreKey } from './firebase.js';
-import { toIdArray } from './utils.js';
+import { toIdArray, toStringValue } from './utils.js';
 
 // `streams` ドキュメントの `_meta.index` は、Firestore に絞り込ませるためだけに存在する
 // 非正規化インデックス(→ ADR-0021)。IRI の集合を `{ エスケープした IRI: true }` の map として
@@ -32,6 +32,10 @@ declare module './apex/types.js' {
 		sharesCount?: number;
 		// タイムラインの並べ替え・範囲指定用の published (→ ADR-0062)。objects コレクションのみ。
 		published?: string;
+		// objects の検索用に、配列にもスカラーにもなりうるフィールドを正規化した写し (→ ADR-0086)。
+		attributedTo?: string;
+		inReplyTo?: string;
+		preferredUsername?: string;
 	}
 }
 
@@ -58,3 +62,26 @@ export const buildMetaIndex = (stream: {
 	actors: toIdIndex(toIdArray(stream.actor)),
 	objects: toIdIndex(toIdArray(stream.object)),
 });
+
+// `objects` ドキュメントの `_meta` に非正規化する検索用フィールド (→ ADR-0086)。apex が受信した
+// オブジェクトは `compactArrays: false` で配列になり、ローカルで作ったものはスカラーのままなので、
+// クエリはこれらの写しだけを見る。値はいずれも先頭の1件で、解決できなければキーごと持たない。
+export const OBJECT_QUERY_META_KEYS = ['attributedTo', 'inReplyTo', 'preferredUsername'] as const;
+
+export type ObjectQueryMetaKey = (typeof OBJECT_QUERY_META_KEYS)[number];
+
+export const toObjectQueryMetaValue = (
+	key: ObjectQueryMetaKey,
+	value: unknown,
+): string | undefined => (key === 'preferredUsername' ? toStringValue(value) : toIdArray(value)[0]);
+
+// object の現在の内容から、あるべき検索用の `_meta` を計算する。
+export const buildObjectQueryMeta = (object: {
+	[key: string]: unknown;
+}): Partial<Record<ObjectQueryMetaKey, string>> =>
+	Object.fromEntries(
+		OBJECT_QUERY_META_KEYS.flatMap((key) => {
+			const value = toObjectQueryMetaValue(key, object[key]);
+			return value === undefined ? [] : [[key, value]];
+		}),
+	);
