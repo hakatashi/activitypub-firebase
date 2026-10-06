@@ -3,26 +3,10 @@ import ActivitypubExpress, { onApexEvent } from './apex/index.js';
 import type { Express } from 'express';
 import { logger } from 'firebase-functions/v2';
 import { domain } from './firebase.js';
+import { routes } from './routes.js';
 import Store from './store.js';
 
-// activitypub.ts と tasks.ts の両方が apex インスタンスを必要とするため、
-// import サイクルを避けてここに切り出している。
-export const routes = {
-	actor: '/activitypub/u/:actor',
-	object: '/activitypub/o/:id',
-	activity: '/activitypub/s/:id',
-	inbox: '/activitypub/u/:actor/inbox',
-	outbox: '/activitypub/u/:actor/outbox',
-	followers: '/activitypub/u/:actor/followers',
-	following: '/activitypub/u/:actor/following',
-	liked: '/activitypub/u/:actor/liked',
-	collections: '/activitypub/u/:actor/c/:id',
-	blocked: '/activitypub/u/:actor/blocked',
-	rejections: '/activitypub/u/:actor/rejections',
-	rejected: '/activitypub/u/:actor/rejected',
-	shares: '/activitypub/s/:id/shares',
-	likes: '/activitypub/s/:id/likes',
-};
+export { routes };
 
 // エミュレータ/テストは実際に localhost のモックサーバーへ到達する必要があるため http と
 // ループバックを許可する。dev projectId にデプロイされた本物の Cloud Functions は本番同様

@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import { LOCAL_USERNAME, localActorIri } from '../src/localActor.js';
 import Store from '../src/store.js';
 
 // ADR-0009: 配送が未実装の Phase 0 のうちに actor の秘密鍵をローテーションする、使い捨てスクリプト。
@@ -20,7 +21,7 @@ assert(
 const domain =
 	projectId === 'activitypub-firebase' ? 'hakatashi.com' : 'activitypub-dev.hakatashi.com';
 
-const actorId = `https://${domain}/activitypub/u/hakatashi`;
+const actorId = localActorIri(LOCAL_USERNAME, domain);
 
 const main = async () => {
 	const store = new Store();

@@ -3,7 +3,8 @@ import express from 'express';
 import { https, logger } from 'firebase-functions/v2';
 import { beforeUserCreated, HttpsError } from 'firebase-functions/v2/identity';
 import { apex } from '../activitypub.js';
-import { db, domain, escapeFirestoreKey } from '../firebase.js';
+import { db, escapeFirestoreKey } from '../firebase.js';
+import { LOCAL_ADMIN_EMAIL, LOCAL_USERNAME, localActorId } from '../localActor.js';
 import { UserInfos } from '../schema.js';
 import { pickSafeHeaders, redactSensitiveBody } from '../utils.js';
 import apiRouter from './api.js';
@@ -42,18 +43,17 @@ export const beforeUserCreate = beforeUserCreated(async (user) => {
 	if (
 		!user.data ||
 		user.additionalUserInfo?.providerId !== 'google.com' ||
-		user.data.email !== 'hakatasiloving@gmail.com'
+		user.data.email !== LOCAL_ADMIN_EMAIL
 	) {
-		throw new HttpsError('permission-denied', 'Only hakatashi can create new account');
+		throw new HttpsError('permission-denied', `Only ${LOCAL_USERNAME} can create new account`);
 	}
 
-	const actorId = `https://${domain}/activitypub/u/hakatashi`;
 	const { uid } = user.data;
 
 	await db.runTransaction(async (transaction) => {
 		const nextUserId = (await transaction.get(UserInfos.count())).data().count + 1;
 
-		transaction.set(UserInfos.doc(escapeFirestoreKey(actorId)), {
+		transaction.set(UserInfos.doc(escapeFirestoreKey(localActorId)), {
 			id: nextUserId.toString(),
 			uid,
 			locked: false,

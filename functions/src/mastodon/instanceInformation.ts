@@ -1,5 +1,14 @@
 import type { mastodon } from 'masto';
-import { domain, escapeFirestoreKey, mastodonDomain } from '../firebase.js';
+import { escapeFirestoreKey, mastodonDomain } from '../firebase.js';
+import {
+	LOCAL_ADMIN_EMAIL,
+	LOCAL_DISPLAY_NAME,
+	LOCAL_ICON_URL,
+	LOCAL_SUMMARY,
+	LOCAL_USERNAME,
+	localAccountUrl,
+	localActorId,
+} from '../localActor.js';
 import { UserInfos } from '../schema.js';
 import type { CamelToSnake } from '../utils.js';
 
@@ -29,11 +38,11 @@ const instanceV2: ExtendedInstanceV2 = {
 		mastodon: 1,
 	},
 	thumbnail: {
-		url: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+		url: LOCAL_ICON_URL,
 		blurhash: '',
 		versions: {
-			'@1x': 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-			'@2x': 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+			'@1x': LOCAL_ICON_URL,
+			'@2x': LOCAL_ICON_URL,
 		},
 	},
 	languages: ['ja'],
@@ -73,24 +82,22 @@ const instanceV2: ExtendedInstanceV2 = {
 		},
 	},
 	contact: {
-		email: 'hakatasiloving@gmail.com',
+		email: LOCAL_ADMIN_EMAIL,
 		account: {
 			id: '1',
-			username: 'hakatashi',
-			acct: 'hakatashi',
-			display_name: 'hakatashi',
+			username: LOCAL_USERNAME,
+			acct: LOCAL_USERNAME,
+			display_name: LOCAL_DISPLAY_NAME,
 			locked: false,
 			bot: false,
 			discoverable: true,
 			created_at: '2016-03-16T00:00:00.000Z',
-			note: '博多市です。',
-			url: `https://elk.zone/${mastodonDomain}/@hakatashi@${domain}`,
-			avatar: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-			avatar_static:
-				'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-			header: 'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
-			header_static:
-				'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png',
+			note: LOCAL_SUMMARY,
+			url: localAccountUrl,
+			avatar: LOCAL_ICON_URL,
+			avatar_static: LOCAL_ICON_URL,
+			header: LOCAL_ICON_URL,
+			header_static: LOCAL_ICON_URL,
 			followers_count: 0,
 			following_count: 0,
 			statuses_count: 0,
@@ -148,9 +155,7 @@ const instanceV1: CamelToSnake<mastodon.v1.Instance> = {
 
 const getLocalUserInfo = async () => {
 	try {
-		const doc = await UserInfos.doc(
-			escapeFirestoreKey(`https://${domain}/activitypub/u/hakatashi`),
-		).get();
+		const doc = await UserInfos.doc(escapeFirestoreKey(localActorId)).get();
 		if (doc.exists) {
 			return doc.data();
 		}

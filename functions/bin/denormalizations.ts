@@ -1,14 +1,15 @@
 import firebase from 'firebase-admin';
 import { countBy, isEqual } from 'lodash-es';
-import { db, domain, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
+import { db, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
 import { recomputeLocalFollowCounts } from '../src/denormalizations.js';
+import { localFollowersId, localFollowingId } from '../src/localActor.js';
 import { buildMetaIndex } from '../src/meta.js';
 import { Streams, UserInfos } from '../src/schema.js';
 import { isAPNote, toArray, toIdArray } from '../src/utils.js';
 
 // 単一ユーザー運用 (AGENTS.md) の前提で決め打ち。ADR-0035 のバックフィル専用。
-const followersId = `https://${domain}/activitypub/u/hakatashi/followers`;
-const followingId = `https://${domain}/activitypub/u/hakatashi/following`;
+const followersId = localFollowersId;
+const followingId = localFollowingId;
 
 // ADR-0021 より前のスキーマで書き込まれた非正規化フィールド。バックフィル時に削除する。
 const LEGACY_META_FIELDS = [
