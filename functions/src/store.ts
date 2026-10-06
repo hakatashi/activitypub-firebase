@@ -9,7 +9,7 @@ import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from './mastodonId.js';
 import { metaIndexPath } from './meta.js';
-import { prepareFollowProjectionUpdate } from './projections/follows.js';
+import { prepareProjectionUpdates } from './projections/index.js';
 import { Contexts, Deliveries, Objects, Streams } from './schema.js';
 import { toIdArray } from './utils.js';
 
@@ -487,11 +487,11 @@ export default class Store extends IApexStore implements ApexStore {
 				}
 			}
 
-			// フォロー関係の射影も同じトランザクションで更新する (→ ADR-0082)。
+			// フォロー関係などの射影も同じトランザクションで更新する (→ ADR-0082, ADR-0084)。
 			const commitProjection =
 				write === undefined
 					? undefined
-					: await prepareFollowProjectionUpdate(transaction, existingData, result.activity);
+					: await prepareProjectionUpdates(transaction, existingData, result.activity);
 			// 新規・既存を問わず Mastodon ID のマッピングを保証する (→ ADR-0058)。
 			// 読み取りを伴うため、トランザクション内の書き込みより前に呼ぶ。
 			const mastodonId = await getOrAssignMastodonIdInTransaction(
@@ -519,8 +519,8 @@ export default class Store extends IApexStore implements ApexStore {
 			if (!toIdArray(activityDoc.get('actor')).includes(actorId)) {
 				return;
 			}
-			// フォロー関係の射影も同じトランザクションで更新する (→ ADR-0082)。
-			const commitProjection = await prepareFollowProjectionUpdate(
+			// フォロー関係などの射影も同じトランザクションで更新する (→ ADR-0082, ADR-0084)。
+			const commitProjection = await prepareProjectionUpdates(
 				transaction,
 				activityDoc.data(),
 				undefined,
@@ -573,8 +573,8 @@ export default class Store extends IApexStore implements ApexStore {
 				updated = [...current, value];
 			}
 			const updatedActivity = { ...activityData, _meta: { ...activityData._meta, [key]: updated } };
-			// フォロー関係の射影も同じトランザクションで更新する (→ ADR-0082)。
-			const commitProjection = await prepareFollowProjectionUpdate(
+			// フォロー関係などの射影も同じトランザクションで更新する (→ ADR-0082, ADR-0084)。
+			const commitProjection = await prepareProjectionUpdates(
 				transaction,
 				activityData,
 				updatedActivity,

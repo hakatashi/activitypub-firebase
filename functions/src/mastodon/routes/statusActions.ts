@@ -2,8 +2,9 @@ import assert from 'node:assert';
 import firebase from 'firebase-admin';
 import { apex } from '../../apex.js';
 import { escapeFirestoreKey } from '../../firebase.js';
-import { Streams, UserInfos } from '../../schema.js';
-import { getAttributedTo, isAPAnnounce, isAPLike, isAPUndo, toIdArray } from '../../utils.js';
+import { UserInfos } from '../../schema.js';
+import { undoReactions } from '../../social/reactions.js';
+import { getAttributedTo, toIdArray } from '../../utils.js';
 import { createAsyncRouter } from '../http/asyncRouter.js';
 import { authRequired, scopeRequired } from '../http/auth.js';
 import { UnprocessableError } from '../http/errors.js';
@@ -44,40 +45,7 @@ router.post(
 		const actor = await loadViewer(res);
 		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
-		const [likeDocs, undoDocs] = await Promise.all([
-			Streams.where('type', '==', 'Like').where('actor', 'array-contains', actor.id).get(),
-			Streams.where('type', '==', 'Undo').where('actor', 'array-contains', actor.id).get(),
-		]);
-
-		const undoneIds = new Set(
-			undoDocs.docs.flatMap((doc) => {
-				const data = doc.data();
-				return isAPUndo(data) ? toIdArray(data.object) : [];
-			}),
-		);
-
-		const activeLikeDoc = likeDocs.docs.find(
-			(doc) =>
-				!undoneIds.has(doc.data().id) &&
-				isAPLike(doc.data()) &&
-				toIdArray(doc.data().object).includes(note.id),
-		);
-
-		if (activeLikeDoc !== undefined) {
-			const like = activeLikeDoc.data();
-			const cleanLike = { ...like };
-			delete cleanLike._meta;
-			const undoActivity = await apex.buildActivity(
-				'Undo',
-				actor.id,
-				toIdArray(note.attributedTo),
-				{
-					object: cleanLike,
-				},
-			);
-			await apex.addToOutbox(actor, undoActivity);
-			await apex.store.removeActivity(like, actor.id);
-		}
+		await undoReactions(actor, note, 'favourites');
 
 		const status = await getStatusByIri(note.id, actor);
 		assert(status !== undefined, 'status is undefined');
@@ -125,36 +93,7 @@ router.post(
 		const actor = await loadViewer(res);
 		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
-		const [announceDocs, undoDocs] = await Promise.all([
-			Streams.where('type', '==', 'Announce').where('actor', 'array-contains', actor.id).get(),
-			Streams.where('type', '==', 'Undo').where('actor', 'array-contains', actor.id).get(),
-		]);
-
-		const undoneIds = new Set(
-			undoDocs.docs.flatMap((doc) => {
-				const data = doc.data();
-				return isAPUndo(data) ? toIdArray(data.object) : [];
-			}),
-		);
-
-		const activeAnnounceDoc = announceDocs.docs.find(
-			(doc) =>
-				!undoneIds.has(doc.data().id) &&
-				isAPAnnounce(doc.data()) &&
-				toIdArray(doc.data().object).includes(note.id),
-		);
-
-		if (activeAnnounceDoc !== undefined) {
-			const announce = activeAnnounceDoc.data();
-			const cleanAnnounce = { ...announce };
-			delete cleanAnnounce._meta;
-			const undoActivity = await apex.buildActivity('Undo', actor.id, toIdArray(announce.to), {
-				cc: toIdArray(announce.cc),
-				object: cleanAnnounce,
-			});
-			await apex.addToOutbox(actor, undoActivity);
-			await apex.store.removeActivity(announce, actor.id);
-		}
+		await undoReactions(actor, note, 'reblogs');
 
 		const status = await getStatusByIri(note.id, actor);
 		assert(status !== undefined, 'status is undefined');

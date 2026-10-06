@@ -93,5 +93,10 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
   ただし同じ原因で、**`language` が Elk の表示言語(既定は英語)と異なる投稿は、ヘッドレス Chromium では本文が描画されない**
   (`useTranslation` が `Translator.availability()` を待ったまま進まない)。スクリーンショットで本文が空の投稿があっても、
   API の `content` が正しく `language` が `ja` などなら dev の不具合ではない。
+- `run.mjs` はお気に入り・ブーストのボタンを押さない。確かめるときは使い捨ての Playwright スクリプトで、投稿詳細の
+  ボタン(Elk は `main` 内の `Favorite` / `Boost` ボタン、Phanpy は `.status-deck .actions` の `.favourite-button` /
+  `.reblog-button`。Phanpy のブーストはメニューの `Boost` / `Unboost` まで押す)を押し、API の `favourited` / `reblogged`
+  とリロード後の表示を見る。Elk のブーストで出る `Cannot read properties of null (reading 'id')` は既知
+  (`docs/known-issues.md`「タイムラインにブーストが出ない」)。
 - **この仕組みは OAuth の認可画面(アプリ登録 → 認可 → トークン交換)を通らない。**
   ログインまわりの変更は、従来どおりブラウザで1回ログインして確かめる。

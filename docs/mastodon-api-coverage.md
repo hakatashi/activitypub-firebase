@@ -50,11 +50,11 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids` / `poll` / `scheduled_at` は 422。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)) |
-| GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404。favourited / reblogged / bookmarked / pinned を認証ユーザーから判定 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
+| GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404。favourited / reblogged / bookmarked / pinned を認証ユーザーから判定 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却 |
 | GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |
-| POST | `/api/v1/statuses/:id/favourite` / `unfavourite` | ✅ | `write:favourites` 必須。Like / Undo(Like) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
-| POST | `/api/v1/statuses/:id/reblog` / `unreblog` | ✅ | `write:statuses` 必須。Announce / Undo(Announce) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
+| POST | `/api/v1/statuses/:id/favourite` / `unfavourite` | ✅ | `write:favourites` 必須。Like / Undo(Like) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
+| POST | `/api/v1/statuses/:id/reblog` / `unreblog` | ✅ | `write:statuses` 必須。Announce / Undo(Announce) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | POST | `/api/v1/statuses/:id/bookmark` / `unbookmark` | ✅ | `write:bookmarks` 必須。`userInfos/{actor}/bookmarks` 保存・削除、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
 | POST | `/api/v1/statuses/:id/pin` / `unpin` | ✅ | `write:accounts` 必須。自分の投稿のみ(上限5件)、`userInfos/{actor}/pins` 保存・削除、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
 | POST | `/api/v2/media` | ⬜ | Cloud Storage 連携が必要 |
