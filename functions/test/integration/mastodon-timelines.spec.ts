@@ -4,10 +4,10 @@ import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import {
 	getAccountStatuses,
-	getFollowing,
 	getHomeTimeline,
 	getPublicTimeline,
-} from '../../src/mastodon/api.js';
+} from '../../src/mastodon/presenters/status.js';
+import { getFollowing } from '../../src/social/follows.js';
 import { toIdIndex } from '../../src/meta.js';
 import { Streams } from '../../src/schema.js';
 import { resetFirestore } from '../helpers/index.js';

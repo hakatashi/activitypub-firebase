@@ -65,8 +65,3 @@ router.use(
 );
 
 export default router;
-
-// integration テストが import している関数の再エクスポート (→ #181: integration テストは無改変に保つ)。
-export { getFollowing } from '../social/follows.js';
-export { getFollowers } from './presenters/account.js';
-export { getAccountStatuses, getHomeTimeline, getPublicTimeline } from './presenters/status.js';

@@ -6,7 +6,7 @@ import { activitypub, app } from '../../src/activitypub.js';
 import { apex } from '../../src/apex.js';
 import { onStreamCreated, onStreamWritten } from '../../src/denormalizations.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
-import { getFollowers } from '../../src/mastodon/api.js';
+import { getFollowers } from '../../src/mastodon/presenters/account.js';
 import { Streams, UserInfos } from '../../src/schema.js';
 
 import { createLocalActor, resetFirestore } from '../helpers/index.js';
