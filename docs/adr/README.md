@@ -110,3 +110,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0082](0082-project-follow-relations-in-store.md) | フォロー関係を userInfos のサブコレクションに射影し、Store で差分更新する | Accepted |
 | [0083](0083-read-follow-relations-from-projection.md) | フォロー関係の読み取りを射影に切り替え、全件の再計算を撤去する | Accepted |
 | [0084](0084-project-favourites-and-reblogs.md) | お気に入り・ブーストの閲覧者状態を userInfos のサブコレクションに射影する | Accepted |
+| [0085](0085-split-store-by-responsibility.md) | Store クラスには apex の契約だけを置き、アプリ独自のクエリはモジュール関数にする | Accepted |

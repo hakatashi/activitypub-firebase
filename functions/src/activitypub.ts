@@ -17,6 +17,8 @@ import { runPostWorkBeforeSend } from './postWork.js';
 import { removeSupersededFollows } from './social/follows.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
+import { markActivityPublic } from './store/activities.js';
+import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 
@@ -185,7 +187,7 @@ app.get(
 	'/activitypub/deliveries/failed',
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
-		const deliveries = await apex.store.getFailedDeliveries();
+		const deliveries = await getFailedDeliveries();
 		res.json(deliveries);
 	},
 );
@@ -202,7 +204,7 @@ app.post(
 
 		const { activityId, inbox } = parsedBody.data;
 
-		const delivery = await apex.store.getDelivery(activityId, inbox);
+		const delivery = await getDelivery(activityId, inbox);
 		if (!delivery) {
 			res.status(404).send('Delivery record not found');
 			return;
@@ -255,7 +257,7 @@ onApexInbox(app, async (message) => {
 		);
 		// Follow は to/cc を持たないため、明示的に isPublic を立てないと匿名の
 		// followers コレクションから除外されてしまう (→ ADR-0035)。
-		await apex.store.markActivityPublic(message.activity);
+		await markActivityPublic(message.activity);
 
 		logger.info(`Accepting follow request from ${message.actor.id}`);
 		await apex.addToOutbox(message.recipient, accept);

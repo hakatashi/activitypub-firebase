@@ -1,4 +1,4 @@
-import Store from '../../../src/store.js'
+import Store from '../../../src/store/index.js'
 import ActivitypubExpress from '../../../src/apex/index.js'
 
 const routes = {

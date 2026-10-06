@@ -13,12 +13,12 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 
 ## レイヤ構成とモジュール依存の向き
 
-モジュール間の依存は、上位から下位への一方向(`entrypoints` → `mastodon/` → `social/` → `store.ts` / `apex.ts`)に限定されている(→ [ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
+モジュール間の依存は、上位から下位への一方向(`entrypoints` → `mastodon/` → `social/` → `store/` / `apex.ts`)に限定されている(→ [ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
 
 - **エントリポイント層 (`activitypub.ts` / `mastodon/index.ts` / `denormalizations.ts` / `tasks.ts`)**: 各 Cloud Function のハンドラを構築・エクスポートする。`activitypub.ts` は apex インスタンスを再エクスポートせず、各モジュールは `functions/src/apex.ts` から直接 apex を import する。
 - **Mastodon API ルート層 (`functions/src/mastodon/`)**: HTTP ルーティング、パラメータ検証、認証、および AP オブジェクトから Mastodon エンティティへの変換 (presenter) を担う。
 - **ソーシャル・タイムライン層 (`functions/src/social/`)**: フォロー関係・タイムライン・スレッド探索などのドメインロジックと Firestore クエリを担う。`mastodon/` や `express` には依存しない。
-- **ActivityPub / ストレージ層 (`functions/src/apex/`, `functions/src/store.ts`)**: プロトコル処理および Firestore への低レベル読み書きを行う。
+- **ActivityPub / ストレージ層 (`functions/src/apex/`, `functions/src/store/`)**: プロトコル処理および Firestore への低レベル読み書きを行う。
 
 この依存方向(特に `social/` や `denormalizations.ts` から `mastodon/` への依存禁止)は、oxlint の `no-restricted-imports` により静的に強制される。
 
@@ -104,7 +104,7 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`)は
   `X-Hakatashi-Token` ヘッダで認証する。
 - `offlineMode: true` で初期化しており、apex 内蔵の配送ループ(`setInterval` による
-  常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store.ts`)が
+  常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store/index.ts`)が
   受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている
   (→ [ADR-0003](adr/0003-delivery-via-cloud-tasks.md))。タスクペイロードは
   `actorId` / `body` / `address` の3つで、**秘密鍵は含めない。**
@@ -118,7 +118,21 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
 
 ## ストレージ層
 
-apex の `IApexStore` インターフェースを Firestore で実装した `functions/src/store.ts` が中核。
+apex の `IApexStore` インターフェースを Firestore で実装した `Store` クラス(`functions/src/store/index.ts`)が中核。
+`Store` クラスには apex の契約だけを置き、apex が呼ばないアプリ独自のクエリや操作は
+`functions/src/store/` の機能別のファイルにモジュール関数として置く(→ [ADR-0085](adr/0085-split-store-by-responsibility.md))。
+
+| ファイル | 内容 |
+|---|---|
+| `index.ts` | `Store` クラス(apex の契約)。apex は `apex.store` 越しにこれを呼ぶ |
+| `updates.ts` | `Store` の更新系メソッドが共有する内部処理(`_meta` の引き継ぎ、`streams` の埋め込みコピーの差し替え) |
+| `objects.ts` | `objects` を IRI の一覧でまとめて引く `getObjects` |
+| `notes.ts` | タイムライン用の `getNotes`、スレッド用の `getReplies` |
+| `activities.ts` | `streams` に対する apex の契約外の操作(`markActivityPublic`) |
+| `deliveries.ts` | Cloud Tasks への配送タスクの発行と、配送結果の記録・取得(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
+| `limits.ts` | `FIRESTORE_IN_QUERY_LIMIT` などの Firestore の制約に関する定数 |
+
+新しいクエリを足すときは、apex の契約なら `index.ts` に、アプリ独自なら機能別のファイルに置く。
 
 Firestore のドキュメント ID に URL をそのまま使えないため、
 `escapeFirestoreKey` / `unescapeFirestoreKey`(`functions/src/firebase.ts`)で

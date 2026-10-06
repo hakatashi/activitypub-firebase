@@ -4,7 +4,7 @@ import type { Express } from 'express';
 import { logger } from 'firebase-functions/v2';
 import { domain } from './firebase.js';
 import { routes } from './routes.js';
-import Store from './store.js';
+import Store from './store/index.js';
 
 export { routes };
 

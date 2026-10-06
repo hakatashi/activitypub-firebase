@@ -4,6 +4,7 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { z } from 'zod';
 import { apex } from './apex.js';
 import { toError } from './utils.js';
+import { recordDeliveryResult } from './store/deliveries.js';
 
 export const pingTaskPayloadSchema = z.object({
 	message: z.string(),
@@ -113,7 +114,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 		if (privateKey === undefined) {
 			const error = new Error(`Actor ${actorId} is missing _meta.privateKey`);
 			logger.error({ type: 'deliveryTaskActorMissingPrivateKey', actorId });
-			await apex.store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -135,7 +136,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			// message だけを取り出した新しい Error に包み直してから rethrow し、
 			// Cloud Functions のエラーログへ機微情報が漏れないようにする。
 			const error = toError(err);
-			await apex.store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -161,7 +162,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 		});
 
 		if (result.statusCode >= 200 && result.statusCode < 300) {
-			await apex.store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -180,7 +181,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 				address,
 				statusCode: result.statusCode,
 			});
-			await apex.store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -192,7 +193,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			return;
 		}
 
-		await apex.store.recordDeliveryResult({
+		await recordDeliveryResult({
 			activityId,
 			actorId,
 			address,

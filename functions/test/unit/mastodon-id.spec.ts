@@ -10,7 +10,7 @@ import {
 	toIdTimestamp,
 	toPublishedSortKey,
 } from '../../src/mastodonId.js';
-import Store from '../../src/store.js';
+import Store from '../../src/store/index.js';
 import { resetFirestore } from '../helpers/index.js';
 
 // 長さでソート → 辞書順でソート (Mastodon API ドキュメントの推奨手順) で比較する。

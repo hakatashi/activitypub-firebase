@@ -1,42 +1,21 @@
 import assert from 'node:assert';
-import type { DocumentReference, Firestore } from '@google-cloud/firestore';
-import type { APObject, ApexStore, SaveActivityResult } from './apex/index.js';
-import IApexStore from './apex/store/interface.js';
+import type { Firestore } from '@google-cloud/firestore';
+import type { APObject, ApexStore, SaveActivityResult } from '../apex/index.js';
+import IApexStore from '../apex/store/interface.js';
 import firebase from 'firebase-admin';
-import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
-import { chunk, isEqual, mapValues } from 'lodash-es';
-import { db, escapeFirestoreKey } from './firebase.js';
-import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from './mastodonId.js';
-import { metaIndexPath } from './meta.js';
-import { prepareProjectionUpdates } from './projections/index.js';
-import { Contexts, Deliveries, Objects, Streams } from './schema.js';
-import { toIdArray } from './utils.js';
+import { db, escapeFirestoreKey } from '../firebase.js';
+import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from '../mastodonId.js';
+import { metaIndexPath } from '../meta.js';
+import { prepareProjectionUpdates } from '../projections/index.js';
+import { Contexts, Objects, Streams } from '../schema.js';
+import { toIdArray } from '../utils.js';
+import { enqueueDeliveryTasks } from './deliveries.js';
+import { objectToUpdateDoc, replaceKeepingMeta, updateObjectCopies } from './updates.js';
 
-// const unescapeFirestoreKey = (key: string) => decodeURIComponent(key);
-
-// tasks.ts の配送タスクが記録する配送結果 (→ ADR-0012)
-// タイムラインの並べ替え・範囲指定に使うフィールド (→ ADR-0062)。
-const PUBLISHED_KEY = '_meta.published';
-
-export interface DeliveryResult {
-	activityId: string;
-	actorId: string;
-	address: string;
-	body: string;
-	attempts: number;
-	status: 'permanent_failure' | 'retrying' | 'success';
-	statusCode?: number;
-	error?: string;
-}
-
-// Firestore の `in` フィルタは1クエリにつき最大30件までしか指定できない。
-export const FIRESTORE_IN_QUERY_LIMIT = 30;
-
-// getNotes は attributedTo を `in` と `array-contains-any` の OR で引くため、選言数が actor 数の2倍になる。
-// Firestore の選言数の上限 (30) に収まるよう、1回に渡す actor はこの件数までにする (→ ADR-0072)。
-export const NOTE_AUTHORS_QUERY_LIMIT = 15;
-
+// apex が Store に要求する契約 (IApexStore) の Firestore 実装。apex から呼ばれないアプリ独自の
+// クエリや操作はこのクラスに置かず、同じディレクトリの機能別のモジュールに関数として置く。
+//
 // IApexStore (apex/store/interface.ts) を継承しつつ ApexStore (apex が Store に要求する契約) を
 // implements する (→ ADR-0022、ADR-0051)。deliveryDequeue/deliveryRequeue は override しておらず、
 // IApexStore 由来の「呼ばれたら例外を投げる」実装のままになっている。
@@ -88,130 +67,6 @@ export default class Store extends IApexStore implements ApexStore {
 		}
 
 		return object;
-	}
-
-	async getObjects(ids: string[], includeMeta = false): Promise<APObject[]> {
-		logger.info({
-			type: 'getObjects',
-			ids,
-			includeMeta,
-		});
-
-		if (ids.length === 0) {
-			return [];
-		}
-
-		const idChunks = chunk(ids.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
-		const objectDocsChunks = await Promise.all(
-			idChunks.map((idChunk) =>
-				Objects.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
-			),
-		);
-
-		return objectDocsChunks.flatMap((objectDocs) =>
-			objectDocs.docs.map((doc) => {
-				const object = doc.data();
-				if (includeMeta !== true) {
-					delete object._meta;
-				}
-				return object;
-			}),
-		);
-	}
-
-	async getObjectsByFieldValue(
-		field: string,
-		value: unknown,
-		includeMeta = false,
-	): Promise<APObject[]> {
-		logger.info({
-			type: 'getObjects',
-			field,
-			value,
-		});
-		const objectDocs = await Objects.where(field, '==', value).orderBy('published', 'desc').get();
-
-		return objectDocs.docs.map((doc) => {
-			const object = doc.data();
-			if (includeMeta !== true) {
-				delete object._meta;
-			}
-			return object;
-		});
-	}
-
-	// タイムライン用に Note を `_meta.published` 順に取得する。`actors` を渡すとその attributedTo のものだけに
-	// 絞る (Firestore の `in` 制約により 30 件まで)。`lower` / `upper` は `_meta.published` の範囲 (両端を含む)。
-	// `cursor` は読み足し用の `_meta.published` のカーソル (排他。`order` の進行方向の先)。
-	// 可視性の判定は呼び出し側 (statusAttributes.ts の isNoteVisibleTo) の責務。
-	async getNotes({
-		actors,
-		limit,
-		order = 'desc',
-		lower,
-		upper,
-		cursor,
-	}: {
-		actors?: string[] | undefined;
-		limit: number;
-		order?: 'asc' | 'desc';
-		lower?: string | undefined;
-		upper?: string | undefined;
-		cursor?: string | undefined;
-	}): Promise<APObject[]> {
-		logger.info({ type: 'getNotes', actors, limit, order, lower, upper, cursor });
-		if (actors !== undefined && actors.length === 0) {
-			return [];
-		}
-		let query = Objects.where('type', '==', 'Note');
-		if (actors !== undefined) {
-			// ローカルの Note は attributedTo が文字列、inbox で受けたリモートの Note は apex が
-			// 配列に正規化して保存するため、両方の形式に一致させる (→ ADR-0072)。
-			query = query.where(
-				firebase.firestore.Filter.or(
-					firebase.firestore.Filter.where('attributedTo', 'in', actors),
-					firebase.firestore.Filter.where('attributedTo', 'array-contains-any', actors),
-				),
-			);
-		}
-		if (lower !== undefined) {
-			query = query.where(PUBLISHED_KEY, '>=', lower);
-		}
-		if (upper !== undefined) {
-			query = query.where(PUBLISHED_KEY, '<=', upper);
-		}
-		query = query.orderBy(PUBLISHED_KEY, order);
-		if (cursor !== undefined) {
-			query = query.startAfter(cursor);
-		}
-		const docs = await query.limit(limit).get();
-		return docs.docs.map((doc) => doc.data());
-	}
-
-	// コンテキスト用に、特定の Note を inReplyTo とする返信 Note を取得する (→ ADR-0064)。
-	async getReplies(inReplyTo: string): Promise<APObject[]> {
-		logger.info({ type: 'getReplies', inReplyTo });
-		const docs = await Objects.where('type', '==', 'Note')
-			.where(
-				firebase.firestore.Filter.or(
-					firebase.firestore.Filter.where('inReplyTo', '==', inReplyTo),
-					firebase.firestore.Filter.where('inReplyTo', 'array-contains', inReplyTo),
-				),
-			)
-			.orderBy(PUBLISHED_KEY, 'asc')
-			.get();
-		return docs.docs.map((doc) => doc.data());
-	}
-
-	async getObjectsCount(field: string, value: unknown) {
-		logger.info({
-			type: 'countObjects',
-			field,
-			value,
-		});
-		const objectDocs = await Objects.where(field, '==', value).count().get();
-
-		return objectDocs.data().count;
 	}
 
 	override async saveObject(object: APObject) {
@@ -339,21 +194,21 @@ export default class Store extends IApexStore implements ApexStore {
 		const objectDoc = Objects.doc(escapeFirestoreKey(obj.id));
 		const publishedKey = toPublishedSortKey(obj.published);
 		if (fullReplace) {
-			await this.replaceKeepingMeta(
+			await replaceKeepingMeta(
 				objectDoc,
 				publishedKey === undefined
 					? obj
 					: { ...obj, _meta: { ...obj._meta, published: publishedKey } },
 			);
-			await this.updateObjectCopies(obj);
+			await updateObjectCopies(obj);
 			return obj;
 		}
 		await objectDoc.update({
-			...this.objectToUpdateDoc(obj),
+			...objectToUpdateDoc(obj),
 			// `_meta` はドット記法で更新し、既存のカウンタなどを消さない。
 			...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
 		});
-		await this.updateObjectCopies(obj);
+		await updateObjectCopies(obj);
 		return objectDoc.get().then((doc) => {
 			const data = doc.data();
 			assert(data !== undefined, 'data is undefined');
@@ -533,12 +388,12 @@ export default class Store extends IApexStore implements ApexStore {
 	override async updateActivity(activity: APObject, fullReplace: boolean) {
 		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
 		if (fullReplace) {
-			await this.replaceKeepingMeta(activityRef, activity);
-			await this.updateObjectCopies(activity);
+			await replaceKeepingMeta(activityRef, activity);
+			await updateObjectCopies(activity);
 			return activity;
 		}
-		await activityRef.update(this.objectToUpdateDoc(activity));
-		await this.updateObjectCopies(activity);
+		await activityRef.update(objectToUpdateDoc(activity));
+		await updateObjectCopies(activity);
 		return activityRef.get().then((doc) => {
 			const data = doc.data();
 			assert(data !== undefined, 'data is undefined');
@@ -585,15 +440,6 @@ export default class Store extends IApexStore implements ApexStore {
 		});
 	}
 
-	// Follow は to/cc を持たないため apex.isPublic() が常に false になり、承認済みでも
-	// 匿名の followers コレクションから除外される。承認時にこのフラグを立てて上書きする
-	// (→ ADR-0035)。ApexStore 独自の拡張であり IApexStore 由来のメソッドではないため
-	// override は付けない。
-	async markActivityPublic(activity: APObject) {
-		const activityRef = Streams.doc(escapeFirestoreKey(activity.id));
-		await activityRef.update({ '_meta.isPublic': true });
-	}
-
 	// oxlint-disable-next-line max-params
 	override async deliveryEnqueue(
 		actorId: string,
@@ -613,12 +459,7 @@ export default class Store extends IApexStore implements ApexStore {
 
 		const normalizedAddresses = Array.isArray(addresses) ? addresses : [addresses];
 
-		// 秘密鍵はタスクペイロードに載せない。ワーカー側で actorId から鍵を引く。
-		await Promise.all(
-			normalizedAddresses.map((address) =>
-				getFunctions().taskQueue('deliveryTask').enqueue({ actorId, body, address }),
-			),
-		);
+		await enqueueDeliveryTasks(actorId, body, normalizedAddresses);
 
 		logger.info({
 			type: 'deliveryEnqueueResult',
@@ -627,61 +468,6 @@ export default class Store extends IApexStore implements ApexStore {
 		});
 
 		return true;
-	}
-
-	// → ADR-0012
-	private deliveryDocId(activityId: string, address: string) {
-		return escapeFirestoreKey(`${activityId} ${address}`);
-	}
-
-	// → ADR-0012
-	async recordDeliveryResult({
-		activityId,
-		actorId,
-		address,
-		body,
-		attempts,
-		status,
-		statusCode,
-		error,
-	}: DeliveryResult) {
-		logger.info({
-			type: 'recordDeliveryResult',
-			activityId,
-			actorId,
-			address,
-			attempts,
-			status,
-			statusCode,
-		});
-
-		await Deliveries.doc(this.deliveryDocId(activityId, address)).set({
-			activityId,
-			actorId,
-			inbox: address,
-			body,
-			attempts,
-			status,
-			statusCode: statusCode ?? null,
-			error: error ?? null,
-			updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-		});
-	}
-
-	// → ADR-0012
-	async getFailedDeliveries() {
-		const snapshot = await Deliveries.where('status', 'in', [
-			'permanent_failure',
-			'retrying',
-		]).get();
-
-		return snapshot.docs.map((doc) => doc.data());
-	}
-
-	// → ADR-0012
-	async getDelivery(activityId: string, address: string) {
-		const doc = await Deliveries.doc(this.deliveryDocId(activityId, address)).get();
-		return doc.exists ? doc.data() : undefined;
 	}
 
 	override async getContext(documentUrl: string) {
@@ -713,64 +499,5 @@ export default class Store extends IApexStore implements ApexStore {
 			},
 			{ merge: true },
 		);
-	}
-
-	// fullReplace でドキュメントを丸ごと置き換える際も、既存の _meta (秘密鍵・非正規化カウンタ・
-	// _meta.collection 等) は引き継ぐ。外部から取得・受信した表現は _meta を持たないため、
-	// そのまま set すると内部状態が失われる。saveObject と同じマージ規則を使う (→ ADR-0053、ADR-0059)。
-	private replaceKeepingMeta(ref: DocumentReference<APObject>, object: APObject) {
-		return this.db.runTransaction(async (transaction) => {
-			const existingMeta = (await transaction.get(ref)).data()?._meta;
-			transaction.set(
-				ref,
-				existingMeta === undefined
-					? object
-					: { ...object, _meta: { ...existingMeta, ...object._meta } },
-			);
-		});
-	}
-
-	private objectToUpdateDoc(object: APObject) {
-		return mapValues(object, (value) => {
-			if (value === null) {
-				return firebase.firestore.FieldValue.delete();
-			}
-			return value;
-		});
-	}
-
-	// `streams` に埋め込まれている古いコピーを新しい内容へ差し替える。
-	// `streams.object` は常に配列なので、ドット記法(`where('object.id', '==', ...)`)では
-	// 引けない。denormalizations.ts が書き込む map 形式のインデックスを使う(→ ADR-0021)。
-	//
-	// 置き換えるのは MongoDB 実装の arrayFilters(`{ 'element.id': object.id }`)と同じく
-	// `id` が一致する埋め込みオブジェクトの要素だけで、IRI 文字列の要素はそのまま残す。
-	// MongoDB 実装は配送キューの署名鍵も更新するが、こちらは配送時に actor を読み直すため不要。
-	private async updateObjectCopies(object: APObject) {
-		const replaceCopy = (value: unknown) => {
-			if (typeof value === 'object' && value !== null && 'id' in value && value.id === object.id) {
-				return object;
-			}
-			return value;
-		};
-
-		await this.db.runTransaction(async (transaction) => {
-			const matchedDocs = await transaction.get(
-				Streams.where(metaIndexPath('objects', escapeFirestoreKey(object.id)), '==', true),
-			);
-			matchedDocs.forEach((doc) => {
-				const rawObject: unknown = doc.get('object');
-				// 配列を配列のまま保つ(lodash の mapValues は配列を数値キーのマップに壊す)。
-				const newObject = Array.isArray(rawObject)
-					? rawObject.map(replaceCopy)
-					: replaceCopy(rawObject);
-				// IRI 文字列で参照しているだけのドキュメントには書き込まない
-				// (無意味な書き込みで onStreamWritten を再発火させない)。
-				if (isEqual(rawObject, newObject)) {
-					return;
-				}
-				transaction.update(doc.ref, { object: newObject });
-			});
-		});
 	}
 }

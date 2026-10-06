@@ -1,6 +1,5 @@
 import assert from 'node:assert';
 import { chunk } from 'lodash-es';
-import { apex } from '../apex.js';
 import type { APActor } from 'activitypub-types';
 import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../firebase.js';
 import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
@@ -11,6 +10,8 @@ import { getAttributedTo, isAPNote } from '../utils.js';
 import { getFollowing } from './follows.js';
 import type { NoteObject } from './types.js';
 import { isNotePublicTimelineEligible, isNoteVisibleTo } from './visibility.js';
+import { getObjects } from '../store/objects.js';
+import { getNotes } from '../store/notes.js';
 
 // 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
 const TIMELINE_FETCH_FACTOR = 3;
@@ -47,7 +48,7 @@ export const collectVisibleNotes = async ({
 	const collected: PagedNote[] = [];
 	let cursor: string | undefined;
 	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < page.limit; round++) {
-		const rows = await apex.store.getNotes({
+		const rows = await getNotes({
 			actors,
 			limit: fetchSize,
 			order: ascending ? 'asc' : 'desc',
@@ -92,7 +93,7 @@ export const getAccountNotes = async (
 			return [];
 		}
 		const noteIris = pinsSnap.docs.map((doc) => unescapeFirestoreKey(toFirestoreKey(doc.id)));
-		const notes = (await apex.store.getObjects(noteIris)).filter(isAPNote);
+		const notes = (await getObjects(noteIris)).filter(isAPNote);
 		return notes.filter((note) => isNoteVisibleTo(note, viewer?.id, viewerFollowing));
 	}
 	const notes = await collectVisibleNotes({

@@ -67,7 +67,7 @@ Vitest の `--changed` オプションを利用し、git の差分から変更�
 > [!NOTE]
 > **`test:changed` と `vitest related` の違い**
 > - `--changed`: git の diff (HEAD または指定コミットとの差分) から変更ファイルを Vitest が自動取得し、関連テストを実行する。
-> - `vitest related <files>`: git の状態にかかわらず、引数で渡されたファイル群 (例: `src/store.ts`) を静的解析して依存するテストを実行する。特定ファイルを明示して関連テストを網羅したい場合は後述の `test:only -- related <files>` を使う。
+> - `vitest related <files>`: git の状態にかかわらず、引数で渡されたファイル群 (例: `src/store/index.ts`) を静的解析して依存するテストを実行する。特定ファイルを明示して関連テストを網羅したい場合は後述の `test:only -- related <files>` を使う。
 
 #### 3. 部分実行と絞り込み (`test:only`)
 
@@ -87,7 +87,7 @@ npm --prefix functions run test:only -- test/unit test/integration
 npm --prefix functions run test:only -- --exclude 'test/apex-upstream/**'
 
 # 指定ファイルに関連するテストを実行 (vitest related)
-npm --prefix functions run test:only -- related src/store.ts
+npm --prefix functions run test:only -- related src/store/index.ts
 ```
 
 #### 4. エミュレータ起動中の直接実行
@@ -102,14 +102,14 @@ cross-env GCLOUD_PROJECT=activitypub-firebase-dev npx vitest run --changed
 
 ### apex-upstream spec の扱い
 
-`test/apex-upstream/` には上流の `activitypub-express` 同梱 spec が配置されており、Firestore Store (`functions/src/store.ts`) に対する適合テストとして繋ぎ直されている (→ [ADR-0052](../adr/0052-connect-apex-specs-to-firestore-store.md))。
+`test/apex-upstream/` には上流の `activitypub-express` 同梱 spec が配置されており、Firestore Store (`functions/src/store/index.ts`) に対する適合テストとして繋ぎ直されている (→ [ADR-0052](../adr/0052-connect-apex-specs-to-firestore-store.md))。
 
 - **位置づけ**: 約 4,800 行の上流 spec 資産を可能な限り無改変で動かすため、`test/apex-upstream/setup.ts` で Jasmine 互換シム (spy や clock、`done()` コールバック) や Firestore CollectionReference への MongoDB 風ヘルパーメソッド (`findOne`, `insertOne` など) を提供している。
 - **全テスト共通の setupFile**: `test/apex-upstream/setup.ts` は `vitest.config.ts` の `setupFiles` に登録されているため、全テストで有効になっている。
 - **意図的な skip**: 約 210 件中 69 件のテストが skip されている。これは Cloud Tasks による非同期配送 (ADR-0003, ADR-0052) や SSRF ポリシーなど、このプロジェクトの意図的な設計差に起因するものであり、理由がテストコード内に明記されている。
 - **除外してよいケースと含めるべきケース**:
   - **除外してよいケース**: Mastodon API エンドポイント (`test/unit/mastodon*`, `test/integration/mastodon*`)、WebFinger、各種ユーティリティなど、apex 内部や Store の基本契約に影響しない箇所の変更時。これらを除外することでテスト時間を短縮できる (`--exclude 'test/apex-upstream/**'` または `test/unit test/integration`)。
-  - **含めるべきケース**: `functions/src/apex/` (apex フォーク本体) や `functions/src/store.ts` (Store 実装) を変更したときは、上流互換性を壊していないか確認するため必ず含める。
+  - **含めるべきケース**: `functions/src/apex/` (apex フォーク本体) や `functions/src/store/` (Store 実装) を変更したときは、上流互換性を壊していないか確認するため必ず含める。
   - **PR 作成前**: 原則として必ず全件実行 (`npm test`) に含める。
 
 ### 内部動作と並列化
@@ -129,7 +129,7 @@ cross-env GCLOUD_PROJECT=activitypub-firebase-dev npx vitest run --changed
 ### ディレクトリ構成
 
 - `test/unit/` — 外部 I/O のない純粋関数、または Firestore エミュレータのみに依存するテスト
-  (`store.ts` の各メソッドなど)。ネットワークや実際の ActivityPub 連合には依存しない。
+  (`store/` の各関数・メソッドなど)。ネットワークや実際の ActivityPub 連合には依存しない。
   - `test/unit/apex/` — apex フォークライブラリ単体のテスト。Firebase / Firestore に依存せず、ライブラリの純粋な機能や通信処理をテストする。
 - `test/integration/` — Express アプリ(`activitypub` / `mastodonApi`)に対して
   `supertest` でリクエストを送るテスト。

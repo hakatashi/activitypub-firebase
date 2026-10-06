@@ -3,6 +3,7 @@ import type { APActor } from 'activitypub-types';
 import { getAttributedTo, isAPNote, toIdArray } from '../utils.js';
 import type { NoteObject } from './types.js';
 import { isNoteVisibleTo } from './visibility.js';
+import { getReplies } from '../store/notes.js';
 
 const MAX_ANCESTORS = 40;
 const MAX_DESCENDANTS = 60;
@@ -48,7 +49,7 @@ export const getThreadDescendants = async (
 		if (depth >= MAX_DESCENDANTS_DEPTH || descendantNotes.length >= MAX_DESCENDANTS) {
 			return;
 		}
-		const rawReplies = await apex.store.getReplies(parentIri);
+		const rawReplies = await getReplies(parentIri);
 		const replies = rawReplies.filter(isAPNote);
 
 		// Mastodon 仕様: 親と同じ投稿者による返信 (self-reply) を優先して上位に持ってくる

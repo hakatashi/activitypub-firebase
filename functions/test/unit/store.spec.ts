@@ -3,7 +3,13 @@ import { db, escapeFirestoreKey } from '../../src/firebase.js';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import { Objects } from '../../src/schema.js';
-import Store from '../../src/store.js';
+import {
+	getDelivery,
+	getFailedDeliveries,
+	recordDeliveryResult,
+} from '../../src/store/deliveries.js';
+import Store from '../../src/store/index.js';
+import { getObjects } from '../../src/store/objects.js';
 import { resetFirestore } from '../helpers/index.js';
 
 describe('Store', () => {
@@ -81,7 +87,7 @@ describe('Store', () => {
 
 	describe('getObjects', () => {
 		test('returns an empty array for an empty id list', async () => {
-			expect(await store.getObjects([])).toEqual([]);
+			expect(await getObjects([])).toEqual([]);
 		});
 
 		test('fetches multiple objects by id', async () => {
@@ -93,7 +99,7 @@ describe('Store', () => {
 				await store.saveObject(object);
 			}
 
-			const result = await store.getObjects(objects.map((object) => object.id));
+			const result = await getObjects(objects.map((object) => object.id));
 			expect(result).toEqual(expect.arrayContaining(objects));
 			expect(result).toHaveLength(2);
 		});
@@ -111,7 +117,7 @@ describe('Store', () => {
 			}
 			await batch.commit();
 
-			const result = await store.getObjects(objects.map((object) => object.id));
+			const result = await getObjects(objects.map((object) => object.id));
 			expect(result).toEqual(expect.arrayContaining(objects));
 			expect(result).toHaveLength(31);
 		});
@@ -754,7 +760,7 @@ describe('Store', () => {
 		const body = '{"id":"https://example.com/activities/1","type":"Create"}';
 
 		test('round-trips a successful delivery', async () => {
-			await store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -764,7 +770,7 @@ describe('Store', () => {
 				statusCode: 202,
 			});
 
-			const delivery = await store.getDelivery(activityId, address);
+			const delivery = await getDelivery(activityId, address);
 			expect(delivery).toMatchObject({
 				activityId,
 				actorId,
@@ -778,7 +784,7 @@ describe('Store', () => {
 		});
 
 		test('overwrites the previous record for the same activity/address pair', async () => {
-			await store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -788,7 +794,7 @@ describe('Store', () => {
 				statusCode: 503,
 				error: 'boom',
 			});
-			await store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -798,16 +804,16 @@ describe('Store', () => {
 				statusCode: 202,
 			});
 
-			const delivery = await store.getDelivery(activityId, address);
+			const delivery = await getDelivery(activityId, address);
 			expect(delivery).toMatchObject({ attempts: 2, status: 'success', error: null });
 		});
 
 		test('getDelivery returns undefined for an unknown pair', async () => {
-			expect(await store.getDelivery(activityId, address)).toBeUndefined();
+			expect(await getDelivery(activityId, address)).toBeUndefined();
 		});
 
 		test('getFailedDeliveries lists only permanent_failure and retrying deliveries', async () => {
-			await store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId,
 				actorId,
 				address,
@@ -816,7 +822,7 @@ describe('Store', () => {
 				status: 'success',
 				statusCode: 202,
 			});
-			await store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId: 'https://example.com/activities/2',
 				actorId,
 				body,
@@ -825,7 +831,7 @@ describe('Store', () => {
 				status: 'permanent_failure',
 				statusCode: 410,
 			});
-			await store.recordDeliveryResult({
+			await recordDeliveryResult({
 				activityId: 'https://example.com/activities/3',
 				actorId,
 				body,
@@ -836,7 +842,7 @@ describe('Store', () => {
 				error: 'boom',
 			});
 
-			const failed = await store.getFailedDeliveries();
+			const failed = await getFailedDeliveries();
 			expect(failed).toHaveLength(2);
 			expect(failed.map((delivery) => delivery.status).sort()).toEqual([
 				'permanent_failure',

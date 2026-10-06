@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { LOCAL_USERNAME, localActorIri } from '../src/localActor.js';
-import Store from '../src/store.js';
+import Store from '../src/store/index.js';
 
 // dev/prod の Firestore に保存されている actor オブジェクトから endpoints (proxyUrl) を削除する使い捨てスクリプト。
 // ts-node 等で手動実行する。実行対象プロジェクトは GCLOUD_PROJECT で決まる。
