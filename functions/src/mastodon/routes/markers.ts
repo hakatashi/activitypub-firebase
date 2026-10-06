@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db, escapeFirestoreKey, toFirestoreKey } from '../../firebase.js';
 import { Markers } from '../../schema.js';
 import { createAsyncRouter } from '../http/asyncRouter.js';
-import { authRequired, scopeRequired } from '../http/auth.js';
+import { authRequired, getAuthActorId, scopeRequired } from '../http/auth.js';
 
 const router = createAsyncRouter();
 
@@ -40,7 +40,7 @@ router.get('/v1/markers', authRequired, scopeRequired('read:statuses'), async (r
 		return;
 	}
 
-	const actorId = res.locals.actorId as string;
+	const actorId = getAuthActorId(res);
 	const docRefs = requestedTimelines.map((timeline) => ({
 		timeline,
 		ref: Markers.doc(toFirestoreKey(`${escapeFirestoreKey(actorId)}_${timeline}`)),
@@ -93,7 +93,7 @@ router.post('/v1/markers', authRequired, scopeRequired('write:statuses'), async 
 		return;
 	}
 
-	const actorId = res.locals.actorId as string;
+	const actorId = getAuthActorId(res);
 
 	try {
 		const markersResult = await db.runTransaction(async (transaction) => {

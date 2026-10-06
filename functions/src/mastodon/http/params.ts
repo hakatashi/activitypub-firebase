@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 // Mastodon の `ActiveModel::Type::Boolean` に合わせ、フォーム由来の文字列も解釈する。
 const FALSE_VALUES = new Set(['0', 'f', 'false', 'off']);
 export const toBoolean = (value: boolean | string | null | undefined) => {
@@ -22,3 +24,7 @@ export const isPresent = (value: unknown) => {
 	}
 	return true;
 };
+
+export const idParamSchema = z.object({
+	id: z.string().min(1),
+});

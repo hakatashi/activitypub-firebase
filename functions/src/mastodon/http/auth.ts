@@ -12,6 +12,10 @@ import { UserInfos } from '../../schema.js';
 import { oauth } from '../oauth.js';
 import { assertIsAPActor } from '../presenters/account.js';
 
+import { HttpError } from './errors.js';
+import type { UserInfo } from '../../schema.js';
+import './locals.js';
+
 export const validScopes = [
 	'follow',
 	'push',
@@ -49,15 +53,24 @@ export const validScopes = [
 	'write:statuses',
 ];
 
-export class AuthenticationError extends Error {
-	readonly statusCode: number;
-
+export class AuthenticationError extends HttpError {
 	constructor(message = 'This method requires an authenticated user', statusCode = 401) {
-		super(message);
+		super(statusCode, message);
 		this.name = 'AuthenticationError';
-		this.statusCode = statusCode;
 	}
 }
+
+export const getAuthActorId = (res: express.Response): string => {
+	const actorId = res.locals.actorId;
+	assert(typeof actorId === 'string' && actorId.length > 0, 'res.locals.actorId is not set');
+	return actorId;
+};
+
+export const getAuthUserInfo = (res: express.Response): UserInfo => {
+	const auth = res.locals.auth;
+	assert(auth !== undefined, 'res.locals.auth is not set');
+	return auth;
+};
 
 // OAuth トークンから、ログイン中のローカル actor の IRI と UserInfo を引く。
 const resolveAuth = async (req: express.Request, res: express.Response) => {
