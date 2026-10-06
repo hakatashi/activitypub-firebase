@@ -245,7 +245,6 @@ Store が呼ぶ射影は `functions/src/projections/index.ts` でまとめてい
 | `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `accounts` / `timelines` / `statuses` / `statusActions` / `apps`) |
 | `presenters/account.ts` | AP actor → Account / CredentialAccount / Relationship の変換と、アカウント ID の解決 |
 | `presenters/status.ts` | Note → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
-| `http/asyncRouter.ts` | async ハンドラの例外をエラーハンドラへ渡す `express.Router` |
 | `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `getOptionalViewer`)と有効なスコープの一覧 |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |

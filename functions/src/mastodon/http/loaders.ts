@@ -13,7 +13,8 @@ import { getAuthActorId } from './auth.js';
 import { NotFoundError } from './errors.js';
 import { idParamSchema } from './params.js';
 
-export const loadStatus = async (id: string): Promise<NoteObject> => {
+// id は検証前のパスパラメーター (Express 5 の型では string | string[])。ここで検証する。
+export const loadStatus = async (id: unknown): Promise<NoteObject> => {
 	const parsed = idParamSchema.safeParse({ id });
 	if (!parsed.success) {
 		throw new NotFoundError();
@@ -36,7 +37,7 @@ export interface LoadVisibleStatusOptions {
 }
 
 export const loadVisibleStatus = async (
-	id: string,
+	id: unknown,
 	viewer?: (ApexObject & APActor) | APActor | undefined,
 	options?: LoadVisibleStatusOptions,
 ): Promise<VisibleStatusResult> => {
@@ -53,7 +54,7 @@ export const loadVisibleStatus = async (
 	return { note, viewerFollowing };
 };
 
-export const loadAccount = async (id: string): Promise<ResolvedAccountActor> => {
+export const loadAccount = async (id: unknown): Promise<ResolvedAccountActor> => {
 	const parsed = idParamSchema.safeParse({ id });
 	if (!parsed.success) {
 		throw new NotFoundError();

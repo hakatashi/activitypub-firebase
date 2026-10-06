@@ -1,3 +1,4 @@
+import express from 'express';
 import assert from 'node:assert';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
@@ -6,7 +7,6 @@ import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../../
 import { plainTextToHtml } from '../../notes.js';
 import { Streams, UserInfo, UserInfos } from '../../schema.js';
 import { toIdArray } from '../../utils.js';
-import { createAsyncRouter } from '../http/asyncRouter.js';
 import {
 	authRequired,
 	getAuthActorId,
@@ -35,7 +35,7 @@ import type { RelationshipEntity } from '../presenters/account.js';
 import { STATUS_PAGE_LIMITS, getAccountStatuses } from '../presenters/status.js';
 import { markActivityPublic } from '../../store/activities.js';
 
-const router = createAsyncRouter();
+const router = express.Router();
 
 export const accountLookupQuerySchema = z.object({
 	acct: z.string().min(1),
@@ -177,7 +177,7 @@ router.patch(
 
 router.get('/v1/accounts/:id/statuses', async (req, res) => {
 	// ローカル (UserInfos の id) とリモート (Mastodon ID の採番) の両方を解決する (→ ADR-0069)
-	const resolved = await loadAccount(req.params.id ?? '');
+	const resolved = await loadAccount(req.params.id);
 	const actorId = resolved.actor.id;
 	assert(actorId !== undefined, 'actor.id is undefined');
 
@@ -262,8 +262,10 @@ router.post(
 	'/v1/accounts/:id/follow',
 	authRequired,
 	scopeRequired('write:follows'),
+	validate({ params: accountParamsSchema }),
 	async (req, res) => {
-		const resolved = await loadAccount(req.params.id ?? '');
+		const { id } = getValidParams(res, accountParamsSchema);
+		const resolved = await loadAccount(id);
 		const targetActor = resolved.actor;
 		const actor = await loadViewer(res);
 
@@ -286,7 +288,7 @@ router.post(
 		const isTargetLocked =
 			targetActor.manuallyApprovesFollowers === true || resolved.userInfo?.locked === true;
 		const relationship: RelationshipEntity = {
-			id: req.params.id ?? '',
+			id,
 			following: !isTargetLocked,
 			showing_reblogs: !isTargetLocked,
 			notifying: false,
@@ -312,8 +314,10 @@ router.post(
 	'/v1/accounts/:id/unfollow',
 	authRequired,
 	scopeRequired('write:follows'),
+	validate({ params: accountParamsSchema }),
 	async (req, res) => {
-		const resolved = await loadAccount(req.params.id ?? '');
+		const { id } = getValidParams(res, accountParamsSchema);
+		const resolved = await loadAccount(id);
 		const targetActor = resolved.actor;
 		const actor = await loadViewer(res);
 
@@ -357,7 +361,7 @@ router.post(
 		const [flags] = await getFollowFlags(actor, [targetActor.id]);
 		assert(flags !== undefined);
 		const relationship: RelationshipEntity = {
-			id: req.params.id ?? '',
+			id,
 			following: false,
 			showing_reblogs: false,
 			notifying: false,
@@ -380,7 +384,7 @@ router.post(
 );
 
 router.get('/v1/accounts/:id', async (req, res) => {
-	const resolved = await loadAccount(req.params.id ?? '');
+	const resolved = await loadAccount(req.params.id);
 	const account = await actorObjectToAccount(
 		resolved.actor,
 		resolved.userInfo,

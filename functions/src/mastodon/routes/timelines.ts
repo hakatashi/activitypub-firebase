@@ -1,10 +1,10 @@
-import { createAsyncRouter } from '../http/asyncRouter.js';
+import express from 'express';
 import { authRequired, getAuthActorId, getLocalActor, getOptionalViewer } from '../http/auth.js';
 import { respondWithStatuses } from '../http/responses.js';
 import { parsePageParams } from '../pagination.js';
 import { STATUS_PAGE_LIMITS, getHomeTimeline, getPublicTimeline } from '../presenters/status.js';
 
-const router = createAsyncRouter();
+const router = express.Router();
 
 router.get('/v1/timelines/public', async (req, res) => {
 	const viewer = await getOptionalViewer(req, res);

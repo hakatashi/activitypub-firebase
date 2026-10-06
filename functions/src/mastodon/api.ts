@@ -1,8 +1,7 @@
 import cors from 'cors';
-import type express from 'express';
+import express from 'express';
 import { logger } from 'firebase-functions/v2';
 import { toError } from '../utils.js';
-import { createAsyncRouter } from './http/asyncRouter.js';
 import accountsRouter from './routes/accounts.js';
 import appsRouter from './routes/apps.js';
 import instanceRouter from './routes/instance.js';
@@ -14,7 +13,7 @@ import timelinesRouter from './routes/timelines.js';
 
 // `/api/**` のルーティング。各リソースのルートは `routes/` に、エンティティ変換は `presenters/` にある。
 // 登録順に意味がある (末尾の 404 フォールバックとエラーハンドラは最後に置く)。
-const router = createAsyncRouter();
+const router = express.Router();
 
 router.use(
 	'/',

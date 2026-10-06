@@ -9,7 +9,7 @@ import {
 	stringArray,
 	toArray,
 } from '../values.js';
-import { getApex, getLocals } from './locals.js';
+import { getApex, getLocals, getRouteParam } from './locals.js';
 
 const needsResolveObject = ['announce', 'block', 'create', 'follow', 'like'];
 const needsResolveActivity = ['accept', 'add', 'reject', 'remove'];
@@ -218,7 +218,7 @@ export const targetActivity = async (
 	next: NextFunction,
 ): Promise<void> => {
 	const apex = getApex(req);
-	const aid = req.params[apex.activityParam];
+	const aid = getRouteParam(req, apex.activityParam);
 	const activityIRI = apex.utils.activityIdToIRI(aid);
 	let activity;
 	try {
@@ -242,7 +242,7 @@ export const targetActor = async (
 ): Promise<void> => {
 	const apex = getApex(req);
 	const locals = getLocals(res);
-	const actorName = req.params[apex.actorParam];
+	const actorName = getRouteParam(req, apex.actorParam);
 	const actorIRI = apex.utils.usernameToIRI(actorName);
 	let actorObj;
 	try {
@@ -271,7 +271,7 @@ export const targetActorWithMeta = async (
 ): Promise<void> => {
 	const apex = getApex(req);
 	const resLocal = getLocals(res);
-	const actorName = req.params[apex.actorParam];
+	const actorName = getRouteParam(req, apex.actorParam);
 	const actorIRI = apex.utils.usernameToIRI(actorName);
 	try {
 		const actorObj = await apex.store.getObject(actorIRI, true);
@@ -300,7 +300,7 @@ export const targetObject = async (
 	next: NextFunction,
 ): Promise<void> => {
 	const apex = getApex(req);
-	const oid = req.params[apex.objectParam];
+	const oid = getRouteParam(req, apex.objectParam);
 	const objIRI = apex.utils.objectIdToIRI(oid);
 	let obj;
 	try {

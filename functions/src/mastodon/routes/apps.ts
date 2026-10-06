@@ -1,3 +1,4 @@
+import express from 'express';
 import crypto from 'node:crypto';
 import {
 	OAuthError,
@@ -8,11 +9,10 @@ import { z } from 'zod';
 import { db } from '../../firebase.js';
 import { Clients } from '../../schema.js';
 import type { MastodonClient } from '../../schema.js';
-import { createAsyncRouter } from '../http/asyncRouter.js';
 import { AuthenticationError, validScopes } from '../http/auth.js';
 import { oauth } from '../oauth.js';
 
-const router = createAsyncRouter();
+const router = express.Router();
 
 export const createAppBodySchema = z.object({
 	client_name: z.string().trim().min(1),
@@ -27,7 +27,7 @@ export const createAppBodySchema = z.object({
 });
 
 router.post('/v1/apps', async (req, res) => {
-	const parsedBody = createAppBodySchema.safeParse(req.body);
+	const parsedBody = createAppBodySchema.safeParse(req.body ?? {});
 	if (!parsedBody.success) {
 		res.status(400).send('Bad request');
 		return;

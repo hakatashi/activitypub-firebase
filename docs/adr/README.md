@@ -112,3 +112,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0084](0084-project-favourites-and-reblogs.md) | お気に入り・ブーストの閲覧者状態を userInfos のサブコレクションに射影する | Accepted |
 | [0085](0085-split-store-by-responsibility.md) | Store クラスには apex の契約だけを置き、アプリ独自のクエリはモジュール関数にする | Accepted |
 | [0086](0086-normalize-object-query-fields-into-meta.md) | objects の検索用フィールドを `_meta` に正規化し、OR クエリをなくす | Accepted |
+| [0087](0087-upgrade-to-express-5.md) | Express 5 に上げ、async ハンドラの独自ラッパーを撤去する | Accepted |

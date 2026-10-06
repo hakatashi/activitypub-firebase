@@ -11,6 +11,8 @@ import apiRouter from './api.js';
 import oauthRouter from './oauth.js';
 
 const app = express();
+// Express 5 の既定 (simple) では `id[]=1&id[]=2` 形式の配列クエリを解釈できない (→ ADR-0087)。
+app.set('query parser', 'extended');
 
 const nodeinfoCors = cors({
 	origin: true,

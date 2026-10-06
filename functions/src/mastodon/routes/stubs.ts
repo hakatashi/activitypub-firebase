@@ -1,7 +1,7 @@
-import { createAsyncRouter } from '../http/asyncRouter.js';
+import express from 'express';
 import { authRequired, scopeRequired } from '../http/auth.js';
 
-const router = createAsyncRouter();
+const router = express.Router();
 
 // クライアント起動用の空配列スタブ (→ ADR-0004, ADR-0067)
 router.get('/v1/custom_emojis', (req, res) => {
