@@ -11,6 +11,7 @@ import { getFollowing } from './follows.js';
 import type { NoteObject } from './types.js';
 import { isNotePublicTimelineEligible, isNoteVisibleTo } from './visibility.js';
 import { getObjects } from '../store/objects.js';
+import { NOTE_AUTHORS_QUERY_LIMIT } from '../store/limits.js';
 import { getNotes } from '../store/notes.js';
 
 // 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
@@ -18,7 +19,6 @@ const TIMELINE_FETCH_FACTOR = 3;
 // 小さい limit でも読み足しラウンドを使い切って空ページになりにくいよう、1回に読む件数の下限を設ける。
 const MIN_TIMELINE_FETCH_SIZE = 100;
 const MAX_TIMELINE_FETCH_ROUNDS = 10;
-const NOTE_AUTHORS_QUERY_LIMIT = 30;
 
 // ID のタイムスタンプ部は `_meta.published` (→ ADR-0062) と同じ規則で決まるので、そのまま範囲の端にできる。
 const idToPublishedBound = (id: string) => new Date(mastodonIdToTimestamp(id)).toISOString();
