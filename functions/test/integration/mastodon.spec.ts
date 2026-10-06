@@ -1,7 +1,7 @@
 import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { apex } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { AccessTokens, UserInfos } from '../../src/schema.js';

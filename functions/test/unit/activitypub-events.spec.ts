@@ -2,7 +2,8 @@ import type { EventEmitter } from 'node:events';
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { apex, app } from '../../src/activitypub.js';
+import { app } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { runPostWorkBeforeSend } from '../../src/postWork.js';
 
 describe('apex-inbox event: Follow auto-accept', () => {

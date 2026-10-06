@@ -220,6 +220,9 @@ export const toIdArray = (value: unknown): string[] => {
 	});
 };
 
+export const getAttributedTo = (object: { attributedTo?: unknown }): string | undefined =>
+	toIdArray(object.attributedTo)[0];
+
 export const redactSensitiveBody = (body: unknown): unknown => {
 	if (Array.isArray(body)) {
 		return body.map(redactSensitiveBody);

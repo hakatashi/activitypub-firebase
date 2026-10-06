@@ -1,6 +1,6 @@
 import type { APActor } from 'activitypub-types';
 import type { APObject } from '../../src/apex/index.js';
-import { apex } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { UserInfos } from '../../src/schema.js';
 import type { UserInfo } from '../../src/schema.js';

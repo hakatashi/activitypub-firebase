@@ -2,7 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import { https, logger } from 'firebase-functions/v2';
 import { beforeUserCreated, HttpsError } from 'firebase-functions/v2/identity';
-import { apex } from '../activitypub.js';
+import { apex } from '../apex.js';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { LOCAL_ADMIN_EMAIL, LOCAL_USERNAME, localActorId } from '../localActor.js';
 import { UserInfos } from '../schema.js';

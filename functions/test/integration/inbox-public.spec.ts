@@ -1,7 +1,8 @@
 import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { activitypub, apex, app } from '../../src/activitypub.js';
+import { activitypub, app } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { resetFirestore } from '../helpers/index.js';
 
 const REMOTE_ACTOR_ID = 'https://remote.example/u/alice';

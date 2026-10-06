@@ -1,12 +1,12 @@
 import assert from 'node:assert';
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { isEqual } from 'lodash-es';
-import { apex } from './activitypub.js';
+import { apex } from './apex.js';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { localActorId } from './localActor.js';
-import { collectFollowing, getFollowerActorIris } from './mastodon/api.js';
 import { buildMetaIndex } from './meta.js';
 import { Objects, UserInfos } from './schema.js';
+import { collectFollowing, getFollowerActorIris } from './social/follows.js';
 import {
 	isAPAnnounce,
 	isAPLike,

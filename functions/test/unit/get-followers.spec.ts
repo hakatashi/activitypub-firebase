@@ -1,5 +1,5 @@
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
-import { apex } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { db, escapeFirestoreKey } from '../../src/firebase.js';
 import { getFollowers, getFollowersPage } from '../../src/mastodon/api.js';
 import { buildMastodonId } from '../../src/mastodonId.js';

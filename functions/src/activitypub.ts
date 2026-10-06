@@ -5,7 +5,6 @@ import { https, logger, params } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
-import { removeSupersededFollows } from './follows.js';
 import {
 	LOCAL_DISPLAY_NAME,
 	LOCAL_ICON_URL,
@@ -15,6 +14,7 @@ import {
 } from './localActor.js';
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
+import { removeSupersededFollows } from './social/follows.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 
@@ -275,4 +275,4 @@ onApexInbox(app, async (message) => {
 
 export const activitypub = https.onRequest({ secrets: [hakatashiToken] }, app);
 
-export { apex, app };
+export { app };
