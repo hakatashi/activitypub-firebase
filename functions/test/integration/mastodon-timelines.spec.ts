@@ -10,9 +10,7 @@ import {
 } from '../../src/mastodon/api.js';
 import { toIdIndex } from '../../src/meta.js';
 import { Streams } from '../../src/schema.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const PUBLIC = 'https://www.w3.org/ns/activitystreams#Public';
 const REMOTE_A = 'https://remote.example/u/alice';
@@ -49,9 +47,6 @@ describe('Mastodon timelines (Issue #58)', () => {
 	};
 
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
 		me = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
 		await apex.store.saveObject(me);
 		for (const [id, name] of [
@@ -70,10 +65,7 @@ describe('Mastodon timelines (Issue #58)', () => {
 	});
 
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	const follow = async (target: string, accepted: boolean) => {

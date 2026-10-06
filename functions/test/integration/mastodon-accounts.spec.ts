@@ -1,82 +1,33 @@
-import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/activitypub.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getOrAssignMastodonId } from '../../src/mastodonId.js';
-import { AccessTokens, Streams, UserInfos } from '../../src/schema.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { Streams } from '../../src/schema.js';
+import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
 
 const UID_ME = 'uid-hakatashi';
 const UID_ALICE = 'uid-alice';
 
 describe('Mastodon Accounts API (Issue #62)', () => {
 	let me: Awaited<ReturnType<typeof apex.createActor>>;
-	let alice: Awaited<ReturnType<typeof apex.createActor>>;
 
-	const addToken = async (token: string, scope: string, uid = UID_ME) => {
-		const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
-		await AccessTokens.add({
-			accessToken: token,
-			accessTokenExpiresAt: farFuture,
-			refreshTokenExpiresAt: farFuture,
-			scope,
-			client: { id: '1', grants: [] },
-			user: { userId: uid },
-		} as never);
-	};
+	const addToken = (token: string, scope: string, uid = UID_ME) =>
+		addAccessToken(token, scope, uid);
 
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 		vi.spyOn(apex.store, 'deliveryEnqueue').mockResolvedValue(undefined as never);
 		vi.spyOn(apex, 'publishUpdate').mockResolvedValue(undefined as never);
 
-		me = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
-		await apex.store.saveObject(me);
-		await UserInfos.doc(escapeFirestoreKey(me.id)).set({
-			id: '1',
-			uid: UID_ME,
-			locked: false,
-			bot: false,
-			created_at: '2026-01-01T00:00:00.000Z',
-			followers_count: 0,
-			following_count: 0,
-			statuses_count: 0,
-			last_status_at: '',
-			emojis: [],
-			fields: [],
-			roles: [],
-		});
-
-		alice = await apex.createActor('alice', 'alice', '', '', 'Person');
-		await apex.store.saveObject(alice);
-		await UserInfos.doc(escapeFirestoreKey(alice.id)).set({
-			id: '2',
-			uid: UID_ALICE,
-			locked: false,
-			bot: false,
-			created_at: '2026-01-01T00:00:00.000Z',
-			followers_count: 0,
-			following_count: 0,
-			statuses_count: 0,
-			last_status_at: '',
-			emojis: [],
-			fields: [],
-			roles: [],
-		});
+		me = await createLocalActor('hakatashi', { uid: UID_ME, id: '1' });
+		await createLocalActor('alice', { uid: UID_ALICE, id: '2' });
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.restoreAllMocks();
+		await resetFirestore();
 	});
 
 	describe('GET /api/v1/accounts/verify_credentials', () => {

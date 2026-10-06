@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../../src/firebase.js';
+import {
+	domain,
+	escapeFirestoreKey,
+	mastodonDomain,
+	projectId,
+	toFirestoreKey,
+	unescapeFirestoreKey,
+} from '../../src/firebase.js';
 import { metaIndexPath } from '../../src/meta.js';
 import { UserInfos } from '../../src/schema.js';
 
@@ -63,5 +70,17 @@ describe('FirestoreKey type constraints', () => {
 		expect(UserInfos.doc(key)).toBeDefined();
 		expect(metaIndexPath('objects', key)).toBeDefined();
 		expect(unescapeFirestoreKey(key)).toBe(rawString);
+	});
+});
+
+describe('domain and mastodonDomain configuration (ADR-0077)', () => {
+	test('resolves to dev domain when projectId is not activitypub-firebase', () => {
+		// firebase.ts は projectId === 'activitypub-firebase' 以外をすべて dev ドメインとして扱う。
+		// テストでワーカーごとに GCLOUD_PROJECT (例: activitypub-firebase-dev-w1) を変えても
+		// ドメイン判定が変わらない前提をここで固定する (ADR-0077)。
+		expect(domain).toBe('activitypub-dev.hakatashi.com');
+		expect(mastodonDomain).toBe('mastodon-dev.hakatashi.com');
+		expect(projectId).not.toBe('activitypub-firebase');
+		expect(projectId).toMatch(/^activitypub-firebase-dev-w/);
 	});
 });

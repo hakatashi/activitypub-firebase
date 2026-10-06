@@ -2,9 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { activitypub, apex, app } from '../../src/activitypub.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const DEV_DOMAIN = 'activitypub-dev.hakatashi.com';
 const RECIPIENT_ID = `https://${DEV_DOMAIN}/activitypub/u/hakatashi`;
@@ -31,10 +29,6 @@ const wrapWithRawBody = (target: unknown) => {
 // getCollection の匿名向けフィルタで毎回除外されること (→ ADR-0035)。
 describe('anonymous GET /followers?page=true after auto-accept (Issue #55, ADR-0035)', () => {
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-
 		const actor = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
 		await apex.store.saveObject(actor);
 		await apex.store.saveObject({
@@ -52,10 +46,7 @@ describe('anonymous GET /followers?page=true after auto-accept (Issue #55, ADR-0
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	test('lists the newly accepted follower without authentication', async () => {

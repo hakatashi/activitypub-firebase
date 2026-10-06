@@ -102,3 +102,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0074](0074-mastodon-api-authentication-error-handling.md) | Mastodon API の認証エラーハンドリングと統一的なエラー応答 | Accepted |
 | [0075](0075-recompute-follow-counts.md) | フォロー数・フォロワー数は差分更新ではなく再計算で持つ | Accepted |
 | [0076](0076-pregenerated-test-actor-keys.md) | テスト時の Actor 鍵ペアに事前生成した固定鍵を使う | Accepted |
+| [0077](0077-isolate-test-firestore-by-worker-project-id.md) | ワーカー固有の projectId によるテスト並列化とテストヘルパー共通化 | Accepted |

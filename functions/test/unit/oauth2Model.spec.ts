@@ -1,28 +1,15 @@
 import type { AuthorizationCode, Client, Token, User } from '@node-oauth/oauth2-server';
-import { describe, expect, test, afterEach, beforeEach } from 'vitest';
+import { describe, expect, test, afterEach } from 'vitest';
 import { Oauth2Model } from '../../src/mastodon/oauth2Model.js';
 import { Clients, RefreshTokens, Users } from '../../src/schema.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 describe('Oauth2Model', () => {
 	const model = new Oauth2Model();
 
-	beforeEach(() => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-	});
-
 	// Teardown firestore database after each test
 	afterEach(async () => {
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	describe('getClient', () => {

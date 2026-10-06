@@ -5,40 +5,18 @@ import { apex } from '../../src/activitypub.js';
 import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { AccessTokens, UserInfos } from '../../src/schema.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { addAccessToken, resetFirestore } from '../helpers/index.js';
 
 const UID_ME = 'uid-hakatashi';
 
 describe('mastodon', () => {
-	const addToken = async (token: string, scope: string, uid = UID_ME) => {
-		const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
-		await AccessTokens.add({
-			accessToken: token,
-			accessTokenExpiresAt: farFuture,
-			refreshTokenExpiresAt: farFuture,
-			scope,
-			client: { id: '1', grants: [] },
-			user: { userId: uid },
-		} as never);
-	};
-
-	beforeEach(() => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-	});
+	const addToken = (token: string, scope: string, uid = UID_ME) =>
+		addAccessToken(token, scope, uid);
 
 	// Teardown firestore database after each test
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{
-				method: 'DELETE',
-			},
-		);
+		await resetFirestore();
 	});
 
 	test('Root path should not be implemented', async () => {

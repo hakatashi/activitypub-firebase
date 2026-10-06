@@ -2,9 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { activitypub, apex, app } from '../../src/activitypub.js';
-
-const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
-const projectId = process.env.GCLOUD_PROJECT;
+import { resetFirestore } from '../helpers/index.js';
 
 const REMOTE_ACTOR_ID = 'https://remote.example/u/alice';
 
@@ -26,10 +24,6 @@ describe('/inbox as:Public addressing normalization (Issue #54)', () => {
 	let originalEnv: string;
 
 	beforeEach(async () => {
-		if (firestoreHost === undefined || projectId === undefined) {
-			throw new Error('Firestore emulator is not running');
-		}
-
 		const actor = await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person');
 		await apex.store.saveObject(actor);
 		await apex.store.saveObject({
@@ -46,10 +40,7 @@ describe('/inbox as:Public addressing normalization (Issue #54)', () => {
 
 	afterEach(async () => {
 		app.set('env', originalEnv);
-		await fetch(
-			`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
-			{ method: 'DELETE' },
-		);
+		await resetFirestore();
 	});
 
 	test.each([
