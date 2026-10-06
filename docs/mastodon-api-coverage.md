@@ -1,6 +1,6 @@
 # Mastodon API 実装状況
 
-`functions/src/mastodon/api.ts` および `oauth.ts` の実装状況。
+`functions/src/mastodon/routes/` および `oauth.ts` の実装状況。
 **エンドポイントを実装したらこの表を更新する。**
 
 未定義のルートは `api.ts` 末尾のフォールバックで 404 を返す(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md))。

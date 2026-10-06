@@ -21,7 +21,7 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 ### タイムラインにブーストが出ない
 
-`noteObjectToStatus`(`functions/src/mastodon/api.ts`)は `reblog` を常に `null` で返し、
+`noteObjectToStatus`(`functions/src/mastodon/presenters/status.ts`)は `reblog` を常に `null` で返し、
 タイムラインと `accounts/:id/statuses` は Note だけを集める。自分やフォロー中のアカウントの
 `Announce` はタイムラインに現れない(ブーストの実行と `reblogged` の判定はできる)。
 

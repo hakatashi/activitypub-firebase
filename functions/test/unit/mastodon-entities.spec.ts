@@ -4,8 +4,8 @@ import { describe, expect, test, vi } from 'vitest';
 import {
 	accountToCredentialAccount,
 	actorObjectToAccount,
-	noteObjectToStatus,
-} from '../../src/mastodon/api.js';
+} from '../../src/mastodon/presenters/account.js';
+import { noteObjectToStatus } from '../../src/mastodon/presenters/status.js';
 import * as mastodonIdModule from '../../src/mastodonId.js';
 import type { StatusViewerContext } from '../../src/mastodon/statusAttributes.js';
 import {
