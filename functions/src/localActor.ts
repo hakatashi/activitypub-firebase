@@ -36,6 +36,13 @@ export const localOutboxIri = (
 	customDomain: string = domain,
 ): string => `https://${customDomain}${routes.outbox.replace(':actor', username)}`;
 
+// 自分発の Follow が相手に Reject されたとき、apex はこのコレクションに入れる。
+export const localRejectionsIri = (
+	username: string = LOCAL_USERNAME,
+	customDomain: string = domain,
+): string => `https://${customDomain}${routes.rejections.replace(':actor', username)}`;
+
 export const localActorId = localActorIri();
 export const localFollowersId = localFollowersIri();
 export const localFollowingId = localFollowingIri();
+export const localRejectionsId = localRejectionsIri();

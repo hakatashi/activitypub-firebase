@@ -9,6 +9,7 @@ import { chunk, isEqual, mapValues } from 'lodash-es';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from './mastodonId.js';
 import { metaIndexPath } from './meta.js';
+import { prepareFollowProjectionUpdate } from './projections/follows.js';
 import { Contexts, Deliveries, Objects, Streams } from './schema.js';
 import { toIdArray } from './utils.js';
 
@@ -444,46 +445,63 @@ export default class Store extends IApexStore implements ApexStore {
 		const activityWithId = activity.id ? activity : { ...activity, id: activityId };
 		logger.info({ type: 'saveActivity', activity: activityWithId });
 		const activityRef = Streams.doc(escapeFirestoreKey(activityId));
-		return this.db.runTransaction(async (transaction) => {
+		return this.db.runTransaction(async (transaction): Promise<SaveActivityResult> => {
 			const activityDoc = await transaction.get(activityRef);
+			const existingData = activityDoc.data();
+
+			let result: SaveActivityResult;
+			let write: (() => void) | undefined;
+			if (existingData === undefined) {
+				result = { isNew: true, activity: activityWithId };
+				write = () => transaction.set(activityRef, activityWithId);
+			} else {
+				const existingCollections: string[] = Array.isArray(existingData._meta?.collection)
+					? existingData._meta.collection
+					: [];
+				const incomingCollections: string[] = Array.isArray(activity._meta?.collection)
+					? activity._meta.collection
+					: [];
+
+				const newCollections = incomingCollections.filter(
+					(collection) => !existingCollections.includes(collection),
+				);
+
+				if (newCollections.length > 0) {
+					const updatedCollections = [...existingCollections, ...newCollections];
+					result = {
+						isNew: 'new collection',
+						activity: {
+							...existingData,
+							_meta: {
+								...existingData._meta,
+								collection: updatedCollections,
+							},
+						},
+					};
+					write = () =>
+						transaction.update(activityRef, {
+							'_meta.collection': updatedCollections,
+						});
+				} else {
+					result = { isNew: false, activity: existingData };
+				}
+			}
+
+			// フォロー関係の射影も同じトランザクションで更新する (→ ADR-0082)。
+			const commitProjection =
+				write === undefined
+					? undefined
+					: await prepareFollowProjectionUpdate(transaction, existingData, result.activity);
 			// 新規・既存を問わず Mastodon ID のマッピングを保証する (→ ADR-0058)。
 			// 読み取りを伴うため、トランザクション内の書き込みより前に呼ぶ。
-			await getOrAssignMastodonIdInTransaction(transaction, activityId, activityWithId.published);
-			if (!activityDoc.exists) {
-				transaction.set(activityRef, activityWithId);
-				return { isNew: true, activity: activityWithId };
-			}
-
-			const existingData = activityDoc.data();
-			assert(existingData !== undefined, 'existingData is undefined');
-
-			const existingCollections: string[] = Array.isArray(existingData._meta?.collection)
-				? existingData._meta.collection
-				: [];
-			const incomingCollections: string[] = Array.isArray(activity._meta?.collection)
-				? activity._meta.collection
-				: [];
-
-			const newCollections = incomingCollections.filter(
-				(collection) => !existingCollections.includes(collection),
+			const mastodonId = await getOrAssignMastodonIdInTransaction(
+				transaction,
+				activityId,
+				activityWithId.published,
 			);
-
-			if (newCollections.length > 0) {
-				const updatedCollections = [...existingCollections, ...newCollections];
-				const updatedActivity: APObject = {
-					...existingData,
-					_meta: {
-						...existingData._meta,
-						collection: updatedCollections,
-					},
-				};
-				transaction.update(activityRef, {
-					'_meta.collection': updatedCollections,
-				});
-				return { isNew: 'new collection', activity: updatedActivity };
-			}
-
-			return { isNew: false, activity: existingData };
+			write?.();
+			commitProjection?.(mastodonId);
+			return result;
 		});
 	}
 
@@ -501,7 +519,14 @@ export default class Store extends IApexStore implements ApexStore {
 			if (!toIdArray(activityDoc.get('actor')).includes(actorId)) {
 				return;
 			}
+			// フォロー関係の射影も同じトランザクションで更新する (→ ADR-0082)。
+			const commitProjection = await prepareFollowProjectionUpdate(
+				transaction,
+				activityDoc.data(),
+				undefined,
+			);
 			transaction.delete(activityRef);
+			commitProjection?.();
 		});
 	}
 
@@ -547,9 +572,16 @@ export default class Store extends IApexStore implements ApexStore {
 			} else if (!current.includes(value)) {
 				updated = [...current, value];
 			}
-			activityData._meta = { ...activityData._meta, [key]: updated };
+			const updatedActivity = { ...activityData, _meta: { ...activityData._meta, [key]: updated } };
+			// フォロー関係の射影も同じトランザクションで更新する (→ ADR-0082)。
+			const commitProjection = await prepareFollowProjectionUpdate(
+				transaction,
+				activityData,
+				updatedActivity,
+			);
 			transaction.update(activityRef, { [`_meta.${key}`]: updated });
-			return activityData;
+			commitProjection?.();
+			return updatedActivity;
 		});
 	}
 
