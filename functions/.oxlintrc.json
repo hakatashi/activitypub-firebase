@@ -15,5 +15,45 @@
 			}
 		],
 		"typescript/no-explicit-any": "error"
-	}
+	},
+	"overrides": [
+		{
+			"files": ["src/social/**/*"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"paths": [
+							{
+								"name": "express",
+								"message": "social layer must not import express (ADR-0080)"
+							}
+						],
+						"patterns": [
+							{
+								"group": ["**/mastodon/**", "../mastodon/**", "./mastodon/**"],
+								"message": "social layer must not import mastodon layer (ADR-0080)"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/denormalizations.ts"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": ["**/mastodon/**", "./mastodon/**"],
+								"message": "denormalizations must not import mastodon layer (ADR-0080)"
+							}
+						]
+					}
+				]
+			}
+		}
+	]
 }

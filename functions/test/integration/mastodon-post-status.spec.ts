@@ -2,7 +2,7 @@ import type { APObject } from '../../src/apex/index.js';
 import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { apex } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { reserveIdempotencyKey } from '../../src/idempotency.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getMastodonIds } from '../../src/mastodonId.js';

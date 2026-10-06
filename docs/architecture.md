@@ -11,6 +11,17 @@ Firebase Hosting + Cloud Functions (Gen2, Node 22) + Firestore。TypeScript / ES
 Firestore へのクライアントからの読み書きは `firestore.rules` で全面禁止されており、
 すべて Cloud Functions (Admin SDK) 経由でアクセスする。
 
+## レイヤ構成とモジュール依存の向き
+
+モジュール間の依存は、上位から下位への一方向(`entrypoints` → `mastodon/api.ts` → `social/` → `store.ts` / `apex.ts`)に限定されている(→ [ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
+
+- **エントリポイント層 (`activitypub.ts` / `mastodon/index.ts` / `denormalizations.ts` / `tasks.ts`)**: 各 Cloud Function のハンドラを構築・エクスポートする。`activitypub.ts` は apex インスタンスを再エクスポートせず、各モジュールは `functions/src/apex.ts` から直接 apex を import する。
+- **Mastodon API ルート層 (`functions/src/mastodon/`)**: HTTP ルーティング、パラメータ検証、認証、および AP オブジェクトから Mastodon エンティティへの変換 (presenter) を担う。
+- **ソーシャル・タイムライン層 (`functions/src/social/`)**: フォロー関係・タイムライン・スレッド探索などのドメインロジックと Firestore クエリを担う。`mastodon/` や `express` には依存しない。
+- **ActivityPub / ストレージ層 (`functions/src/apex/`, `functions/src/store.ts`)**: プロトコル処理および Firestore への低レベル読み書きを行う。
+
+この依存方向(特に `social/` や `denormalizations.ts` から `mastodon/` への依存禁止)は、oxlint の `no-restricted-imports` により静的に強制される。
+
 ## デプロイされる Function
 
 `functions/src/index.ts` が以下をエクスポートする。
@@ -172,9 +183,23 @@ IRI はドットを含むので、クエリのフィールドパスは必ず
 
 apex のストア抽象では集計ができないため、フォロワー数・投稿数は Firestore Trigger
 (`functions/src/denormalizations.ts`)で `userInfos` に非正規化している。
-投稿数は差分更新、フォロー数・フォロワー数は Mastodon API の一覧と同じ関数で数え直す再計算で持つ
-(→ [ADR-0075](adr/0075-recompute-follow-counts.md))。
+投稿数は差分更新、フォロー数・フォロワー数はソーシャルグラフ層 (`functions/src/social/follows.ts`) の関数で数え直す再計算で持つ
+(→ [ADR-0075](adr/0075-recompute-follow-counts.md)、[ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
 既存データの再計算には `functions/bin/denormalizations.ts` を使う。
+
+## ソーシャル・タイムライン層 (social/)
+
+`functions/src/social/` 以下。Mastodon API 表現や HTTP ルーティングから独立した、純粋なソーシャルグラフ探索・タイムライン収集・スレッド走査のドメイン層(→ [ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
+
+| ファイル | 役割 |
+|---|---|
+| `follows.ts` | フォロー判定の集約(`resolveOutgoingFollows` / `collectFollowers`)、フォロー中・フォロワー一覧、および古い重複 Follow の削除(`removeSupersededFollows`) |
+| `timelines.ts` | Note コレクションのカーソル走査(`collectVisibleNotes`)、アカウント投稿・公開・ホームタイムラインの Note 収集 |
+| `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
+| `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
+| `types.ts` | `NoteObject` などのドメイン型定義 |
+
+フォロー関係の判定は、自分発のフォロー状態を `resolveOutgoingFollows`、自分宛のフォロワー状態を `collectFollowers` のそれぞれ単一の関数に集約し、重複する Follow/Accept/Undo クエリの発行を排除している。Firestore トリガー(`denormalizations.ts`)のフォロー数・フォロワー数再計算もこの層を呼び出し、Mastodon API ルーターモジュールを読み込まない。
 
 ## Mastodon API 層
 

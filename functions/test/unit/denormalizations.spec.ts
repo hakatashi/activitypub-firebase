@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import type { DocumentReference, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
-import { apex } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import type { MetaIndex } from '../../src/meta.js';
 import {

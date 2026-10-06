@@ -1,7 +1,8 @@
 import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { activitypub, apex, app } from '../../src/activitypub.js';
+import { activitypub, app } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { Streams } from '../../src/schema.js';
 import { resetFirestore } from '../helpers/index.js';

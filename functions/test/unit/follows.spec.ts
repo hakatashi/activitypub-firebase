@@ -1,6 +1,6 @@
 import { describe, expect, test, afterEach } from 'vitest';
 import { escapeFirestoreKey } from '../../src/firebase.js';
-import { removeSupersededFollows } from '../../src/follows.js';
+import { removeSupersededFollows } from '../../src/social/follows.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import { Streams } from '../../src/schema.js';
 

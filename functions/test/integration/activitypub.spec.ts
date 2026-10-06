@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, test, afterEach, beforeEach, vi } from 'vitest';
-import { activitypub, apex } from '../../src/activitypub.js';
+import { activitypub } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 
 import { resetFirestore } from '../helpers/index.js';
 

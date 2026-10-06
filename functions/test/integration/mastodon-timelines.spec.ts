@@ -1,6 +1,6 @@
 import type { APObject } from '../../src/apex/index.js';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { apex } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import {
 	getAccountStatuses,

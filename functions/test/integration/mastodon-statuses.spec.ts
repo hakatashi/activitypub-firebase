@@ -1,7 +1,7 @@
 import type { APObject } from '../../src/apex/index.js';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { apex } from '../../src/activitypub.js';
+import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
