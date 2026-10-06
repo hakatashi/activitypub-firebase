@@ -84,6 +84,22 @@ export interface ReactionRelation {
 export const ReactionRelations = (userInfoKey: FirestoreKey, kind: ReactionKind) =>
 	UserInfos.doc(userInfoKey).collection(kind) as CollectionReference<ReactionRelation>;
 
+// 通知の射影 (→ ADR-0088)。`userInfos/{ローカル actor}/notifications/{アクティビティ IRI}`。
+export type NotificationType = 'mention' | 'favourite' | 'reblog' | 'follow';
+
+export interface NotificationRecord {
+	// 通知 ID (アクティビティの Mastodon ID。時系列順)
+	id: string;
+	type: NotificationType;
+	activityIri: string;
+	accountIri: string;
+	statusIri: string | null;
+	createdAt: Timestamp;
+}
+
+export const Notifications = (userInfoKey: FirestoreKey) =>
+	UserInfos.doc(userInfoKey).collection('notifications') as CollectionReference<NotificationRecord>;
+
 export interface MastodonClient extends Client {
 	clientId: string;
 	clientSecret: string;
