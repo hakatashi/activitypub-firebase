@@ -1,25 +1,15 @@
 import assert from 'node:assert';
 import firebase from 'firebase-admin';
 import { apex } from '../../apex.js';
-import { getFollowing } from '../../social/follows.js';
 import { escapeFirestoreKey } from '../../firebase.js';
-import { getIriByMastodonId } from '../../mastodonId.js';
 import { Streams, UserInfos } from '../../schema.js';
-import {
-	getAttributedTo,
-	isAPAnnounce,
-	isAPLike,
-	isAPNote,
-	isAPUndo,
-	toIdArray,
-} from '../../utils.js';
+import { getAttributedTo, isAPAnnounce, isAPLike, isAPUndo, toIdArray } from '../../utils.js';
 import { createAsyncRouter } from '../http/asyncRouter.js';
 import { authRequired, scopeRequired } from '../http/auth.js';
-import { unprocessable } from '../http/responses.js';
-import { assertIsAPActor } from '../presenters/account.js';
+import { UnprocessableError } from '../http/errors.js';
+import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
 import { getStatusByIri, getViewerRelationships } from '../presenters/status.js';
-import { statusParamsSchema } from './statuses.js';
-import { isNoteVisibleTo, noteToVisibility } from '../statusAttributes.js';
+import { noteToVisibility } from '../statusAttributes.js';
 
 const router = createAsyncRouter();
 
@@ -28,27 +18,8 @@ router.post(
 	authRequired,
 	scopeRequired('write:favourites'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		const viewerRelations = await getViewerRelationships(actor, [note]);
 		if (!viewerRelations.favourited.has(note.id)) {
@@ -70,27 +41,8 @@ router.post(
 	authRequired,
 	scopeRequired('write:favourites'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		const [likeDocs, undoDocs] = await Promise.all([
 			Streams.where('type', '==', 'Like').where('actor', 'array-contains', actor.id).get(),
@@ -138,32 +90,12 @@ router.post(
 	authRequired,
 	scopeRequired('write:statuses'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		const visibility = noteToVisibility(note);
 		if (visibility === 'direct' || visibility === 'private') {
-			unprocessable(res, 'This post cannot be reblogged');
-			return;
+			throw new UnprocessableError('This post cannot be reblogged');
 		}
 
 		const viewerRelations = await getViewerRelationships(actor, [note]);
@@ -190,27 +122,8 @@ router.post(
 	authRequired,
 	scopeRequired('write:statuses'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		const [announceDocs, undoDocs] = await Promise.all([
 			Streams.where('type', '==', 'Announce').where('actor', 'array-contains', actor.id).get(),
@@ -254,27 +167,8 @@ router.post(
 	authRequired,
 	scopeRequired('write:bookmarks'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);
@@ -294,27 +188,8 @@ router.post(
 	authRequired,
 	scopeRequired('write:bookmarks'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);
@@ -331,36 +206,15 @@ router.post(
 	authRequired,
 	scopeRequired('write:accounts'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		if (getAttributedTo(note) !== actor.id) {
-			unprocessable(res, 'You can only pin your own posts');
-			return;
+			throw new UnprocessableError('You can only pin your own posts');
 		}
 
 		if (noteToVisibility(note) === 'direct') {
-			unprocessable(res, 'You cannot pin direct posts');
-			return;
+			throw new UnprocessableError('You cannot pin direct posts');
 		}
 
 		const actorKey = escapeFirestoreKey(actor.id);
@@ -368,11 +222,9 @@ router.post(
 		const pinsCollection = UserInfos.doc(actorKey).collection('pins');
 		const pinsSnap = await pinsCollection.get();
 		if (!pinsSnap.docs.some((doc) => doc.id === noteKey) && pinsSnap.size >= 5) {
-			unprocessable(
-				res,
+			throw new UnprocessableError(
 				'Validation failed: You have already pinned the maximum number of posts (5)',
 			);
-			return;
 		}
 
 		await pinsCollection
@@ -390,27 +242,8 @@ router.post(
 	authRequired,
 	scopeRequired('write:accounts'),
 	async (req, res) => {
-		const parsedParams = statusParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const iri = await getIriByMastodonId(parsedParams.data.id);
-		const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-		if (!isAPNote(note)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
-
-		const viewerFollowing = new Set(await getFollowing(actor));
-		if (!isNoteVisibleTo(note, actor.id, viewerFollowing)) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
+		const actor = await loadViewer(res);
+		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);

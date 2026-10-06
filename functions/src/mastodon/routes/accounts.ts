@@ -7,9 +7,19 @@ import { plainTextToHtml } from '../../notes.js';
 import { Streams, UserInfo, UserInfos } from '../../schema.js';
 import { toIdArray } from '../../utils.js';
 import { createAsyncRouter } from '../http/asyncRouter.js';
-import { authRequired, getLocalActor, getOptionalViewer, scopeRequired } from '../http/auth.js';
-import { toBoolean } from '../http/params.js';
-import { respondWithStatuses, setLinkHeader, unprocessable } from '../http/responses.js';
+import {
+	authRequired,
+	getAuthActorId,
+	getAuthUserInfo,
+	getLocalActor,
+	getOptionalViewer,
+	scopeRequired,
+} from '../http/auth.js';
+import { NotFoundError, UnprocessableError } from '../http/errors.js';
+import { loadAccount, loadViewer } from '../http/loaders.js';
+import { idParamSchema, toBoolean } from '../http/params.js';
+import { respondWithStatuses, setLinkHeader } from '../http/responses.js';
+import { getValidBody, getValidParams, getValidQuery, validate } from '../http/validation.js';
 import { parsePageParams } from '../pagination.js';
 import {
 	FOLLOWERS_PAGE_LIMITS,
@@ -20,7 +30,6 @@ import {
 	getFollowersPage,
 	getFollowingPage,
 	getRelationships,
-	resolveAccountActor,
 } from '../presenters/account.js';
 import type { RelationshipEntity } from '../presenters/account.js';
 import { STATUS_PAGE_LIMITS, getAccountStatuses } from '../presenters/status.js';
@@ -31,9 +40,7 @@ export const accountLookupQuerySchema = z.object({
 	acct: z.string().min(1),
 });
 
-export const accountParamsSchema = z.object({
-	id: z.string().min(1),
-});
+export const accountParamsSchema = idParamSchema;
 
 export const relationshipsQuerySchema = z.object({
 	id: z
@@ -64,26 +71,18 @@ export const updateCredentialsBodySchema = z.object({
 		.optional(),
 });
 
-router.get('/v1/accounts/lookup', async (req, res) => {
-	const parsedQuery = accountLookupQuerySchema.safeParse(req.query);
-	if (!parsedQuery.success) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
-
-	const account = await getAccount(parsedQuery.data.acct);
-
-	if (account === undefined) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
-
-	res.json(account);
-});
+router.get(
+	'/v1/accounts/lookup',
+	validate({ query: accountLookupQuerySchema, statusCodes: { query: 404 } }),
+	async (req, res) => {
+		const { acct } = getValidQuery(res, accountLookupQuerySchema);
+		const account = await getAccount(acct);
+		if (account === undefined) {
+			throw new NotFoundError();
+		}
+		res.json(account);
+	},
+);
 
 router.get(
 	'/v1/accounts/relationships',
@@ -96,16 +95,16 @@ router.get(
 			return;
 		}
 
-		const viewer = await getLocalActor(res.locals.actorId as string);
+		const viewer = await getLocalActor(getAuthActorId(res));
 		const relationships = await getRelationships(viewer, parsedQuery.data.id);
 		res.json(relationships);
 	},
 );
 
 router.get('/v1/accounts/verify_credentials', authRequired, async (req, res) => {
-	const actorId = res.locals.actorId as string;
+	const actorId = getAuthActorId(res);
 	const actor = await getLocalActor(actorId);
-	const userInfo = res.locals.auth as UserInfo;
+	const userInfo = getAuthUserInfo(res);
 	const account = await actorObjectToAccount(actor, userInfo);
 	res.json(accountToCredentialAccount(account, userInfo));
 });
@@ -114,17 +113,11 @@ router.patch(
 	'/v1/accounts/update_credentials',
 	authRequired,
 	scopeRequired('write:accounts'),
+	validate({ body: updateCredentialsBodySchema }),
 	async (req, res) => {
-		const parsedBody = updateCredentialsBodySchema.safeParse(req.body ?? {});
-		if (!parsedBody.success) {
-			unprocessable(res, `Validation failed: ${parsedBody.error.issues[0]?.message ?? 'invalid'}`);
-			return;
-		}
-		const body = parsedBody.data;
-
-		const actorId = res.locals.actorId as string;
-		const actor = await apex.store.getObject(actorId, true);
-		assertIsAPActor(actor);
+		const body = getValidBody(res, updateCredentialsBodySchema);
+		const actorId = getAuthActorId(res);
+		const actor = await loadViewer(res);
 
 		const userInfoRef = UserInfos.doc(escapeFirestoreKey(actorId));
 		const userInfoDoc = await userInfoRef.get();
@@ -182,22 +175,8 @@ router.patch(
 );
 
 router.get('/v1/accounts/:id/statuses', async (req, res) => {
-	const parsedParams = accountParamsSchema.safeParse(req.params);
-	if (!parsedParams.success) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
-
 	// ローカル (UserInfos の id) とリモート (Mastodon ID の採番) の両方を解決する (→ ADR-0069)
-	const resolved = await resolveAccountActor(parsedParams.data.id);
-	if (resolved === undefined) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
+	const resolved = await loadAccount(req.params.id ?? '');
 	const actorId = resolved.actor.id;
 	assert(actorId !== undefined, 'actor.id is undefined');
 
@@ -213,105 +192,82 @@ router.get('/v1/accounts/:id/statuses', async (req, res) => {
 	);
 });
 
-router.get('/v1/accounts/:id/followers', async (req, res) => {
-	const parsedParams = accountParamsSchema.safeParse(req.params);
-	if (!parsedParams.success) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
+router.get(
+	'/v1/accounts/:id/followers',
+	validate({ params: accountParamsSchema }),
+	async (req, res) => {
+		const { id } = getValidParams(res, accountParamsSchema);
 
-	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
+		const userInfo = await UserInfos.where('id', '==', id).get();
 
-	if (userInfo.docs.length !== 1) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
+		if (userInfo.docs.length !== 1) {
+			throw new NotFoundError();
+		}
 
-	const userInfoDoc = userInfo.docs[0];
-	assert(userInfoDoc !== undefined);
+		const userInfoDoc = userInfo.docs[0];
+		assert(userInfoDoc !== undefined);
 
-	const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
-	const actorObject = await apex.store.getObject(userId);
+		const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const actorObject = await apex.store.getObject(userId);
 
-	if (actorObject === undefined) {
-		res.sendStatus(500);
-		return;
-	}
-	assertIsAPActor(actorObject);
+		if (actorObject === undefined) {
+			res.sendStatus(500);
+			return;
+		}
+		assertIsAPActor(actorObject);
 
-	const { accounts, cursorIds } = await getFollowersPage(
-		actorObject,
-		parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
-	);
-	setLinkHeader(req, res, cursorIds);
-	res.json(accounts);
-});
+		const { accounts, cursorIds } = await getFollowersPage(
+			actorObject,
+			parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
+		);
+		setLinkHeader(req, res, cursorIds);
+		res.json(accounts);
+	},
+);
 
-router.get('/v1/accounts/:id/following', async (req, res) => {
-	const parsedParams = accountParamsSchema.safeParse(req.params);
-	if (!parsedParams.success) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
+router.get(
+	'/v1/accounts/:id/following',
+	validate({ params: accountParamsSchema }),
+	async (req, res) => {
+		const { id } = getValidParams(res, accountParamsSchema);
 
-	const userInfo = await UserInfos.where('id', '==', parsedParams.data.id).get();
-	if (userInfo.docs.length !== 1) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
+		const userInfo = await UserInfos.where('id', '==', id).get();
+		if (userInfo.docs.length !== 1) {
+			throw new NotFoundError();
+		}
 
-	const userInfoDoc = userInfo.docs[0];
-	assert(userInfoDoc !== undefined);
+		const userInfoDoc = userInfo.docs[0];
+		assert(userInfoDoc !== undefined);
 
-	const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
-	const actorObject = await apex.store.getObject(userId);
+		const userId = unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id));
+		const actorObject = await apex.store.getObject(userId);
 
-	if (actorObject === undefined) {
-		res.sendStatus(500);
-		return;
-	}
-	assertIsAPActor(actorObject);
+		if (actorObject === undefined) {
+			res.sendStatus(500);
+			return;
+		}
+		assertIsAPActor(actorObject);
 
-	const { accounts, cursorIds } = await getFollowingPage(
-		actorObject,
-		parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
-	);
-	setLinkHeader(req, res, cursorIds);
-	res.json(accounts);
-});
+		const { accounts, cursorIds } = await getFollowingPage(
+			actorObject,
+			parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
+		);
+		setLinkHeader(req, res, cursorIds);
+		res.json(accounts);
+	},
+);
 
 router.post(
 	'/v1/accounts/:id/follow',
 	authRequired,
 	scopeRequired('write:follows'),
 	async (req, res) => {
-		const parsedParams = accountParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const resolved = await resolveAccountActor(parsedParams.data.id);
-		if (resolved === undefined) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
+		const resolved = await loadAccount(req.params.id ?? '');
 		const targetActor = resolved.actor;
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
+		const actor = await loadViewer(res);
 
 		if (targetActor.id === actor.id) {
-			unprocessable(res, 'You cannot follow yourself');
-			return;
+			throw new UnprocessableError('You cannot follow yourself');
 		}
 
 		const followingSet = new Set(await getFollowing(actor));
@@ -330,7 +286,7 @@ router.post(
 			targetActor.manuallyApprovesFollowers === true || resolved.userInfo?.locked === true;
 		const followerIris = await getFollowerActorIris(actor);
 		const relationship: RelationshipEntity = {
-			id: parsedParams.data.id,
+			id: req.params.id ?? '',
 			following: !isTargetLocked,
 			showing_reblogs: !isTargetLocked,
 			notifying: false,
@@ -357,25 +313,12 @@ router.post(
 	authRequired,
 	scopeRequired('write:follows'),
 	async (req, res) => {
-		const parsedParams = accountParamsSchema.safeParse(req.params);
-		if (!parsedParams.success) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
-		const resolved = await resolveAccountActor(parsedParams.data.id);
-		if (resolved === undefined) {
-			res.status(404).json({ error: 'Record not found' });
-			return;
-		}
-
+		const resolved = await loadAccount(req.params.id ?? '');
 		const targetActor = resolved.actor;
-		const actor = await apex.store.getObject(res.locals.actorId as string, true);
-		assertIsAPActor(actor);
+		const actor = await loadViewer(res);
 
 		if (targetActor.id === actor.id) {
-			unprocessable(res, 'You cannot unfollow yourself');
-			return;
+			throw new UnprocessableError('You cannot unfollow yourself');
 		}
 
 		const followingIri = toIdArray(actor.following)[0];
@@ -413,7 +356,7 @@ router.post(
 
 		const followerIris = await getFollowerActorIris(actor);
 		const relationship: RelationshipEntity = {
-			id: parsedParams.data.id,
+			id: req.params.id ?? '',
 			following: false,
 			showing_reblogs: false,
 			notifying: false,
@@ -436,26 +379,11 @@ router.post(
 );
 
 router.get('/v1/accounts/:id', async (req, res) => {
-	const parsedParams = accountParamsSchema.safeParse(req.params);
-	if (!parsedParams.success) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
-
-	const resolved = await resolveAccountActor(parsedParams.data.id);
-	if (resolved === undefined) {
-		res.status(404).json({
-			error: 'Record not found',
-		});
-		return;
-	}
-
+	const resolved = await loadAccount(req.params.id ?? '');
 	const account = await actorObjectToAccount(
 		resolved.actor,
 		resolved.userInfo,
-		parsedParams.data.id,
+		req.params.id ?? '',
 	);
 	res.json(account);
 });

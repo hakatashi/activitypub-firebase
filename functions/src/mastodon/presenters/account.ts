@@ -336,9 +336,14 @@ export const getRelationships = async (
 	return results;
 };
 
+export interface ResolvedAccountActor {
+	actor: ApexObject & APActor;
+	userInfo?: UserInfo;
+}
+
 export const resolveAccountActor = async (
 	id: string,
-): Promise<{ actor: ApexObject & APActor; userInfo?: UserInfo } | undefined> => {
+): Promise<ResolvedAccountActor | undefined> => {
 	const userInfoSnap = await UserInfos.where('id', '==', id).get();
 	const userInfoDoc = userInfoSnap.docs[0];
 	if (userInfoDoc !== undefined) {
