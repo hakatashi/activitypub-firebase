@@ -31,11 +31,12 @@ import {
 	noteToEmojis,
 	noteToHashtags,
 	noteToLanguage,
+	noteToMediaAttachments,
 	noteToMentions,
 	noteToViewerAttributes,
 	noteToVisibility,
 } from '../statusAttributes.js';
-import type { StatusViewerContext } from '../statusAttributes.js';
+import type { MediaAttachmentEntity, StatusViewerContext } from '../statusAttributes.js';
 import { resolveAccountIds, userIdsToAccounts } from './account.js';
 import { getObjects } from '../../store/objects.js';
 
@@ -56,9 +57,13 @@ export interface StatusContext {
 }
 
 // masto の型は `application` を non-null としているが、Mastodon 本体はリモート投稿で null を返す。
-// また DELETE レスポンスでは本文プレーンテキストの `text` が含まれる。
-export type StatusEntity = Omit<CamelToSnake<mastodon.v1.Status>, 'application'> & {
+// また preview_url は仕様上 nullable であり、DELETE レスポンスでは本文プレーンテキストの `text` が含まれる。
+export type StatusEntity = Omit<
+	CamelToSnake<mastodon.v1.Status>,
+	'application' | 'media_attachments'
+> & {
 	application: CamelToSnake<mastodon.v1.Status>['application'] | null;
+	media_attachments: MediaAttachmentEntity[];
 	text?: string | null;
 };
 
@@ -101,8 +106,7 @@ export const noteObjectToStatus = (
 				}
 			: null,
 		account,
-		// メディアは Phase 4 (メディア) で実装するまで空配列のままにする。
-		media_attachments: [],
+		media_attachments: noteToMediaAttachments(note, id),
 		mentions: noteToMentions(note, context.mentionIds),
 		tags: noteToHashtags(note),
 		emojis: noteToEmojis(note),

@@ -6,6 +6,7 @@ import {
 	isNoteVisibleTo,
 	noteToVisibility,
 } from '../social/visibility.js';
+import { domain } from '../firebase.js';
 import type { CamelToSnake } from '../utils.js';
 import { toArray, toStringValue } from '../utils.js';
 
@@ -147,4 +148,255 @@ export const noteToViewerAttributes = (note: APNote, viewerContext?: StatusViewe
 		bookmarked: resolveViewerFlag(viewerContext?.bookmarked, noteId),
 		pinned: resolveViewerFlag(viewerContext?.pinned, noteId),
 	};
+};
+
+export type MediaAttachmentEntity = Omit<
+	CamelToSnake<mastodon.v1.MediaAttachment>,
+	'preview_url'
+> & {
+	preview_url: string | null;
+};
+
+const toValidHttpUrl = (url: unknown): string | undefined => {
+	if (typeof url !== 'string') {
+		return undefined;
+	}
+	try {
+		const parsed = new URL(url);
+		if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+			return parsed.href;
+		}
+	} catch {
+		return undefined;
+	}
+	return undefined;
+};
+
+interface ExtractedMediaUrl {
+	url: string;
+	mediaType?: string | undefined;
+}
+
+const extractUrlAndMediaType = (urlValue: unknown): ExtractedMediaUrl | undefined => {
+	for (const candidate of toArray(urlValue)) {
+		if (typeof candidate === 'string') {
+			const valid = toValidHttpUrl(candidate);
+			if (valid !== undefined) {
+				return { url: valid };
+			}
+		} else if (typeof candidate === 'object' && candidate !== null) {
+			const record = candidate as Record<string, unknown>;
+			const href = toStringValue(record.href) ?? toStringValue(record.url);
+			const valid = href ? toValidHttpUrl(href) : undefined;
+			if (valid !== undefined) {
+				const mediaType = toStringValue(record.mediaType);
+				return { url: valid, mediaType };
+			}
+		}
+	}
+	return undefined;
+};
+
+const extractPreviewUrl = (iconValue: unknown): string | null => {
+	for (const candidate of toArray(iconValue)) {
+		if (typeof candidate === 'string') {
+			const valid = toValidHttpUrl(candidate);
+			if (valid !== undefined) {
+				return valid;
+			}
+		} else if (typeof candidate === 'object' && candidate !== null) {
+			const record = candidate as Record<string, unknown>;
+			const href = toStringValue(record.url) ?? toStringValue(record.href);
+			const valid = href ? toValidHttpUrl(href) : undefined;
+			if (valid !== undefined) {
+				return valid;
+			}
+		}
+	}
+	return null;
+};
+
+const extractBlurhash = (item: Record<string, unknown>): string | null => {
+	const candidates = [
+		item['http://joinmastodon.org/ns#blurhash'],
+		item['toot:blurhash'],
+		item.blurhash,
+	];
+	for (const candidate of candidates) {
+		const val = toStringValue(toArray(candidate)[0]);
+		if (val !== undefined && val.length > 0 && /^[\w#$%*+,-.:;=?@[\]^{|}~]+$/.test(val)) {
+			return val;
+		}
+	}
+	return null;
+};
+
+const extractFocalPoint = (item: Record<string, unknown>): { x: number; y: number } | undefined => {
+	const candidates = [
+		item['http://joinmastodon.org/ns#focalPoint'],
+		item['toot:focalPoint'],
+		item.focalPoint,
+	];
+	for (const candidate of candidates) {
+		if (candidate === undefined || candidate === null) {
+			continue;
+		}
+		if (
+			Array.isArray(candidate) &&
+			candidate.length >= 2 &&
+			typeof candidate[0] === 'number' &&
+			typeof candidate[1] === 'number'
+		) {
+			const x = candidate[0];
+			const y = candidate[1];
+			if (Number.isFinite(x) && Number.isFinite(y)) {
+				return { x, y };
+			}
+		}
+		for (const entry of toArray(candidate)) {
+			if (Array.isArray(entry) && entry.length >= 2) {
+				const x = Number(entry[0]);
+				const y = Number(entry[1]);
+				if (Number.isFinite(x) && Number.isFinite(y)) {
+					return { x, y };
+				}
+			} else if (typeof entry === 'object' && entry !== null) {
+				const record = entry as Record<string, unknown>;
+				if (Array.isArray(record['@list']) && record['@list'].length >= 2) {
+					const x = Number(record['@list'][0]);
+					const y = Number(record['@list'][1]);
+					if (Number.isFinite(x) && Number.isFinite(y)) {
+						return { x, y };
+					}
+				} else if ('x' in record && 'y' in record) {
+					const x = Number(record.x);
+					const y = Number(record.y);
+					if (Number.isFinite(x) && Number.isFinite(y)) {
+						return { x, y };
+					}
+				}
+			}
+		}
+	}
+	return undefined;
+};
+
+const extractDimension = (val: unknown): number | undefined => {
+	const first = toArray(val)[0];
+	if (typeof first === 'number' && Number.isFinite(first) && first > 0) {
+		return Math.round(first);
+	}
+	if (typeof first === 'string') {
+		const parsed = Number.parseInt(first, 10);
+		if (Number.isFinite(parsed) && parsed > 0) {
+			return parsed;
+		}
+	}
+	return undefined;
+};
+
+const ALLOWED_ATTACHMENT_TYPES = new Set(['Document', 'Image', 'Video', 'Audio']);
+
+// Note の attachment から Mastodon API の MediaAttachment を導出する (→ ADR-0090)。
+export const noteToMediaAttachments = (
+	note: APNote,
+	statusId: string,
+	options: { isLocal?: boolean } = {},
+): MediaAttachmentEntity[] => {
+	const attachments = toArray<unknown>(note.attachment);
+	const results: MediaAttachmentEntity[] = [];
+
+	let index = 0;
+	for (const rawItem of attachments) {
+		if (typeof rawItem !== 'object' || rawItem === null) {
+			continue;
+		}
+		const item = rawItem as Record<string, unknown>;
+
+		const types = toArray<unknown>(item.type)
+			.map(toStringValue)
+			.filter((t): t is string => t !== undefined);
+		if (!types.some((t) => ALLOWED_ATTACHMENT_TYPES.has(t))) {
+			continue;
+		}
+
+		const extracted = extractUrlAndMediaType(item.url);
+		if (extracted === undefined) {
+			continue;
+		}
+
+		const mediaType = toStringValue(toArray(item.mediaType)[0]) ?? extracted.mediaType;
+		let type: 'image' | 'video' | 'gifv' | 'audio' | 'unknown' = 'unknown';
+
+		if (mediaType !== undefined) {
+			const lower = mediaType.toLowerCase();
+			if (lower.startsWith('image/')) {
+				type = 'image';
+			} else if (lower.startsWith('video/')) {
+				type = 'video';
+			} else if (lower.startsWith('audio/')) {
+				type = 'audio';
+			}
+		}
+
+		if (type === 'unknown') {
+			if (types.includes('Image')) {
+				type = 'image';
+			} else if (types.includes('Video')) {
+				type = 'video';
+			} else if (types.includes('Audio')) {
+				type = 'audio';
+			}
+		}
+
+		const isLocal =
+			options.isLocal ?? (typeof note.id === 'string' && note.id.startsWith(`https://${domain}/`));
+		const url = extracted.url;
+		const remoteUrl = isLocal ? null : url;
+
+		let previewUrl: string | null = null;
+		if (type === 'image') {
+			previewUrl = url;
+		} else {
+			previewUrl = extractPreviewUrl(item.icon) ?? extractPreviewUrl(item.preview);
+		}
+
+		const description =
+			toStringValue(toArray(item.name)[0]) ?? toStringValue(toArray(item.summary)[0]) ?? null;
+		const blurhash = extractBlurhash(item);
+
+		const width = extractDimension(item.width);
+		const height = extractDimension(item.height);
+		const focus = extractFocalPoint(item);
+
+		let meta: CamelToSnake<mastodon.v1.MediaAttachment>['meta'] = null;
+		if (width !== undefined && height !== undefined) {
+			const aspect = width / height;
+			const original = { width, height, size: `${width}x${height}`, aspect };
+			meta = {
+				original,
+				small: original,
+			};
+		}
+		if (focus !== undefined) {
+			meta = meta ? { ...meta, focus } : { focus };
+		}
+
+		results.push({
+			id: `${statusId}${index}`,
+			type,
+			url,
+			preview_url: previewUrl,
+			remote_url: remoteUrl,
+			preview_remote_url: null,
+			text_url: null,
+			meta,
+			description,
+			blurhash,
+		});
+
+		index++;
+	}
+
+	return results;
 };
