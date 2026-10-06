@@ -2,10 +2,10 @@ import { describe, expect, test } from 'vitest';
 import {
 	accountLookupQuerySchema,
 	accountParamsSchema,
-	createAppBodySchema,
 	relationshipsQuerySchema,
 	updateCredentialsBodySchema,
-} from '../../src/mastodon/api.js';
+} from '../../src/mastodon/routes/accounts.js';
+import { createAppBodySchema } from '../../src/mastodon/routes/apps.js';
 
 describe('mastodon api schemas', () => {
 	describe('accountLookupQuerySchema', () => {

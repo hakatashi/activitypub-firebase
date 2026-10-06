@@ -1,7 +1,7 @@
 import { describe, expect, test, afterEach, beforeEach } from 'vitest';
 import { apex } from '../../src/apex.js';
 import { db, escapeFirestoreKey } from '../../src/firebase.js';
-import { getFollowers, getFollowersPage } from '../../src/mastodon/api.js';
+import { getFollowers, getFollowersPage } from '../../src/mastodon/presenters/account.js';
 import { buildMastodonId } from '../../src/mastodonId.js';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';

@@ -13,7 +13,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 
 ## レイヤ構成とモジュール依存の向き
 
-モジュール間の依存は、上位から下位への一方向(`entrypoints` → `mastodon/api.ts` → `social/` → `store.ts` / `apex.ts`)に限定されている(→ [ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
+モジュール間の依存は、上位から下位への一方向(`entrypoints` → `mastodon/` → `social/` → `store.ts` / `apex.ts`)に限定されている(→ [ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
 
 - **エントリポイント層 (`activitypub.ts` / `mastodon/index.ts` / `denormalizations.ts` / `tasks.ts`)**: 各 Cloud Function のハンドラを構築・エクスポートする。`activitypub.ts` は apex インスタンスを再エクスポートせず、各モジュールは `functions/src/apex.ts` から直接 apex を import する。
 - **Mastodon API ルート層 (`functions/src/mastodon/`)**: HTTP ルーティング、パラメータ検証、認証、および AP オブジェクトから Mastodon エンティティへの変換 (presenter) を担う。
@@ -209,7 +209,14 @@ apex のストア抽象では集計ができないため、フォロワー数・
 | ファイル | 役割 |
 |---|---|
 | `index.ts` | express アプリ、`beforeUserCreate` |
-| `api.ts` | `/api/**` のルーティングと AP オブジェクト → Mastodon エンティティの変換 |
+| `api.ts` | `/api/**` のルーター。CORS、`routes/` の各ルーターの登録、404 フォールバックとエラーハンドラ |
+| `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `accounts` / `timelines` / `statuses` / `statusActions` / `apps`) |
+| `presenters/account.ts` | AP actor → Account / CredentialAccount / Relationship の変換と、アカウント ID の解決 |
+| `presenters/status.ts` | Note → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
+| `http/asyncRouter.ts` | async ハンドラの例外をエラーハンドラへ渡す `express.Router` |
+| `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `getOptionalViewer`)と有効なスコープの一覧 |
+| `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
+| `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |
 | `statusAttributes.ts` | Note から Status の属性(visibility・language・各種カウント・mentions・tags など)を導出する純粋関数(→ [ADR-0060](adr/0060-derive-status-attributes-from-note.md)) |
 | `statusContent.ts` | 投稿本文のメンション・URL・ハッシュタグを解析して HTML と `tag` を組み立てる(→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)) |
 | `pagination.ts` | `max_id` / `since_id` / `min_id` / `limit` の解釈と `Link` ヘッダの生成(Firestore には触らない) |
