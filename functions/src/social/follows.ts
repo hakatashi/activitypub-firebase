@@ -1,13 +1,13 @@
 import assert from 'node:assert';
+import type { Query } from '@google-cloud/firestore';
 import type { APActor } from 'activitypub-types';
 import { apex } from '../apex.js';
-import { escapeFirestoreKey } from '../firebase.js';
-import { getMastodonIds } from '../mastodonId.js';
+import { db, escapeFirestoreKey } from '../firebase.js';
 import { metaIndexPath } from '../meta.js';
 import type { PageParams } from '../pagination.js';
-import { isIdInRange, takePage } from '../pagination.js';
-import { Streams } from '../schema.js';
-import { isAPFollow, isAPUndo, toIdArray } from '../utils.js';
+import { isAscending, lowerBoundId } from '../pagination.js';
+import { FollowRelations, Streams } from '../schema.js';
+import type { FollowRelation, FollowRelationSide } from '../schema.js';
 
 // 同じ actor から同じ相手への Follow が複数残ると、followers コレクションに同じ actor が
 // 重複して並ぶ (→ ADR-0075)。新しい Follow を受理するとき、置き換えられる古い Follow を消す。
@@ -28,170 +28,98 @@ export const removeSupersededFollows = async (
 	return stale.length;
 };
 
-const getInboxId = (actor: APActor): string => {
-	const inboxId = toIdArray(actor.inbox)[0];
-	if (inboxId !== undefined) {
-		return inboxId;
-	}
-	throw new Error('inbox is not string');
-};
-
-export interface OutgoingFollows {
-	following: Map<string, { followIri: string; published: unknown }>;
-	pending: Set<string>;
-}
-
 export interface FollowPageEntry {
 	actorIri: string;
 	cursorId: string;
 }
 
-// actor 発のフォロー状態 (Accept 済みで Undo されていないもの、および未 Accept で Undo されていない保留中のもの) を
-// 同一クエリ群から一括して解決する (→ ADR-0080)。
-export const resolveOutgoingFollows = async (actor: APActor): Promise<OutgoingFollows> => {
+// フォロー関係は、ローカル actor ごとの射影 (`userInfos/{actor}/following|followers/{相手}`) から読む
+// (→ ADR-0082, ADR-0083)。射影はローカル actor の分しかないので、リモートの actor を渡すと空になる。
+const relations = (actor: APActor, side: FollowRelationSide) => {
 	assert(actor.id !== undefined, 'actor.id is undefined');
-	const actorKey = escapeFirestoreKey(actor.id);
-
-	const followStreams = await Streams.where('type', '==', 'Follow')
-		.where(metaIndexPath('actors', actorKey), '==', true)
-		.get();
-	if (followStreams.empty) {
-		return { following: new Map(), pending: new Set() };
-	}
-
-	const [acceptStreams, undoStreams] = await Promise.all([
-		Streams.where(metaIndexPath('collections', escapeFirestoreKey(getInboxId(actor))), '==', true)
-			.where('type', '==', 'Accept')
-			.get(),
-		Streams.where('type', '==', 'Undo').where(metaIndexPath('actors', actorKey), '==', true).get(),
-	]);
-
-	const acceptedFollowIds = new Set(
-		acceptStreams.docs.flatMap((doc) => toIdArray(doc.data().object)),
-	);
-	const undoneFollowIds = new Set(undoStreams.docs.flatMap((doc) => toIdArray(doc.data().object)));
-
-	const following = new Map<string, { followIri: string; published: unknown }>();
-	const pending = new Set<string>();
-
-	for (const followStream of followStreams.docs) {
-		const follow = followStream.data();
-		if (!isAPFollow(follow)) {
-			continue;
-		}
-		if (undoneFollowIds.has(follow.id)) {
-			continue;
-		}
-		const target = toIdArray(follow.object)[0];
-		if (target === undefined) {
-			continue;
-		}
-		if (acceptedFollowIds.has(follow.id)) {
-			if (!following.has(target)) {
-				following.set(target, { followIri: follow.id, published: follow.published });
-			}
-		} else {
-			pending.add(target);
-		}
-	}
-
-	return { following, pending };
+	return FollowRelations(escapeFirestoreKey(actor.id), side);
 };
 
-// フォロー中 (相手が Accept 済みで Undo されていない) の相手ごとに、最初の Follow を返す。
-// 同じ相手への Follow が複数残っていても 1 人として数える (→ ADR-0075)。
-export const collectFollowing = async (
-	actor: APActor,
-): Promise<Map<string, { followIri: string; published: unknown }>> =>
-	(await resolveOutgoingFollows(actor)).following;
+const toActorIris = (docs: { data: () => FollowRelation }[]) => docs.map((doc) => doc.data().actor);
 
-// viewer がフォロー中 (相手が Accept 済みで Undo されていない) の actor IRI の配列を返す。
+// viewer がフォロー中 (相手が Accept 済み) の actor IRI の配列を返す。
 export const getFollowing = async (actor: APActor): Promise<string[]> =>
-	Array.from((await collectFollowing(actor)).keys());
+	toActorIris((await relations(actor, 'following').where('state', '==', 'accepted').get()).docs);
 
-// 送信した Follow のうち、相手が未 Accept で Undo されていない対象 actor IRI の集合を返す。
+// 送信した Follow のうち、相手が未 Accept の対象 actor IRI の集合を返す。
 export const getPendingFollowTargetIris = async (actor: APActor): Promise<Set<string>> =>
-	(await resolveOutgoingFollows(actor)).pending;
-
-// フォロワー (自分宛の Follow で Undo されていない) の相手ごとに、最初の Follow を返す。
-export const collectFollowers = async (
-	actor: APActor,
-): Promise<Map<string, { followIri: string; published: unknown }>> => {
-	assert(actor.id !== undefined, 'actor.id is undefined');
-
-	const [followStreams, unfollowStreams] = await Promise.all([
-		Streams.where('type', '==', 'Follow')
-			.where(metaIndexPath('objects', escapeFirestoreKey(actor.id)), '==', true)
-			.get(),
-		Streams.where(metaIndexPath('collections', escapeFirestoreKey(getInboxId(actor))), '==', true)
-			.where('type', '==', 'Undo')
-			.get(),
-	]);
-
-	const undoneFollowIds = new Set(
-		unfollowStreams.docs.flatMap((unfollowStream) => {
-			const unfollow = unfollowStream.data();
-			if (!isAPUndo(unfollow)) {
-				return [];
-			}
-			return toIdArray(unfollow.object);
-		}),
+	new Set(
+		toActorIris((await relations(actor, 'following').where('state', '==', 'pending').get()).docs),
 	);
 
-	const followers = new Map<string, { followIri: string; published: unknown }>();
-
-	for (const followStream of followStreams.docs) {
-		const follow = followStream.data();
-		if (undoneFollowIds.has(follow.id) || !isAPFollow(follow)) {
-			continue;
-		}
-		const followActor = toIdArray(follow.actor)[0];
-		if (followActor !== undefined && !followers.has(followActor)) {
-			followers.set(followActor, { followIri: follow.id, published: follow.published });
-		}
-	}
-
-	return followers;
-};
-
-// フォロワー (自分宛の Follow で Undo されていない) の actor IRI の配列を返す。
+// フォロワーの actor IRI の配列を返す。
 export const getFollowerActorIris = async (actor: APActor): Promise<string[]> =>
-	Array.from((await collectFollowers(actor)).keys());
+	toActorIris((await relations(actor, 'followers').get()).docs);
+
+export interface FollowFlags {
+	following: boolean;
+	requested: boolean;
+	followedBy: boolean;
+}
+
+// viewer と各相手との関係 (Mastodon の Relationship の following / requested / followed_by) を、
+// 相手ごとの射影ドキュメントを直接引いて判定する。戻り値は `targetIris` と同じ並び。
+export const getFollowFlags = async (
+	viewer: APActor,
+	targetIris: string[],
+): Promise<FollowFlags[]> => {
+	if (targetIris.length === 0) {
+		return [];
+	}
+	const refs = (side: FollowRelationSide) =>
+		targetIris.map((iri) => relations(viewer, side).doc(escapeFirestoreKey(iri)));
+	const [followingDocs, followerDocs] = await Promise.all([
+		db.getAll(...refs('following')),
+		db.getAll(...refs('followers')),
+	]);
+	return targetIris.map((_, index) => {
+		const state = followingDocs[index]?.get('state') as FollowRelation['state'] | undefined;
+		return {
+			following: state === 'accepted',
+			requested: state === 'pending',
+			followedBy: followerDocs[index]?.exists === true,
+		};
+	});
+};
 
 // カーソルは Follow アクティビティの Mastodon ID (Mastodon の follow 行 ID に相当。→ ADR-0062)。
-export const getFollowersPageEntries = async (
+// 射影の `followMastodonId` で並べ、範囲と件数も Firestore 側で絞る。応答は新しい順。
+const getFollowPageEntries = async (
 	actor: APActor,
-	page: PageParams = { limit: 40 },
+	side: FollowRelationSide,
+	page: PageParams,
 ): Promise<FollowPageEntry[]> => {
-	const followers = await collectFollowers(actor);
-	const followIds = await getMastodonIds(
-		Array.from(followers.values(), ({ followIri, published }) => ({ iri: followIri, published })),
-	);
-	const entries = Array.from(followers, ([actorIri, { followIri }]) => ({
-		actorIri,
-		cursorId: followIds.get(followIri),
-	})).filter(
-		(entry): entry is FollowPageEntry =>
-			entry.cursorId !== undefined && isIdInRange(entry.cursorId, page),
-	);
-	return takePage(entries, (entry) => entry.cursorId, page);
+	const ascending = isAscending(page);
+	const lower = lowerBoundId(page);
+	let query: Query<FollowRelation> = relations(actor, side);
+	if (side === 'following') {
+		query = query.where('state', '==', 'accepted');
+	}
+	if (page.maxId !== undefined) {
+		query = query.where('followMastodonId', '<', page.maxId);
+	}
+	// followMastodonId が null の射影 (Mastodon ID が未採番) はカーソルにできないので除く。
+	// 文字列の範囲条件は null に一致しない。
+	query = query.where('followMastodonId', '>', lower ?? '');
+	const docs = await query
+		.orderBy('followMastodonId', ascending ? 'asc' : 'desc')
+		.limit(page.limit)
+		.get();
+	const entries = docs.docs.map((doc) => {
+		const { actor: actorIri, followMastodonId } = doc.data();
+		assert(followMastodonId !== null, 'followMastodonId is null');
+		return { actorIri, cursorId: followMastodonId };
+	});
+	return ascending ? entries.reverse() : entries;
 };
 
-// カーソルは Follow アクティビティの Mastodon ID (→ ADR-0062)。
-export const getFollowingPageEntries = async (
-	actor: APActor,
-	page: PageParams = { limit: 40 },
-): Promise<FollowPageEntry[]> => {
-	const following = await collectFollowing(actor);
-	const followIds = await getMastodonIds(
-		Array.from(following.values(), ({ followIri, published }) => ({ iri: followIri, published })),
-	);
-	const entries = Array.from(following, ([actorIri, { followIri }]) => ({
-		actorIri,
-		cursorId: followIds.get(followIri),
-	})).filter(
-		(entry): entry is FollowPageEntry =>
-			entry.cursorId !== undefined && isIdInRange(entry.cursorId, page),
-	);
-	return takePage(entries, (entry) => entry.cursorId, page);
-};
+export const getFollowersPageEntries = (actor: APActor, page: PageParams = { limit: 40 }) =>
+	getFollowPageEntries(actor, 'followers', page);
+
+export const getFollowingPageEntries = (actor: APActor, page: PageParams = { limit: 40 }) =>
+	getFollowPageEntries(actor, 'following', page);

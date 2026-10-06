@@ -1,46 +1,17 @@
 import assert from 'node:assert';
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { isEqual } from 'lodash-es';
-import { apex } from './apex.js';
 import { db, escapeFirestoreKey } from './firebase.js';
-import { localActorId } from './localActor.js';
 import { buildMetaIndex } from './meta.js';
 import { Objects, UserInfos } from './schema.js';
-import { collectFollowing, getFollowerActorIris } from './social/follows.js';
 import {
 	isAPAnnounce,
 	isAPLike,
 	isAPNote,
 	isAPTombstone,
-	isAPActor,
 	toIdArray,
 	toTypeArray,
 } from './utils.js';
-
-// ローカルユーザーの followers_count / following_count を、Mastodon API のフォロワー/
-// フォロー一覧と同じ基準 (Accept 済み・Undo されていない・相手ごとに 1 件) で数え直す。
-// 差分更新ではなく再計算なので、重複した Follow や再送でカウンタがずれない (→ ADR-0075)。
-export const recomputeLocalFollowCounts = async () => {
-	const actor = await apex.store.getObject(localActorId);
-	if (actor === undefined || !isAPActor(actor)) {
-		return;
-	}
-	const [followers, following] = await Promise.all([
-		getFollowerActorIris(actor),
-		collectFollowing(actor),
-	]);
-	const ref = UserInfos.doc(escapeFirestoreKey(localActorId));
-	const doc = await ref.get();
-	if (!doc.exists) {
-		return;
-	}
-	const data = doc.data();
-	assert(data !== undefined);
-	if (data.followers_count === followers.length && data.following_count === following.size) {
-		return;
-	}
-	await ref.update({ followers_count: followers.length, following_count: following.size });
-};
 
 export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (event) => {
 	const stream = event.data?.after?.data?.();
@@ -58,14 +29,6 @@ export const onStreamWritten = onDocumentWritten('streams/{streamId}', async (ev
 
 	if (!isEqual(stream._meta?.index, newIndex)) {
 		await event.data.after.ref.update({ '_meta.index': newIndex });
-	}
-
-	// フォロー数は「Accept 済みでユニークな相手の数」を `_meta.index` を引くクエリで数えるため、
-	// インデックスを書いた後に再計算する (→ ADR-0075)。再計算は冪等なので、インデックス更新が
-	// 再びトリガーしても結果は変わらない。
-	const types = toTypeArray(stream.type);
-	if (types.includes('Follow') || types.includes('Accept') || types.includes('Undo')) {
-		await recomputeLocalFollowCounts();
 	}
 });
 

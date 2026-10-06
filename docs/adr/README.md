@@ -108,3 +108,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0080](0080-social-domain-layer-and-dependency-direction.md) | ソーシャルドメイン層の切り出しと依存方向の単方向化 | Accepted |
 | [0081](0081-mastodon-http-errors-validation-and-loaders.md) | Mastodon API の HttpError、検証ミドルウェア、リソースローダーの導入 | Accepted |
 | [0082](0082-project-follow-relations-in-store.md) | フォロー関係を userInfos のサブコレクションに射影し、Store で差分更新する | Accepted |
+| [0083](0083-read-follow-relations-from-projection.md) | フォロー関係の読み取りを射影に切り替え、全件の再計算を撤去する | Accepted |

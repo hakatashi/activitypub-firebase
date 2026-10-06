@@ -1,19 +1,12 @@
 import assert from 'node:assert';
 import type { DocumentReference, QueryDocumentSnapshot } from 'firebase-admin/firestore';
-import { describe, expect, test, afterEach, beforeEach } from 'vitest';
-import { apex } from '../../src/apex.js';
-import { buildMetaIndex } from '../../src/meta.js';
+import { describe, expect, test, afterEach } from 'vitest';
 import type { MetaIndex } from '../../src/meta.js';
-import {
-	onStreamCreated,
-	onStreamWritten,
-	recomputeLocalFollowCounts,
-} from '../../src/denormalizations.js';
+import { onStreamCreated, onStreamWritten } from '../../src/denormalizations.js';
 import { domain, escapeFirestoreKey } from '../../src/firebase.js';
 import { Objects, Streams, UserInfos } from '../../src/schema.js';
 
 import { resetFirestore } from '../helpers/index.js';
-import type { LocalActor } from '../helpers/index.js';
 
 const getData = async <T>(ref: DocumentReference<T>): Promise<T> => {
 	const data = (await ref.get()).data();
@@ -561,97 +554,26 @@ describe('denormalizations', () => {
 		});
 	});
 
-	// フォロー数は差分ではなく、フォロワー/フォロー一覧と同じ基準で数え直す (→ ADR-0075)。
-	describe('recomputeLocalFollowCounts', () => {
+	// フォロー数は Store が射影と同じトランザクションで差分更新する (→ ADR-0082)。
+	// トリガーは数え直さない。
+	describe('follow counters', () => {
 		const localId = `https://${domain}/activitypub/u/hakatashi`;
-		const localActor = {
-			id: localId,
-			type: 'Person',
-			preferredUsername: 'hakatashi',
-			inbox: `${localId}/inbox`,
-		} as unknown as LocalActor;
 
-		const setUserInfo = (followers: number, following: number) =>
-			UserInfos.doc(escapeFirestoreKey(localId)).set({
+		test('onStreamWritten does not touch followers_count for a Follow stream', async () => {
+			await UserInfos.doc(escapeFirestoreKey(localId)).set({
 				id: '1',
 				uid: 'firebase-uid',
 				locked: false,
 				bot: false,
 				created_at: '2023-01-01T00:00:00.000Z',
-				followers_count: followers,
-				following_count: following,
+				followers_count: 5,
+				following_count: 3,
 				statuses_count: 0,
 				last_status_at: '',
 				emojis: [],
 				fields: [],
 				roles: [],
 			});
-
-		const saveStream = (docId: string, activity: Record<string, unknown>) =>
-			Streams.doc(escapeFirestoreKey(docId)).set({
-				...activity,
-				_meta: { ...(activity._meta as object), index: buildMetaIndex(activity) },
-			} as never);
-
-		beforeEach(async () => {
-			await apex.store.saveObject(localActor);
-		});
-
-		test('counts each follower once even when the same actor has sent multiple Follows', async () => {
-			await setUserInfo(19, 0);
-			for (const n of [1, 2]) {
-				await saveStream(`follow-alice-${n}`, {
-					id: `https://remote.example/activities/follow-alice-${n}`,
-					type: 'Follow',
-					actor: ['https://remote.example/u/alice'],
-					object: [localId],
-				});
-			}
-			await saveStream('follow-bob', {
-				id: 'https://remote.example/activities/follow-bob',
-				type: 'Follow',
-				actor: ['https://remote.example/u/bob'],
-				object: [localId],
-			});
-
-			await recomputeLocalFollowCounts();
-
-			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(localId)));
-			expect(userInfo.followers_count).toBe(2);
-		});
-
-		test('counts only accepted outgoing Follows as following_count', async () => {
-			await setUserInfo(0, 0);
-			const accepted = 'https://remote.example/activities/follow-accepted';
-			await saveStream('follow-accepted', {
-				id: accepted,
-				type: 'Follow',
-				actor: [localId],
-				object: ['https://remote.example/u/alice'],
-			});
-			await saveStream('follow-pending', {
-				id: 'https://remote.example/activities/follow-pending',
-				type: 'Follow',
-				actor: [localId],
-				object: ['https://remote.example/u/bob'],
-			});
-			await saveStream('accept-alice', {
-				id: 'https://remote.example/activities/accept-alice',
-				type: 'Accept',
-				actor: ['https://remote.example/u/alice'],
-				object: [accepted],
-				_meta: { collection: [localActor.inbox] },
-			});
-
-			await recomputeLocalFollowCounts();
-
-			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(localId)));
-			expect(userInfo.following_count).toBe(1);
-			expect(userInfo.followers_count).toBe(0);
-		});
-
-		test('is refreshed by onStreamWritten for a Follow stream', async () => {
-			await setUserInfo(5, 0);
 			const ref = Streams.doc(escapeFirestoreKey('follow-written'));
 			await ref.set({
 				id: 'https://remote.example/activities/follow-written',
@@ -664,7 +586,8 @@ describe('denormalizations', () => {
 			await onStreamWritten.run(makeWrittenEvent({ data: { before: undefined, after: snapshot } }));
 
 			const userInfo = await getData(UserInfos.doc(escapeFirestoreKey(localId)));
-			expect(userInfo.followers_count).toBe(1);
+			expect(userInfo.followers_count).toBe(5);
+			expect(userInfo.following_count).toBe(3);
 		});
 	});
 });

@@ -481,7 +481,7 @@ gcloud logging read 'resource.labels.service_name="activitypub" AND jsonPayload.
 | 最初の1回だけ応答が返らない | Cloud Functions のコールドスタート。`-m 60` で叩き直す |
 | コレクションが1ページしか返らない | 既知の不具合。[`known-issues.md`](../known-issues.md) を参照 |
 | 相手が何を嫌がっているか分からない | テスト用インスタンスの `docker compose logs -f sidekiq` を読む |
-| followers の `totalItems` と `followers_count` がずれる | 非正規化のずれ。`functions/bin/denormalizations.ts` で再計算する |
+| followers の `totalItems` と `followers_count` がずれる | 射影とカウンタのずれ。`functions/bin/backfillFollowProjection.ts` で射影から書き直す(`--dry-run` で差分だけ確認できる) |
 
 ## テスト用インスタンス側の操作
 

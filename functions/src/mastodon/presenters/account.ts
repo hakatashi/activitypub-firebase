@@ -6,10 +6,9 @@ import { chunk, last, uniq } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
 import {
+	getFollowFlags,
 	getFollowersPageEntries,
 	getFollowingPageEntries,
-	getFollowerActorIris,
-	resolveOutgoingFollows,
 } from '../../social/follows.js';
 import {
 	domain,
@@ -299,39 +298,38 @@ export const getRelationships = async (
 		}
 	}
 
-	const [{ following, pending: pendingSet }, followerList] = await Promise.all([
-		resolveOutgoingFollows(viewer),
-		getFollowerActorIris(viewer),
-	]);
-	const followingSet = new Set(following.keys());
-	const followerSet = new Set(followerList);
+	const targets = accountIds.flatMap((id) => {
+		const targetActorId = targetActorMap.get(id);
+		return targetActorId === undefined ? [] : [{ id, targetActorId }];
+	});
+	const flags = await getFollowFlags(
+		viewer,
+		targets.map(({ targetActorId }) => targetActorId),
+	);
 
 	const results: RelationshipEntity[] = [];
-	for (const id of accountIds) {
-		const targetActorId = targetActorMap.get(id);
-		if (targetActorId === undefined) {
-			continue;
-		}
-		const isFollowing = followingSet.has(targetActorId);
+	targets.forEach(({ id }, index) => {
+		const flag = flags[index];
+		assert(flag !== undefined);
 		results.push({
 			id,
-			following: isFollowing,
-			showing_reblogs: isFollowing,
+			following: flag.following,
+			showing_reblogs: flag.following,
 			notifying: false,
 			languages: [],
-			followed_by: followerSet.has(targetActorId),
+			followed_by: flag.followedBy,
 			blocking: false,
 			blocked_by: false,
 			muting: false,
 			muting_notifications: false,
 			muting_expires_at: null,
-			requested: pendingSet.has(targetActorId),
+			requested: flag.requested,
 			requested_by: false,
 			domain_blocking: false,
 			endorsed: false,
 			note: '',
 		});
-	}
+	});
 
 	return results;
 };

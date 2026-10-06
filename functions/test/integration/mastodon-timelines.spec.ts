@@ -1,15 +1,12 @@
 import type { APObject } from '../../src/apex/index.js';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { apex } from '../../src/apex.js';
-import { escapeFirestoreKey } from '../../src/firebase.js';
 import {
 	getAccountStatuses,
 	getHomeTimeline,
 	getPublicTimeline,
 } from '../../src/mastodon/presenters/status.js';
 import { getFollowing } from '../../src/social/follows.js';
-import { toIdIndex } from '../../src/meta.js';
-import { Streams } from '../../src/schema.js';
 import { resetFirestore } from '../helpers/index.js';
 import type { LocalActor } from '../helpers/index.js';
 
@@ -69,32 +66,14 @@ describe('Mastodon timelines (Issue #58)', () => {
 		await resetFirestore();
 	});
 
+	// フォロー関係は Store が更新する射影から読む (→ ADR-0082, ADR-0083) ので、実際の流れと同じく
+	// Store 経由で Follow を保存し、Accept されたら apex と同じく following コレクションに加える。
 	const follow = async (target: string, accepted: boolean) => {
 		const followId = `${me.id}/follows/${target}`;
-		await Streams.doc(escapeFirestoreKey(followId)).set({
-			id: followId,
-			type: 'Follow',
-			actor: me.id,
-			object: target,
-			_meta: {
-				index: { collections: {}, actors: toIdIndex([me.id]), objects: toIdIndex([target]) },
-			},
-		} as never);
+		const activity = { id: followId, type: 'Follow', actor: me.id, object: target } as APObject;
+		await apex.store.saveActivity(activity);
 		if (accepted) {
-			const acceptId = `${target}/accepts/1`;
-			await Streams.doc(escapeFirestoreKey(acceptId)).set({
-				id: acceptId,
-				type: 'Accept',
-				actor: target,
-				object: followId,
-				_meta: {
-					index: {
-						collections: toIdIndex([`${me.id}/inbox`]),
-						actors: toIdIndex([target]),
-						objects: toIdIndex([followId]),
-					},
-				},
-			} as never);
+			await apex.store.updateActivityMeta(activity, 'collection', `${me.id}/following`, false);
 		}
 	};
 
