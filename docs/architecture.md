@@ -225,7 +225,7 @@ Store が呼ぶ射影は `functions/src/projections/index.ts` でまとめてい
 
 | ファイル | 役割 |
 |---|---|
-| `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
+| `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、相手への代表の Follow `getFollowIri`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
 | `timelines.ts` | Note コレクションのカーソル走査(`collectVisibleNotes`)、アカウント投稿・公開・ホームタイムラインの Note 収集 |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
@@ -284,6 +284,8 @@ Mastodon ID から Note を引いて処理する。削除時は Note を Tombsto
 アカウント系エンドポイント(`GET /api/v1/accounts/verify_credentials`・`PATCH /api/v1/accounts/update_credentials`・`GET /api/v1/accounts/:id`・`GET /api/v1/accounts/relationships`・`POST /api/v1/accounts/:id/follow`・`POST /api/v1/accounts/:id/unfollow`)は、
 自アカウント情報(Elk 互換の `role` / `source` を含む)の取得・更新(AP `Update` 配送付き)や、フォロー・アンフォロー(AP `Follow` / `Undo(Follow)` 配送付き)、
 および関係性の判定を提供する(→ [ADR-0065](adr/0065-account-endpoints-and-follow-unfollow.md))。
+unfollow で Undo する Follow は apex の following / outbox コレクションから探し、どちらにもなければ
+フォロー関係の射影の代表の Follow(`followIri`)を使う。
 
 ローカルアカウントの Account ID は `userInfos` の `id`、リモートアカウントは Mastodon ID で採番した値を使い、
 Status の `mentions[].id` もこれに揃える(→ [ADR-0069](adr/0069-mastodon-account-id-and-status-mentions.md))。

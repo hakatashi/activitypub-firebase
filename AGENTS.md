@@ -88,7 +88,8 @@ npm --prefix functions run test:changed # 変更に関係するテストのみ�
 
 ## 現在の最優先事項
 
-**Phase 1(配送)・Phase 2(受信と AP 準拠)・Phase 2.5(apex フォーク)・Phase 3(Mastodon API)は完了した。**
+**Phase 1(配送)・Phase 2(受信と AP 準拠)・Phase 2.5(apex フォーク)・Phase 3(Mastodon API)・
+Phase 3.5(リファクタリング)は完了した。**
 配送は Cloud Tasks 経由で動作し、dev 環境から実在の Mastodon インスタンスへ
 Follow / Accept / Create が届き、Like / Announce / Undo / Inbox Forwarding の受信も実地で確認済み
 (→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)、
@@ -104,11 +105,15 @@ Mastodon API は Elk / Phanpy から投稿・閲覧・タイムラインのペ�
 ページネーションしている。クライアントでの確認は
 [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) の手順で行う。
 
-次は **Phase 3.5(リファクタリング、Epic
-[#181](https://github.com/hakatashi/activitypub-firebase/issues/181))**。
-Phase 4 / 5 の妨げになる構造的な問題(`mastodon/api.ts` の肥大化、遅いテスト、
-フォロー関係などをアクティビティログから毎回再計算していること等)を、機能追加の前に解消する。
-**Phase 3.5 が終わるまで Phase 4 の機能追加に着手しない。**
-その後 **Phase 4(通知・メディア・検索など、Epic
-[#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**、
-Phase 5(引っ越し)の順に進める(→ [`docs/roadmap.md`](docs/roadmap.md))。
+コードは `entrypoints` → `mastodon/` → `social/` → `store/` の一方向に依存し(oxlint で強制。
+→ [ADR-0080](docs/adr/0080-social-domain-layer-and-dependency-direction.md))、
+フォロー関係・お気に入り・ブーストは `userInfos` のサブコレクションへの射影から読む
+(→ [ADR-0082](docs/adr/0082-project-follow-relations-in-store.md)、
+[ADR-0083](docs/adr/0083-read-follow-relations-from-projection.md)、
+[ADR-0084](docs/adr/0084-project-favourites-and-reblogs.md))。
+**Mastodon API のリクエスト処理で streams のアクティビティを全件クエリしない。**
+ユーザー別の状態が必要になったら、同じ形の射影を足す。
+
+次は **Phase 4(通知・メディア・検索など、Epic
+[#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**。
+その後 Phase 5(引っ越し)に進む(→ [`docs/roadmap.md`](docs/roadmap.md))。
