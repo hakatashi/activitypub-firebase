@@ -149,6 +149,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
 | `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
 | `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
+| `userInfos/{actor}/notifications` | エスケープしたアクティビティ IRI | 通知の射影。受信したアクティビティ(Create / Like / Announce / Follow)を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0088](adr/0088-project-notifications-in-store.md)) |
 | `markers` | `エスケープした actor IRI_タイムライン名` | `/api/v1/markers` の既読位置(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
 | `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
@@ -218,6 +219,12 @@ Follow を書き換えるとき、同じトランザクションで射影と `fo
 `Store#removeActivity` で消すので、Undo とは突き合わせない(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md))。
 Store が呼ぶ射影は `functions/src/projections/index.ts` でまとめている。
 既存データからの組み立て直しには `functions/bin/backfillReactionProjection.ts` を使う。
+
+通知も同じ形で `userInfos/{actor}/notifications` に射影している
+(`functions/src/projections/notifications.ts`)。受信した Create(Note へのメンション)・Like・Announce・
+Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0088](adr/0088-project-notifications-in-store.md))。
+取り消し(Undo)による `Store#removeActivity` で元のアクティビティが消えたとき、同じトランザクションで通知も消す。
+既存データからの組み立て直しには `functions/bin/backfillNotificationProjection.ts` を使う。
 
 ## ソーシャル・タイムライン層 (social/)
 
