@@ -27,11 +27,25 @@ export interface UploadPreviewParams {
 	extension: string;
 }
 
+export interface UploadProfileImageParams {
+	type: 'avatar' | 'header';
+	id: string;
+	buffer: Buffer;
+	mimeType: string;
+	extension: string;
+}
+
+export interface UploadedProfileImage {
+	url: string;
+	storagePath: string;
+}
+
 export interface MediaStorageDriver {
 	upload(params: UploadMediaParams): Promise<UploadedMedia>;
 	uploadPreview(
 		params: UploadPreviewParams,
 	): Promise<{ previewUrl: string; previewStoragePath: string }>;
+	uploadProfileImage?(params: UploadProfileImageParams): Promise<UploadedProfileImage>;
 	delete?(paths: string[]): Promise<void>;
 }
 
@@ -91,6 +105,25 @@ export const defaultMediaStorageDriver: MediaStorageDriver = {
 		};
 	},
 
+	async uploadProfileImage({ type, id, buffer, mimeType, extension }) {
+		const bucketName = getMediaStorageBucketName();
+		const bucket = getStorage(app).bucket(bucketName);
+		const folder = type === 'avatar' ? 'accounts/avatars' : 'accounts/headers';
+		const storagePath = `${folder}/${id}.${extension}`;
+
+		const file = bucket.file(storagePath);
+		await file.save(buffer, {
+			contentType: mimeType,
+			resumable: false,
+		});
+		await file.makePublic();
+
+		return {
+			url: `https://storage.googleapis.com/${bucketName}/${storagePath}`,
+			storagePath,
+		};
+	},
+
 	async delete(paths: string[]) {
 		const bucketName = getMediaStorageBucketName();
 		const bucket = getStorage(app).bucket(bucketName);
@@ -122,5 +155,19 @@ export const resetMediaStorageDriver = () => {
 export const uploadMedia = (params: UploadMediaParams) => currentMediaStorageDriver.upload(params);
 export const uploadPreview = (params: UploadPreviewParams) =>
 	currentMediaStorageDriver.uploadPreview(params);
+export const uploadProfileImage = (params: UploadProfileImageParams) => {
+	if (!currentMediaStorageDriver.uploadProfileImage) {
+		throw new Error('uploadProfileImage is not implemented in current driver');
+	}
+	return currentMediaStorageDriver.uploadProfileImage(params);
+};
 export const deleteMediaFiles = (paths: string[]) =>
 	currentMediaStorageDriver.delete ? currentMediaStorageDriver.delete(paths) : Promise.resolve();
+export const deleteStorageFileByUrl = async (url: string) => {
+	const bucketName = getMediaStorageBucketName();
+	const prefix = `https://storage.googleapis.com/${bucketName}/`;
+	if (url.startsWith(prefix)) {
+		const storagePath = url.slice(prefix.length);
+		await deleteMediaFiles([storagePath]);
+	}
+};

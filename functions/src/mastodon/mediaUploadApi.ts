@@ -2,10 +2,12 @@ import express from 'express';
 import { https, logger } from 'firebase-functions/v2';
 import { pickSafeHeaders, redactSensitiveBody } from '../utils.js';
 import { mastodonCors, mastodonErrorHandler } from './http/middlewares.js';
+import accountsRouter from './routes/accounts.js';
 import mediaRouter from './routes/media.js';
+import profileRouter from './routes/profile.js';
 
-// メディアのアップロード・取得・編集専用の Express アプリケーション (→ ADR-0093)。
-// Firebase Hosting により `/api/v1/media*` および `/api/v2/media*` がここにリライトされる。
+// メディアのアップロード・取得・編集およびプロフィール画像更新専用の Express アプリケーション (→ ADR-0093, ADR-0094)。
+// Firebase Hosting により `/api/v1/media*`, `/api/v2/media*`, `/api/v1/accounts/update_credentials` がここにリライトされる。
 const app = express();
 app.set('query parser', 'extended');
 
@@ -25,6 +27,8 @@ app.use((req, res, next) => {
 
 app.use('/api', mastodonCors);
 app.use('/api', mediaRouter);
+app.use('/api', accountsRouter);
+app.use('/api', profileRouter);
 
 // fallback to 404
 app.use('/api', (req, res) => {

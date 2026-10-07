@@ -78,6 +78,10 @@
       ],
       "rewrites": [
         {
+          "source": "/api/v1/accounts/update_credentials",
+          "function": "mediaUploadApi"
+        },
+        {
           "source": "/api/v1/media",
           "function": "mediaUploadApi"
         },

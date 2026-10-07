@@ -285,3 +285,22 @@ export const parseApexLocals = (value: unknown) => {
 	const result = apexLocalsSchema.safeParse(value);
 	return result.success ? result.data : ({} satisfies ApexLocals);
 };
+
+export const getImageUrl = (image: unknown): string | undefined => {
+	if (!image) {
+		return undefined;
+	}
+	if (typeof image === 'string') {
+		return image;
+	}
+	if (typeof image === 'object' && image !== null && 'url' in image) {
+		const url = (image as { url: unknown }).url;
+		if (typeof url === 'string') {
+			return url;
+		}
+		if (Array.isArray(url) && typeof url[0] === 'string') {
+			return url[0];
+		}
+	}
+	return undefined;
+};
