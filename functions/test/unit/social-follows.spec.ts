@@ -6,6 +6,7 @@ import { FollowRelations } from '../../src/schema.js';
 import type { FollowRelationSide, FollowState } from '../../src/schema.js';
 import {
 	getFollowFlags,
+	getFollowIri,
 	getFollowerActorIris,
 	getFollowersPageEntries,
 	getFollowing,
@@ -95,6 +96,17 @@ describe('social/follows (projection reads, ADR-0083)', () => {
 			{ following: false, requested: true, followedBy: false },
 		]);
 		expect(await getFollowFlags(me, [])).toEqual([]);
+	});
+
+	test('getFollowIri returns the representative Follow of the following side only', async () => {
+		await setRelation('following', ALICE, 'accepted', idAt(1));
+		await setRelation('following', BOB, 'pending', idAt(2));
+		await setRelation('followers', CAROL, 'accepted', idAt(3));
+
+		expect(await getFollowIri(me, ALICE)).toBe(`${ALICE}#follow`);
+		expect(await getFollowIri(me, BOB)).toBe(`${BOB}#follow`);
+		expect(await getFollowIri(me, CAROL)).toBeUndefined();
+		expect(await getFollowIri(me, DAVE)).toBeUndefined();
 	});
 
 	describe('pagination by the Mastodon ID of the Follow (ADR-0062)', () => {

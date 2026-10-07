@@ -52,6 +52,13 @@ export const getPendingFollowTargetIris = async (actor: APActor): Promise<Set<st
 		toActorIris((await relations(actor, 'following').where('state', '==', 'pending').get()).docs),
 	);
 
+// viewer から相手への代表の Follow (承認待ちを含む) の IRI を返す。射影になければ undefined。
+export const getFollowIri = async (
+	viewer: APActor,
+	targetIri: string,
+): Promise<string | undefined> =>
+	(await relations(viewer, 'following').doc(escapeFirestoreKey(targetIri)).get()).data()?.followIri;
+
 // フォロワーの actor IRI の配列を返す。
 export const getFollowerActorIris = async (actor: APActor): Promise<string[]> =>
 	toActorIris((await relations(actor, 'followers').get()).docs);

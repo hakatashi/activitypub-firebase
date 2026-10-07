@@ -42,11 +42,14 @@ Firebase (Hosting + Cloud Functions + Firestore) 上に、ActivityPub と Mastod
   時系列順の Mastodon ID([ADR-0006](docs/adr/0006-mastodon-api-id-scheme.md))で
   ページネーションしています([docs/runbooks/client-testing.md](docs/runbooks/client-testing.md))。
 
-現在は **Phase 3.5(リファクタリング / [#181](https://github.com/hakatashi/activitypub-firebase/issues/181))**
-を進めています。Phase 4 / 5 の妨げになる構造的な問題(モジュールの肥大化、遅いテスト、フォロー関係の再計算など)を解消したのち、
-**Phase 4(通知・メディア・検索など / [#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**、
-Phase 5(引っ越し / [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))
-の順に進めます([docs/roadmap.md](docs/roadmap.md))。
+- **リファクタリング(Phase 3.5 / [#181](https://github.com/hakatashi/activitypub-firebase/issues/181))**:
+  肥大化していた `mastodon/api.ts`(約2,900行)をリソースごとのルートと presenter に分割し、
+  フォロー関係・お気に入り・ブーストをアクティビティログから毎回再計算するのをやめて射影に切り替えました。
+  テストは並列化と鍵の事前生成で約3分11秒から約35秒に短縮し、PR の CI で型チェックも行っています。
+
+次は **Phase 4(通知・メディア・検索など / [#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**
+に進みます。その後 Phase 5(引っ越し / [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))
+を行います([docs/roadmap.md](docs/roadmap.md))。
 
 残っている課題や技術的負債は [docs/known-issues.md](docs/known-issues.md) を参照。
 

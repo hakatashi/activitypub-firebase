@@ -2,10 +2,10 @@ import express from 'express';
 import assert from 'node:assert';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
-import { getFollowFlags } from '../../social/follows.js';
+import { getFollowFlags, getFollowIri } from '../../social/follows.js';
 import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../../firebase.js';
 import { plainTextToHtml } from '../../notes.js';
-import { Streams, UserInfo, UserInfos } from '../../schema.js';
+import { UserInfo, UserInfos } from '../../schema.js';
 import { toIdArray } from '../../utils.js';
 import {
 	authRequired,
@@ -340,12 +340,11 @@ router.post(
 			}
 		}
 		if (follow === undefined) {
-			const followDocs = await Streams.where('type', '==', 'Follow')
-				.where('actor', 'array-contains', actor.id)
-				.get();
-			follow = followDocs.docs
-				.map((doc) => doc.data())
-				.find((act) => toIdArray(act.object).includes(targetActor.id));
+			// streams の Follow を全件読まず、フォロー関係の射影から引く (→ ADR-0083)。
+			const followIri = await getFollowIri(actor, targetActor.id);
+			if (followIri !== undefined) {
+				follow = await apex.store.getActivity(followIri, true);
+			}
 		}
 
 		if (follow !== undefined) {
