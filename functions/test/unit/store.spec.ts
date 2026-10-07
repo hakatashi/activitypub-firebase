@@ -753,6 +753,85 @@ describe('Store', () => {
 		});
 	});
 
+	// 配列にもスカラーにもなりうる検索用フィールドを `_meta` に正規化して写す (→ ADR-0086)。
+	describe('query meta (_meta.attributedTo / inReplyTo / preferredUsername)', () => {
+		const noteId = 'https://remote.example/notes/1';
+		const author = 'https://remote.example/users/alice';
+		const parent = 'https://example.com/notes/parent';
+
+		test('normalizes array values received via apex into scalars', async () => {
+			await store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: [author],
+				inReplyTo: [{ id: parent, type: 'Note' }],
+			});
+			const saved = await store.getObject(noteId, true);
+			expect(saved?._meta).toEqual({ attributedTo: author, inReplyTo: parent });
+			// AP オブジェクトそのものは書き換えない。
+			expect(saved?.attributedTo).toEqual([author]);
+		});
+
+		test('normalizes scalar values of local objects', async () => {
+			const actorId = 'https://example.com/users/bob';
+			await store.saveObject({ id: actorId, type: 'Person', preferredUsername: 'bob' });
+			await store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: actorId,
+				inReplyTo: parent,
+			});
+			expect((await store.getObject(actorId, true))?._meta).toEqual({ preferredUsername: 'bob' });
+			expect((await store.getObject(noteId, true))?._meta).toEqual({
+				attributedTo: actorId,
+				inReplyTo: parent,
+			});
+		});
+
+		test('recomputes instead of keeping stale values on saveObject', async () => {
+			await store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: [author],
+				inReplyTo: [parent],
+				_meta: { likesCount: 1 },
+			});
+			await store.saveObject({ id: noteId, type: 'Note', attributedTo: [author] });
+			expect((await store.getObject(noteId, true))?._meta).toEqual({
+				likesCount: 1,
+				attributedTo: author,
+			});
+		});
+
+		test('recomputes on updateObject fullReplace', async () => {
+			await store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: [author],
+				inReplyTo: [parent],
+			});
+			await store.updateObject({ id: noteId, type: 'Note', attributedTo: [author] }, null, true);
+			expect((await store.getObject(noteId, true))?._meta).toEqual({ attributedTo: author });
+		});
+
+		test('rewrites only the updated fields on partial updateObject', async () => {
+			await store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: [author],
+				inReplyTo: [parent],
+			});
+			const other = 'https://example.com/notes/other';
+			await store.updateObject({ id: noteId, type: 'Note', inReplyTo: [other] }, null, false);
+			expect((await store.getObject(noteId, true))?._meta).toEqual({
+				attributedTo: author,
+				inReplyTo: other,
+			});
+			await store.updateObject({ id: noteId, type: 'Note', inReplyTo: null }, null, false);
+			expect((await store.getObject(noteId, true))?._meta).toEqual({ attributedTo: author });
+		});
+	});
+
 	describe('recordDeliveryResult / getDelivery / getFailedDeliveries', () => {
 		const activityId = 'https://example.com/activities/1';
 		const actorId = 'https://example.com/users/hakatashi';

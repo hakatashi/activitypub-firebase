@@ -11,7 +11,7 @@ import { getFollowing } from './follows.js';
 import type { NoteObject } from './types.js';
 import { isNotePublicTimelineEligible, isNoteVisibleTo } from './visibility.js';
 import { getObjects } from '../store/objects.js';
-import { NOTE_AUTHORS_QUERY_LIMIT } from '../store/limits.js';
+import { FIRESTORE_IN_QUERY_LIMIT } from '../store/limits.js';
 import { getNotes } from '../store/notes.js';
 
 // 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
@@ -120,7 +120,7 @@ export const getHomeTimelineNotes = async (
 	const authors = [viewer.id, ...viewerFollowing];
 	const entries = (
 		await Promise.all(
-			chunk(authors, NOTE_AUTHORS_QUERY_LIMIT).map((actors) =>
+			chunk(authors, FIRESTORE_IN_QUERY_LIMIT).map((actors) =>
 				collectVisibleNotes({
 					actors,
 					page,

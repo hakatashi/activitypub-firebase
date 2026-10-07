@@ -92,8 +92,7 @@ export const publishNote = async (actor: APObject, note: NewNote) => {
 		...(inReplyTo === undefined || inReplyTo.length === 0 ? {} : { inReplyTo }),
 	};
 
-	// saveObject は渡したオブジェクトに `_meta` を書き足すので、Create に埋め込む方を汚さないよう複製を渡す。
-	await apex.store.saveObject({ ...object });
+	await apex.store.saveObject(object);
 	const activity = await apex.buildActivity('Create', actor.id, to, { cc, object, published });
 	await apex.addToOutbox(actor, activity);
 

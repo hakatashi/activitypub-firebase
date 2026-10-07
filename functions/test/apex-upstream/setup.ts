@@ -367,6 +367,9 @@ export async function resetDb(apex: any, _client: any, testUser: any) {
 	await resetFirestore();
 	delete testUser._local;
 	await apex.store.setup(testUser);
+	// Store は保存時に `_meta` へ非正規化した値 (published / 検索用フィールド) を書き足すが、
+	// 渡したオブジェクト自体は書き換えない。保存後の actor と比較するテストのため、保存された `_meta` を反映する。
+	testUser._meta = (await apex.store.getObject(testUser.id, true))._meta;
 	testUser._local = { blockList: [] };
 }
 

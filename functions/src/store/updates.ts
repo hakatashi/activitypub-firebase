@@ -2,7 +2,7 @@
 import type { DocumentReference } from '@google-cloud/firestore';
 import type { APObject } from '../apex/index.js';
 import firebase from 'firebase-admin';
-import { isEqual, mapValues } from 'lodash-es';
+import { isEqual, mapValues, omit } from 'lodash-es';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { metaIndexPath } from '../meta.js';
 import { Streams } from '../schema.js';
@@ -10,14 +10,19 @@ import { Streams } from '../schema.js';
 // fullReplace でドキュメントを丸ごと置き換える際も、既存の _meta (秘密鍵・非正規化カウンタ・
 // _meta.collection 等) は引き継ぐ。外部から取得・受信した表現は _meta を持たないため、
 // そのまま set すると内部状態が失われる。saveObject と同じマージ規則を使う (→ ADR-0053、ADR-0059)。
-export const replaceKeepingMeta = (ref: DocumentReference<APObject>, object: APObject) =>
+// `recomputedKeys` は object の内容から計算し直すキーで、既存の値を引き継がない (→ ADR-0086)。
+export const replaceKeepingMeta = (
+	ref: DocumentReference<APObject>,
+	object: APObject,
+	recomputedKeys: readonly string[] = [],
+) =>
 	db.runTransaction(async (transaction) => {
 		const existingMeta = (await transaction.get(ref)).data()?._meta;
 		transaction.set(
 			ref,
 			existingMeta === undefined
 				? object
-				: { ...object, _meta: { ...existingMeta, ...object._meta } },
+				: { ...object, _meta: { ...omit(existingMeta, recomputedKeys), ...object._meta } },
 		);
 	});
 

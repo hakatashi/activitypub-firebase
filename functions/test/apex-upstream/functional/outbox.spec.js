@@ -460,6 +460,8 @@ describe('outbox', function () {
         const result = await apex.store.db.collection('objects')
           .findOne({ id: sourceObj.id })
         delete result._id
+        // Store が検索用に非正規化した `_meta` を除いて比較する (ADR-0086)
+        delete result._meta
         expect(result).toEqual(expectedObj)
       })
       // Skip: updateObjectCopies relies on denormalizations triggered asynchronously by Cloud Functions (onStreamWritten), which is not active in this test environment (ADR-0021, ADR-0052).
@@ -794,6 +796,9 @@ describe('outbox', function () {
               likes: [{ totalItems: [0], type: 'OrderedCollection' }],
               shares: [{ totalItems: [0], type: 'OrderedCollection' }]
             })
+            // Store が検索用に非正規化した `_meta` を除いて比較する (ADR-0086)
+            expect(msg.object._meta).toEqual({ attributedTo: 'https://localhost/u/test' })
+            delete msg.object._meta
             expect(msg.object).toEqual(toDelete)
             resolve()
           })

@@ -97,7 +97,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0069](0069-mastodon-account-id-and-status-mentions.md) | アカウント ID の採番と Status mentions の実 ID 解決 | Accepted |
 | [0070](0070-status-viewer-attributes-and-storage.md) | Status の認証ユーザー依存属性の導出と保存形式 | Partially superseded by ADR-0084 |
 | [0071](0071-post-content-formatting-and-mentions.md) | 投稿本文の解析・自動変換とメンション解決 | Accepted |
-| [0072](0072-match-array-attributed-to-in-note-queries.md) | Note の投稿者検索は配列形式の `attributedTo` にも一致させる | Accepted |
+| [0072](0072-match-array-attributed-to-in-note-queries.md) | Note の投稿者検索は配列形式の `attributedTo` にも一致させる | Superseded by ADR-0086 |
 | [0073](0073-lookup-cached-remote-accounts.md) | `accounts/lookup` は手元にキャッシュ済みのリモート actor を返す | Accepted |
 | [0074](0074-mastodon-api-authentication-error-handling.md) | Mastodon API の認証エラーハンドリングと統一的なエラー応答 | Accepted |
 | [0075](0075-recompute-follow-counts.md) | フォロー数・フォロワー数は差分更新ではなく再計算で持つ | Superseded by ADR-0082 |
@@ -111,3 +111,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0083](0083-read-follow-relations-from-projection.md) | フォロー関係の読み取りを射影に切り替え、全件の再計算を撤去する | Accepted |
 | [0084](0084-project-favourites-and-reblogs.md) | お気に入り・ブーストの閲覧者状態を userInfos のサブコレクションに射影する | Accepted |
 | [0085](0085-split-store-by-responsibility.md) | Store クラスには apex の契約だけを置き、アプリ独自のクエリはモジュール関数にする | Accepted |
+| [0086](0086-normalize-object-query-fields-into-meta.md) | objects の検索用フィールドを `_meta` に正規化し、OR クエリをなくす | Accepted |
