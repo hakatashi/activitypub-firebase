@@ -118,3 +118,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0090](0090-derive-media-attachments-from-note.md) | Note の attachment から MediaAttachment を導出する | Accepted |
 | [0091](0091-media-upload-and-storage.md) | メディアのアップロードと Cloud Storage 保存 | Accepted |
 | [0092](0092-post-status-with-media-and-attachment-lifecycle.md) | media_ids によるメディア添付投稿とライフサイクル | Accepted |
+| [0093](0093-mastodon-api-memory-and-sharp-optimization.md) | mastodonApi のメモリ引き上げと画像処理最適化 | Accepted |

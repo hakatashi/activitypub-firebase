@@ -29,7 +29,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | Function | 種別 | 役割 |
 |---|---|---|
 | `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ |
-| `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ |
+| `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ (2GiB メモリ、→ [ADR-0093](adr/0093-mastodon-api-memory-and-sharp-optimization.md)) |
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |

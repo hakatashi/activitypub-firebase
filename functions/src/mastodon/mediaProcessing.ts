@@ -4,6 +4,10 @@ import type { Metadata } from 'sharp';
 import type { MediaAttachmentMeta } from '../schema.js';
 import { UnprocessableError } from './http/errors.js';
 
+// サーバーレス環境でのメモリ滞留とスレッドプールによるメモリ膨張を防ぐ (→ ADR-0093)。
+sharp.cache(false);
+sharp.concurrency(1);
+
 export const SUPPORTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
 
 export const IMAGE_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB (→ ADR-0091)

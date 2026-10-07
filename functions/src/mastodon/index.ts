@@ -39,7 +39,8 @@ app.use('/oauth', oauthRouter);
 app.get('/.well-known/nodeinfo', nodeinfoCors, apex, apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', nodeinfoCors, apex, apex.net.nodeInfo.get);
 
-export const mastodonApi = https.onRequest(app);
+// メディアアップロード等の画像処理によるメモリ不足 (OOM) を防ぎ、1 vCPU を確保するため 2GiB を割り当てる (→ ADR-0093)。
+export const mastodonApi = https.onRequest({ memory: '2GiB' }, app);
 
 export const beforeUserCreate = beforeUserCreated(async (user) => {
 	if (
