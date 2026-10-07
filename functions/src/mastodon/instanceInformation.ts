@@ -30,6 +30,8 @@ export type ExtendedInstanceV2 = Omit<CamelToSnake<mastodon.v2.Instance>, 'confi
 	};
 };
 
+export const MAX_MEDIA_ATTACHMENTS = 4;
+
 const instanceV2: ExtendedInstanceV2 = {
 	domain: mastodonDomain,
 	title: 'HakataFediverse',
@@ -56,7 +58,7 @@ const instanceV2: ExtendedInstanceV2 = {
 	configuration: {
 		statuses: {
 			max_characters: 500,
-			max_media_attachments: 0,
+			max_media_attachments: MAX_MEDIA_ATTACHMENTS,
 			characters_reserved_per_url: 23,
 		},
 		media_attachments: {

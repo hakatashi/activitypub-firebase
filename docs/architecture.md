@@ -35,6 +35,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
+| `cleanupMediaTask` | Scheduled (`onSchedule`) | 未添付のまま24時間経過したメディアを Storage と Firestore から削除する (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 
 ## ActivityPub 層
 
@@ -162,6 +163,8 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 アップロードされたメディア画像 (`POST /api/v2/media` 等) は Firebase 既定バケット (`${projectId}.firebasestorage.app`) に保存される (→ [ADR-0091](adr/0091-media-upload-and-storage.md))。
 `storage.rules` でクライアントからの直接の読み書きを全面禁止 (`allow read, write: if false;`) しており、書き込みは Cloud Functions (Admin SDK) 経由でのみ行われる。
 保存された画像オブジェクトは公開読み取り (`makePublic()`) に設定され、`https://storage.googleapis.com/${bucket}/${path}` から直接配信される。
+投稿 (`POST /api/v1/statuses`) 時に `media_ids` として添付され、Note の `attachment` に組み込まれると `statusIri` が更新される。
+添付されないまま24時間以上経過したメディアは、日次スケジュール Function (`cleanupMediaTask`, `onSchedule`) により Cloud Storage のファイルと Firestore のメタデータの双方が自動削除される (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md))。
 
 apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
 Firestore 上でもそのまま配列として保存する。コレクション単体での所属判定
@@ -262,7 +265,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `getOptionalViewer`)と有効なスコープの一覧 |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |
-| `statusAttributes.ts` | Note から Status の属性(visibility・language・各種カウント・mentions・tags・media_attachments など)を導出する純粋関数(→ [ADR-0060](adr/0060-derive-status-attributes-from-note.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)) |
+| `statusAttributes.ts` | Note から Status の属性(visibility・language・各種カウント・mentions・tags・media_attachments など)を導出する純粋関数(→ [ADR-0060](adr/0060-derive-status-attributes-from-note.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 | `statusContent.ts` | 投稿本文のメンション・URL・ハッシュタグを解析して HTML と `tag` を組み立てる(→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)) |
 | `pagination.ts` | `max_id` / `since_id` / `min_id` / `limit` の解釈と `Link` ヘッダの生成(Firestore には触らない) |
 | `oauth.ts` | OAuth2 のエンドポイント。認可画面に FirebaseUI を埋め込む |

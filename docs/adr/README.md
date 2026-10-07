@@ -88,7 +88,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0060](0060-derive-status-attributes-from-note.md) | Status エンティティの属性を Note の実データから導出する | Accepted |
 | [0061](0061-timeline-actor-filter-and-visibility.md) | タイムラインは actor で絞り、可視性を1箇所で判定する | Accepted |
 | [0062](0062-cursor-pagination-by-mastodon-id.md) | ページネーションは Mastodon ID のカーソルで行い、Firestore は published で範囲を絞る | Accepted |
-| [0063](0063-post-status-and-idempotency-key.md) | POST /api/v1/statuses の Note 組み立てと Idempotency-Key の保持 | Accepted |
+| [0063](0063-post-status-and-idempotency-key.md) | POST /api/v1/statuses の Note 組み立てと Idempotency-Key の保持 | Partially superseded by ADR-0092 |
 | [0064](0064-get-delete-statuses-and-context.md) | GET / DELETE /api/v1/statuses/:id と /context のスレッド走査・削除仕様 | Accepted |
 | [0065](0065-account-endpoints-and-follow-unfollow.md) | アカウント系エンドポイントとフォロー・アンフォローの ActivityPub 連携 | Accepted |
 | [0066](0066-self-hosted-clients-driven-by-playwright.md) | クライアント互換性の検証に Elk / Phanpy を自前ホストし Playwright で操作する | Accepted |
@@ -117,3 +117,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0089](0089-notifications-api.md) | 通知 API の実装と組み立て・ページネーション・未読管理の仕様 | Accepted |
 | [0090](0090-derive-media-attachments-from-note.md) | Note の attachment から MediaAttachment を導出する | Accepted |
 | [0091](0091-media-upload-and-storage.md) | メディアのアップロードと Cloud Storage 保存 | Accepted |
+| [0092](0092-post-status-with-media-and-attachment-lifecycle.md) | media_ids によるメディア添付投稿とライフサイクル | Accepted |

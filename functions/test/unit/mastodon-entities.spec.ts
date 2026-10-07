@@ -885,4 +885,31 @@ describe('noteToMediaAttachments', () => {
 		expect(attachments[0]?.url).toBe('https://remote.example/valid.png');
 		expect(attachments[0]?.id).toBe('001095470432256000000');
 	});
+
+	test('preserves local media attachment ID from storage URL and uses icon as preview_url (ADR-0092)', () => {
+		const note = {
+			id: `https://${domain}/activitypub/o/local-note`,
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Document',
+					mediaType: 'image/jpeg',
+					url: 'https://storage.googleapis.com/my-bucket/media_attachments/files/01924294028402948201/original.jpeg',
+					icon: {
+						type: 'Image',
+						url: 'https://storage.googleapis.com/my-bucket/media_attachments/files/01924294028402948201/small.jpeg',
+					},
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId, { isLocal: true });
+
+		expect(attachments).toHaveLength(1);
+		expect(attachments[0]?.id).toBe('01924294028402948201');
+		expect(attachments[0]?.preview_url).toBe(
+			'https://storage.googleapis.com/my-bucket/media_attachments/files/01924294028402948201/small.jpeg',
+		);
+		expect(attachments[0]?.remote_url).toBeNull();
+	});
 });

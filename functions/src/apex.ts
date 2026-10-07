@@ -36,6 +36,13 @@ export const apex = ActivitypubExpress({
 		nodeName: '博多市',
 		name: '博多市',
 	},
+	context: [
+		{
+			toot: 'http://joinmastodon.org/ns#',
+			blurhash: 'toot:blurhash',
+			focalPoint: { '@container': '@list', '@id': 'toot:focalPoint' },
+		},
+	],
 });
 
 export type { ApexInboxMessage, ApexOutboxMessage };

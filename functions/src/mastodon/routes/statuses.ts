@@ -1,14 +1,18 @@
 import express from 'express';
 import assert from 'node:assert';
+import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
 import { getFollowing } from '../../social/follows.js';
 import type { NoteObject } from '../../social/types.js';
-import { mastodonDomain } from '../../firebase.js';
+import { escapeFirestoreKey, mastodonDomain } from '../../firebase.js';
 import { reserveIdempotencyKey } from '../../idempotency.js';
 import { getIriByMastodonId } from '../../mastodonId.js';
 import { deleteNote, htmlToPlainText, publishNote } from '../../notes.js';
+import type { NoteAttachment } from '../../notes.js';
+import { MediaAttachments } from '../../schema.js';
+import type { MediaAttachmentRecord } from '../../schema.js';
 import * as webfinger from '../../webfinger.js';
 import { getAttributedTo, isAPNote, toError } from '../../utils.js';
 import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
@@ -37,8 +41,8 @@ export const createStatusBodySchema = z.object({
 	spoiler_text: z.string().nullish(),
 	visibility: z.enum(['public', 'unlisted', 'private', 'direct']).nullish(),
 	language: z.string().nullish(),
-	// Phase 4 まで未対応。空でない値が来たら 422 にする (→ ADR-0063)。
 	media_ids: z.unknown().optional(),
+	'media_ids[]': z.unknown().optional(),
 	poll: z.unknown().optional(),
 	scheduled_at: z.unknown().optional(),
 });
@@ -51,16 +55,65 @@ router.post(
 	async (req, res) => {
 		const body = getValidBody(res, createStatusBodySchema);
 
-		for (const field of ['media_ids', 'poll', 'scheduled_at'] as const) {
+		for (const field of ['poll', 'scheduled_at'] as const) {
 			if (isPresent(body[field])) {
 				throw new UnprocessableError(`${field} is not supported yet`);
+			}
+		}
+
+		const rawMediaIds = body.media_ids ?? (body as Record<string, unknown>)['media_ids[]'];
+		let mediaIds: string[] = [];
+		if (rawMediaIds !== undefined && rawMediaIds !== null) {
+			if (Array.isArray(rawMediaIds)) {
+				mediaIds = rawMediaIds.map((item) => String(item).trim()).filter((item) => item.length > 0);
+			} else if (typeof rawMediaIds === 'string') {
+				const trimmed = rawMediaIds.trim();
+				if (trimmed.length > 0) {
+					mediaIds = [trimmed];
+				}
+			}
+		}
+
+		const maxMediaAttachments = instanceV2.configuration.statuses.max_media_attachments;
+		if (mediaIds.length > maxMediaAttachments) {
+			throw new UnprocessableError(
+				`Validation failed: Cannot attach more than ${maxMediaAttachments} files`,
+			);
+		}
+
+		if (new Set(mediaIds).size !== mediaIds.length) {
+			throw new UnprocessableError(
+				'Validation failed: Media not found or already attached to another post',
+			);
+		}
+
+		const actor = await loadViewer(res);
+
+		const mediaRecords: MediaAttachmentRecord[] = [];
+		if (mediaIds.length > 0) {
+			const docSnapshots = await Promise.all(
+				mediaIds.map((id) => MediaAttachments.doc(escapeFirestoreKey(id)).get()),
+			);
+			for (const doc of docSnapshots) {
+				if (!doc.exists) {
+					throw new UnprocessableError(
+						'Validation failed: Media not found or already attached to another post',
+					);
+				}
+				const record = doc.data()!;
+				if (record.actorId !== actor.id || record.statusIri !== null) {
+					throw new UnprocessableError(
+						'Validation failed: Media not found or already attached to another post',
+					);
+				}
+				mediaRecords.push(record);
 			}
 		}
 
 		const spoilerText = body.spoiler_text?.trim() ?? '';
 		// 本文が空で注意書きがあれば、注意書きを本文に回す (Mastodon と同じ)。
 		const text = body.status?.trim() || spoilerText;
-		if (text === '') {
+		if (text === '' && mediaRecords.length === 0) {
 			throw new UnprocessableError("Validation failed: Text can't be blank");
 		}
 		const maxCharacters = instanceV2.configuration.statuses.max_characters;
@@ -69,8 +122,6 @@ router.post(
 				`Validation failed: Text character limit of ${maxCharacters} exceeded`,
 			);
 		}
-
-		const actor = await loadViewer(res);
 
 		let replyTarget: NoteObject | undefined;
 		if (isPresent(body.in_reply_to_id)) {
@@ -114,6 +165,30 @@ router.post(
 				mastodonDomain,
 			});
 
+			const attachments: NoteAttachment[] = mediaRecords.map((record) => {
+				const attachment: NoteAttachment = {
+					type: 'Document',
+					mediaType: record.mimeType,
+					url: record.url,
+					name: record.description || null,
+					blurhash: record.blurhash,
+					...(record.meta.original?.width === undefined
+						? {}
+						: { width: record.meta.original.width }),
+					...(record.meta.original?.height === undefined
+						? {}
+						: { height: record.meta.original.height }),
+					...(record.meta.focus === undefined
+						? {}
+						: { focalPoint: [record.meta.focus.x, record.meta.focus.y] }),
+					icon: {
+						type: 'Image',
+						url: record.previewUrl,
+					},
+				};
+				return attachment;
+			});
+
 			await publishNote(actor, {
 				id: noteIri,
 				content: formatted.html,
@@ -124,7 +199,20 @@ router.post(
 				summary: spoilerText === '' ? undefined : spoilerText,
 				sensitive: spoilerText !== '' || (toBoolean(body.sensitive) ?? false),
 				language: body.language ?? undefined,
+				attachment: attachments.length > 0 ? attachments : undefined,
 			});
+
+			if (mediaRecords.length > 0) {
+				const nowTimestamp = firebase.firestore.Timestamp.now();
+				await Promise.all(
+					mediaRecords.map((record) =>
+						MediaAttachments.doc(escapeFirestoreKey(record.id)).update({
+							statusIri: noteIri,
+							updatedAt: nowTimestamp,
+						}),
+					),
+				);
+			}
 		} catch (error) {
 			// Note が保存されていなければ、再送で作り直せるよう予約を取り消す。
 			// 保存済みで配送だけ失敗した場合は、再送で重複しないよう予約を残す。

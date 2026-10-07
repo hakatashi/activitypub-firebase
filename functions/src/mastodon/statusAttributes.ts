@@ -356,7 +356,7 @@ export const noteToMediaAttachments = (
 
 		let previewUrl: string | null = null;
 		if (type === 'image') {
-			previewUrl = url;
+			previewUrl = extractPreviewUrl(item.icon) ?? url;
 		} else {
 			previewUrl = extractPreviewUrl(item.icon) ?? extractPreviewUrl(item.preview);
 		}
@@ -382,8 +382,21 @@ export const noteToMediaAttachments = (
 			meta = meta ? { ...meta, focus } : { focus };
 		}
 
+		let attachmentId = `${statusId}${index}`;
+		if (isLocal) {
+			const match = url.match(/\/media_attachments\/files\/(?<id>[0-9]+)\//);
+			if (match?.groups?.id) {
+				attachmentId = match.groups.id;
+			} else {
+				const itemId = toStringValue(item.id);
+				if (itemId !== undefined && /^[0-9]+$/.test(itemId)) {
+					attachmentId = itemId;
+				}
+			}
+		}
+
 		results.push({
-			id: `${statusId}${index}`,
+			id: attachmentId,
 			type,
 			url,
 			preview_url: previewUrl,
