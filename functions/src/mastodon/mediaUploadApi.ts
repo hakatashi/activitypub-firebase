@@ -34,5 +34,12 @@ app.use('/api', (req, res) => {
 // Mastodon API error handling middleware (→ ADR-0074)
 app.use(mastodonErrorHandler);
 
-// 画像処理 (sharp) のメモリ消費に対応するため 2GiB (1.0 vCPU) を割り当てる (→ ADR-0094)。
-export const mediaUploadApi = https.onRequest({ memory: '2GiB' }, app);
+// 画像処理 (sharp) のメモリ消費に対応するため 2GiB (1.0 vCPU) を割り当て、
+// モバイル環境等からの大容量ファイルアップロードを考慮してタイムアウトを 120 秒に設定する (→ ADR-0094)。
+export const mediaUploadApi = https.onRequest(
+	{
+		memory: '2GiB',
+		timeoutSeconds: 120,
+	},
+	app,
+);

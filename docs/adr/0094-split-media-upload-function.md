@@ -12,7 +12,7 @@ ADR-0093 では画像処理 (sharp) の OOM 対策として `mastodonApi` 全体
 
 ## 決定
 
-- **メディア専用 Function の新設:** メディアのアップロード・取得・編集 (`/api/v1/media*`, `/api/v2/media*`) を専用の Cloud Function `mediaUploadApi` (2GiB / 1.0 vCPU) として分離する。
+- **メディア専用 Function の新設:** メディアのアップロード・取得・編集 (`/api/v1/media*`, `/api/v2/media*`) を専用の Cloud Function `mediaUploadApi` (2GiB / 1.0 vCPU、大容量転送を考慮し `timeoutSeconds: 120`) として分離する。
 - **mastodonApi の軽量化:** `mastodonApi` の割り当てメモリを 256MiB (`memory: '256MiB'`) に戻し、`mediaRouter` をマウントから除外する。
 - **Firebase Hosting によるルーティング:** `firebase.json` の rewrites で、`/api/v1/media`、`/api/v1/media/**`、`/api/v2/media`、`/api/v2/media/**` を `mediaUploadApi` へ、その他の `/api/**` を `mastodonApi` へ振り分ける。
 - **sharp 設定の維持:** ADR-0093 で導入した `sharp.cache(false)` および `sharp.concurrency(1)` は `mediaUploadApi` 内でも引き続き適用する。

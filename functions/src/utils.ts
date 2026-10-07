@@ -225,6 +225,15 @@ export const getAttributedTo = (
 ): string | undefined => toIdArray(object.attributedTo)[0];
 
 export const redactSensitiveBody = (body: unknown): unknown => {
+	if (Buffer.isBuffer(body)) {
+		return `<Buffer ${body.length} bytes>`;
+	}
+	if (ArrayBuffer.isView(body)) {
+		return `<${body.constructor.name} ${body.byteLength} bytes>`;
+	}
+	if (body instanceof ArrayBuffer) {
+		return `<ArrayBuffer ${body.byteLength} bytes>`;
+	}
 	if (Array.isArray(body)) {
 		return body.map(redactSensitiveBody);
 	}

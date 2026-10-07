@@ -187,6 +187,21 @@ describe('redactSensitiveBody', () => {
 		expect(redactSensitiveBody(null)).toBe(null);
 		expect(redactSensitiveBody(42)).toBe(42);
 	});
+
+	test('summarizes Buffers and binary objects instead of expanding them', () => {
+		expect(redactSensitiveBody(Buffer.from('hello world'))).toBe('<Buffer 11 bytes>');
+		expect(redactSensitiveBody(new Uint8Array([1, 2, 3, 4]))).toBe('<Uint8Array 4 bytes>');
+		expect(redactSensitiveBody(new ArrayBuffer(16))).toBe('<ArrayBuffer 16 bytes>');
+		expect(
+			redactSensitiveBody({
+				file: Buffer.from('abc'),
+				user: 'alice',
+			}),
+		).toEqual({
+			file: '<Buffer 3 bytes>',
+			user: 'alice',
+		});
+	});
 });
 
 describe('toTypeArray', () => {
