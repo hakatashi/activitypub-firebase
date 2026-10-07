@@ -1,13 +1,18 @@
 import request from 'supertest';
-import { mastodonApi } from '../../src/mastodon/index.js';
+import { mastodonApi, mediaUploadApi } from '../../src/mastodon/index.js';
 
 export type HttpMethod = 'get' | 'post' | 'delete' | 'patch' | 'put';
 
 /**
  * Authorization ヘッダ付きの Mastodon API リクエストを発行する supertest ラッパー。
+ * /api/v1/media や /api/v2/media は Hosting rewrites と同様に mediaUploadApi へルーティングする (→ ADR-0094)。
  */
 export const mastodonRequest = (method: HttpMethod, path: string, token?: string): request.Test => {
-	const req = request(mastodonApi)[method](path);
+	const target =
+		path.startsWith('/api/v1/media') || path.startsWith('/api/v2/media')
+			? mediaUploadApi
+			: mastodonApi;
+	const req = request(target)[method](path);
 	if (token !== undefined) {
 		req.set('Authorization', `Bearer ${token}`);
 	}

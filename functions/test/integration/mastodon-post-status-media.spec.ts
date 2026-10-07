@@ -4,7 +4,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
-import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
+import { mastodonApi as mastodon, mediaUploadApi } from '../../src/mastodon/index.js';
 import { MediaAttachments, Objects, Streams } from '../../src/schema.js';
 import type { MediaAttachmentRecord } from '../../src/schema.js';
 import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
@@ -151,7 +151,7 @@ describe('POST /api/v1/statuses with media_ids (Issue #219, ADR-0092)', () => {
 		expect(compactedAttachment.focalPoint).toEqual([0.25, -0.5]);
 
 		// 6. Subsequent edit via PUT /api/v1/media/:id is rejected
-		const putResponse = await request(mastodon)
+		const putResponse = await request(mediaUploadApi)
 			.put(`/api/v1/media/${mediaId}`)
 			.set('Authorization', 'Bearer write-token')
 			.send({ description: 'New description' });

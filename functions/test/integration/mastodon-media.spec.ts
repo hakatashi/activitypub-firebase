@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
+import { mediaUploadApi as mastodon } from '../../src/mastodon/index.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { MediaAttachments } from '../../src/schema.js';
 import { resetMediaStorageDriver, setMediaStorageDriver } from '../../src/storage/media.js';
