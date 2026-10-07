@@ -67,13 +67,12 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
 - [ ] `--write` で `post: found in account statuses`
 
-## 既知の出力(2026-10-05 時点)
+## 既知の出力(2026-10-07 時点)
 
 dev の実装が追いつけば消える。消えたらこの節も更新する。
 
 | 出力 | 原因 |
 |---|---|
-| `GET 404 /api/v1/notifications` | 通知は未実装(Phase 4、#9) |
 | Phanpy: `GET 404 /api/v2/search?q=from:me...` と `pageerror: _a: Record not found` | 検索は未実装(Phase 4、#9)。プロフィールの投稿統計で叩く。画面は表示される |
 | `GET 404 /api/v1/push/subscription`(Elk) | Web Push 未実装。購読がないときの 404 は Mastodon と同じ挙動 |
 | `net::ERR_BLOCKED_BY_ORB https://img.pawoo.net/...` | キャッシュしているリモート actor のアバター URL が古い |

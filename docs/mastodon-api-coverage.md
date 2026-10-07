@@ -72,8 +72,13 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| GET | `/api/v1/notifications` | ⬜ | |
-| GET | `/api/v1/notifications/unread_count` | ⬜ | |
+| GET | `/api/v1/notifications` | ✅ | ページネーション、`types[]` / `exclude_types[]` / `account_id` 絞り込み、読み足し、破損データ安全除外 (→ [ADR-0089](adr/0089-notifications-api.md)) |
+| GET | `/api/v1/notifications/:id` | ✅ | 1件取得。なければ 404 (→ [ADR-0089](adr/0089-notifications-api.md)) |
+| POST | `/api/v1/notifications/clear` | ✅ | 全件削除 (→ [ADR-0089](adr/0089-notifications-api.md)) |
+| POST | `/api/v1/notifications/:id/dismiss` | ✅ | 1件削除 (→ [ADR-0089](adr/0089-notifications-api.md)) |
+| GET | `/api/v1/notifications/unread_count` | ✅ | `markers` の `notifications.last_read_id` より新しい通知件数(Firestore `count()` 集計、上限 `limit`) (→ [ADR-0089](adr/0089-notifications-api.md)) |
+| GET | `/api/v2/notifications/policy` | ✅ | 既定値ポリシーを返すスタブ (Phanpy 互換、→ [ADR-0089](adr/0089-notifications-api.md)) |
+| GET | `/api/v1/notifications/requests` | ✅ | 空配列を返すスタブ (Phanpy 互換、→ [ADR-0089](adr/0089-notifications-api.md)) |
 | GET, POST | `/api/v1/markers` | ✅ | `home` / `notifications` の既読位置、`version` による楽観ロック (競合時は 409 Conflict) (→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | GET | `/api/v2/search` | ⬜ | |
 | GET | `/api/v1/push/subscription` | ✅ | 404 を返す(Web Push 非対応) |
@@ -87,7 +92,7 @@
 `/api/v1/lists`, `/api/v1/followed_tags`, `/api/v1/conversations`,
 `/api/v1/blocks`, `/api/v1/mutes`, `/api/v1/domain_blocks`, `/api/v1/bookmarks`,
 `/api/v1/favourites`, `/api/v1/follow_requests`, `/api/v1/featured_tags`,
-`/api/v1/accounts/:id/featured_tags`
+`/api/v1/accounts/:id/featured_tags`, `/api/v1/notifications/requests`
 
 ## 実装しないもの
 

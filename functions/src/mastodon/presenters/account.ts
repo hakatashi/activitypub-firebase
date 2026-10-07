@@ -193,6 +193,18 @@ export const resolveAccountIds = async (iris: string[]): Promise<Map<string, str
 	return result;
 };
 
+// Account ID (ローカルの UserInfo.id またはリモートの Snowflake ID) から actor IRI を解決する。
+export const resolveActorIriByAccountId = async (
+	accountId: string,
+): Promise<string | undefined> => {
+	const userInfoSnap = await UserInfos.where('id', '==', accountId).limit(1).get();
+	if (!userInfoSnap.empty) {
+		const doc = userInfoSnap.docs[0]!;
+		return unescapeFirestoreKey(toFirestoreKey(doc.id));
+	}
+	return getIriByMastodonId(accountId);
+};
+
 export const userIdsToAccounts = async (
 	userIds: string[],
 	knownAccountIds?: Map<string, string>,

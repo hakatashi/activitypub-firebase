@@ -6,6 +6,7 @@ import accountsRouter from './routes/accounts.js';
 import appsRouter from './routes/apps.js';
 import instanceRouter from './routes/instance.js';
 import markersRouter from './routes/markers.js';
+import notificationsRouter from './routes/notifications.js';
 import statusActionsRouter from './routes/statusActions.js';
 import statusesRouter from './routes/statuses.js';
 import stubsRouter from './routes/stubs.js';
@@ -33,6 +34,7 @@ router.use(accountsRouter);
 router.use(timelinesRouter);
 router.use(statusesRouter);
 router.use(statusActionsRouter);
+router.use(notificationsRouter);
 router.use(appsRouter);
 
 // fallback all /api routes to 404 (→ ADR-0067)
