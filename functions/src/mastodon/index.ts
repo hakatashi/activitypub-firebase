@@ -39,7 +39,7 @@ app.use('/oauth', oauthRouter);
 app.get('/.well-known/nodeinfo', nodeinfoCors, apex, apex.net.nodeInfoLocation.get);
 app.get('/nodeinfo/:version', nodeinfoCors, apex, apex.net.nodeInfo.get);
 
-// メディアアップロード処理は mediaUploadApi (2GiB) に分離したため、mastodonApi は 256MiB で軽量稼働する (→ ADR-0094)。
+// メディアアップロード処理は mediaUploadApi (2GiB) に分離したため、mastodonApi は 256MiB で軽量稼働する (→ ADR-0093)。
 export const mastodonApi = https.onRequest({ memory: '256MiB' }, app);
 
 export { mediaUploadApi } from './mediaUploadApi.js';

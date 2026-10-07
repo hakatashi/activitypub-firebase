@@ -5,7 +5,7 @@ export type HttpMethod = 'get' | 'post' | 'delete' | 'patch' | 'put';
 
 /**
  * Authorization ヘッダ付きの Mastodon API リクエストを発行する supertest ラッパー。
- * /api/v1/media や /api/v2/media は Hosting rewrites と同様に mediaUploadApi へルーティングする (→ ADR-0094)。
+ * /api/v1/media や /api/v2/media は Hosting rewrites と同様に mediaUploadApi へルーティングする (→ ADR-0093)。
  */
 export const mastodonRequest = (method: HttpMethod, path: string, token?: string): request.Test => {
 	const target =

@@ -4,7 +4,7 @@ import { pickSafeHeaders, redactSensitiveBody } from '../utils.js';
 import { mastodonCors, mastodonErrorHandler } from './http/middlewares.js';
 import mediaRouter from './routes/media.js';
 
-// メディアのアップロード・取得・編集専用の Express アプリケーション (→ ADR-0094)。
+// メディアのアップロード・取得・編集専用の Express アプリケーション (→ ADR-0093)。
 // Firebase Hosting により `/api/v1/media*` および `/api/v2/media*` がここにリライトされる。
 const app = express();
 app.set('query parser', 'extended');
@@ -35,7 +35,7 @@ app.use('/api', (req, res) => {
 app.use(mastodonErrorHandler);
 
 // 画像処理 (sharp) のメモリ消費に対応するため 2GiB (1.0 vCPU) を割り当て、
-// モバイル環境等からの大容量ファイルアップロードを考慮してタイムアウトを 120 秒に設定する (→ ADR-0094)。
+// モバイル環境等からの大容量ファイルアップロードを考慮してタイムアウトを 120 秒に設定する (→ ADR-0093)。
 export const mediaUploadApi = https.onRequest(
 	{
 		memory: '2GiB',

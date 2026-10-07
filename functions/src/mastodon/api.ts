@@ -12,7 +12,7 @@ import timelinesRouter from './routes/timelines.js';
 
 // `/api/**` のルーティング。各リソースのルートは `routes/` に、エンティティ変換は `presenters/` にある。
 // 登録順に意味がある (末尾の 404 フォールバックとエラーハンドラは最後に置く)。
-// メディア系 API (/api/v1/media*, /api/v2/media*) は mediaUploadApi に分離 (→ ADR-0094)。
+// メディア系 API (/api/v1/media*, /api/v2/media*) は mediaUploadApi に分離 (→ ADR-0093)。
 const router = express.Router();
 
 router.use('/', mastodonCors);
