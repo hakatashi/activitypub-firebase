@@ -2,7 +2,7 @@
 // スクリーンショット・ブラウザの例外・dev への失敗リクエストを out/ に書き出す。
 // 手順と前提は docs/runbooks/client-testing.md を参照。
 //
-//   node run.mjs [--client elk|phanpy|all] [--write] [--headed]
+//   node run.mjs [--client elk|phanpy|all] [--write] [--profile] [--headed]
 //
 // アクセストークンは リポジトリルートの .env の MASTODON_DEV_TOKEN を使う。
 // トークンは出力のすべてから伏せ字にする。
@@ -24,6 +24,7 @@ const { values: args } = parseArgs({
 	options: {
 		client: { type: 'string', default: 'all' },
 		write: { type: 'boolean', default: false },
+		profile: { type: 'boolean', default: false },
 		headed: { type: 'boolean', default: false },
 	},
 });
@@ -41,12 +42,17 @@ if (!TOKEN) {
 
 const redact = (text) => String(text).replaceAll(TOKEN, '<MASTODON_DEV_TOKEN>');
 
-const api = async (pathname) => {
+const api = async (pathname, options = {}) => {
 	const res = await fetch(`https://${SERVER}${pathname}`, {
-		headers: { authorization: `Bearer ${TOKEN}` },
+		...options,
+		headers: {
+			authorization: `Bearer ${TOKEN}`,
+			...options.headers,
+		},
 	});
 	if (!res.ok) {
-		throw new Error(`GET ${pathname} -> ${res.status}`);
+		const text = await res.text();
+		throw new Error(`${options.method ?? 'GET'} ${pathname} -> ${res.status}: ${text}`);
 	}
 	return res.json();
 };
@@ -93,6 +99,16 @@ const clients = {
 				.first()
 				.click();
 		},
+		async updateProfile(page, { displayName }) {
+			await page.goto(`${ELK_URL}/settings/profile/appearance`);
+			await settle(page);
+			const nameInput = page.locator('input[type="text"]').first();
+			await nameInput.fill(displayName);
+			const saveBtn = page.locator('button[type="submit"]').first();
+			await saveBtn.click();
+			await page.waitForTimeout(5000);
+			await settle(page);
+		},
 	},
 	phanpy: {
 		// Phanpy はログイン後の状態を localStorage の accounts / currentAccount だけで持つ
@@ -130,6 +146,36 @@ const clients = {
 			const textarea = page.locator('#compose-container textarea').first();
 			await textarea.fill(text);
 			await page.locator('#compose-container button[type="submit"]').click();
+		},
+		async updateProfile(page, { displayName, avatarFile, headerFile }, context) {
+			await page.goto(`${PHANPY_URL}/#/${SERVER}/a/${context.me.id}`);
+			await settle(page);
+			const editBtn = page.getByRole('button', { name: /Edit profile/i });
+			await editBtn.click();
+			await page.waitForSelector('#edit-profile-container');
+			const nameInput = page.locator('#edit-profile-container input[name="display_name"]');
+			await nameInput.fill(displayName);
+			if (avatarFile) {
+				const avatarInput = page.locator('#edit-profile-container input[name="avatar"]');
+				if (await avatarInput.count() > 0) {
+					await avatarInput.setInputFiles(avatarFile);
+				}
+			}
+			if (headerFile) {
+				const headerInput = page.locator('#edit-profile-container input[name="header"]');
+				if (await headerInput.count() > 0) {
+					await headerInput.setInputFiles(headerFile);
+				}
+			}
+			const fieldNameInput = page.locator('#edit-profile-container input[name="fields_attributes[0][name]"]');
+			if (await fieldNameInput.count() > 0) {
+				await fieldNameInput.fill('Website');
+				await page.locator('#edit-profile-container input[name="fields_attributes[0][value]"]').fill('https://hakatashi.com');
+			}
+			const saveBtn = page.locator('#edit-profile-container button[type="submit"]');
+			await saveBtn.click();
+			await page.waitForTimeout(5000);
+			await settle(page);
 		},
 	},
 };
@@ -232,6 +278,27 @@ const runClient = async (browser, name, context) => {
 		report.post = { text, found: statuses.some((s) => s.content.includes(text)) };
 	}
 
+	if (args.profile) {
+		current = 'profile-edit';
+		const testDisplayName = `hakatashi (${name}-${Date.now().toString().slice(-4)})`;
+		await client.updateProfile(
+			page,
+			{
+				displayName: testDisplayName,
+				avatarFile: path.join(import.meta.dirname, 'fixtures/avatar.png'),
+				headerFile: path.join(import.meta.dirname, 'fixtures/header.png'),
+			},
+			context,
+		);
+		const file = `${String(index++).padStart(2, '0')}-profile-edit.png`;
+		await page.screenshot({ path: path.join(dir, file) });
+		const updated = await api('/api/v1/accounts/verify_credentials');
+		report.profile = {
+			displayName: testDisplayName,
+			found: updated.display_name === testDisplayName,
+		};
+	}
+
 	report.paginated ??= false;
 	report.errors = errors;
 	report.failedRequests = requests;
@@ -244,34 +311,75 @@ const me = await api('/api/v1/accounts/verify_credentials');
 const [status] = await api('/api/v1/timelines/home?limit=1');
 const context = { me, status };
 
+let originalAvatarBlob = null;
+let originalHeaderBlob = null;
+if (args.profile) {
+	if (context.me.avatar) {
+		originalAvatarBlob = await fetch(context.me.avatar)
+			.then((r) => r.blob())
+			.catch(() => null);
+	}
+	if (context.me.header) {
+		originalHeaderBlob = await fetch(context.me.header)
+			.then((r) => r.blob())
+			.catch(() => null);
+	}
+}
+
 await rm(OUT_DIR, { recursive: true, force: true });
 const browser = await chromium.launch({ headless: !args.headed });
 const names = args.client === 'all' ? Object.keys(clients) : [args.client];
 let failed = false;
-for (const name of names) {
-	if (!clients[name]) {
-		console.error(`unknown client: ${name}`);
-		process.exit(2);
+
+try {
+	for (const name of names) {
+		if (!clients[name]) {
+			console.error(`unknown client: ${name}`);
+			process.exit(2);
+		}
+		const report = await runClient(browser, name, context);
+		const problems =
+			report.errors.length +
+			report.failedRequests.length +
+			(report.post && !report.post.found ? 1 : 0) +
+			(report.profile && !report.profile.found ? 1 : 0);
+		failed ||= problems > 0;
+		console.log(
+			`\n== ${name}: ${problems === 0 ? 'OK' : `${problems} problem(s)`} (paginated: ${report.paginated})`,
+		);
+		for (const r of report.failedRequests) {
+			console.log(`  [${r.page}] ${r.method} ${r.status ?? r.failure} ${r.url}`);
+		}
+		for (const e of report.errors) {
+			console.log(`  [${e.page}] ${e.type}: ${e.text.split('\n')[0]}`);
+		}
+		if (report.post) {
+			console.log(`  post: ${report.post.found ? 'found in account statuses' : 'NOT FOUND'}`);
+		}
+		if (report.profile) {
+			console.log(`  profile: ${report.profile.found ? 'updated successfully via UI' : 'FAILED'}`);
+		}
 	}
-	const report = await runClient(browser, name, context);
-	const problems =
-		report.errors.length +
-		report.failedRequests.length +
-		(report.post && !report.post.found ? 1 : 0);
-	failed ||= problems > 0;
-	console.log(
-		`\n== ${name}: ${problems === 0 ? 'OK' : `${problems} problem(s)`} (paginated: ${report.paginated})`,
-	);
-	for (const r of report.failedRequests) {
-		console.log(`  [${r.page}] ${r.method} ${r.status ?? r.failure} ${r.url}`);
+} finally {
+	if (args.profile) {
+		console.log('\nRestoring original profile...');
+		const formData = new FormData();
+		formData.append('display_name', context.me.display_name);
+		formData.append('note', context.me.source?.note ?? '');
+		if (originalAvatarBlob) {
+			formData.append('avatar', originalAvatarBlob, 'avatar.png');
+		}
+		if (originalHeaderBlob) {
+			formData.append('header', originalHeaderBlob, 'header.png');
+		}
+		await api('/api/v1/accounts/update_credentials', {
+			method: 'PATCH',
+			body: formData,
+		});
+		console.log('Original profile restored.');
 	}
-	for (const e of report.errors) {
-		console.log(`  [${e.page}] ${e.type}: ${e.text.split('\n')[0]}`);
-	}
-	if (report.post) {
-		console.log(`  post: ${report.post.found ? 'found in account statuses' : 'NOT FOUND'}`);
-	}
+	await browser.close();
 }
-await browser.close();
+
 console.log(`\nscreenshots and reports: ${OUT_DIR}`);
 process.exit(failed ? 1 : 0);
