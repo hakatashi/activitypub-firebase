@@ -24,6 +24,8 @@
 	"dependencies": {
 		"@google-cloud/functions-framework": "^3.5.1",
 		"@node-oauth/oauth2-server": "^4.3.3",
+		"blurhash": "^2.0.5",
+		"busboy": "^1.6.0",
 		"cors": "^2.8.6",
 		"deepmerge": "^4.2.2",
 		"escape-goat": "^4.0.0",
@@ -37,12 +39,14 @@
 		"node-fetch": "^3.3.2",
 		"on-finished": "^2.4.1",
 		"overlaps": "^1.0.0",
+		"sharp": "^0.35.5",
 		"undici": "^6.28.1",
 		"zod": "^4.5.4"
 	},
 	"devDependencies": {
 		"@google-cloud/firestore": "^6.8.0",
 		"@hakatashi/oxlint-config": "^0.1.0",
+		"@types/busboy": "^1.5.4",
 		"@types/cors": "^2.8.19",
 		"@types/express": "^5.0.6",
 		"@types/http-signature": "^1.4.0",

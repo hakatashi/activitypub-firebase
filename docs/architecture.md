@@ -151,10 +151,17 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | `userInfos/{actor}/notifications` | エスケープしたアクティビティ IRI | 通知の射影。受信したアクティビティ(Create / Like / Announce / Follow)を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0088](adr/0088-project-notifications-in-store.md)) |
 | `markers` | `エスケープした actor IRI_タイムライン名` | `/api/v1/markers` の既読位置(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
+| `mediaAttachments` | Mastodon ID(20 桁の数字) | アップロードされたメディアのメタデータ(→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
 | `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
 | `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
 | `idempotencyKeys` | `sha256(actor IRI + キー)` | `POST /api/v1/statuses` の `Idempotency-Key` → Note IRI。`expiresAt` に TTL ポリシー(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md)) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
+
+### Cloud Storage
+
+アップロードされたメディア画像 (`POST /api/v2/media` 等) は Firebase 既定バケット (`${projectId}.firebasestorage.app`) に保存される (→ [ADR-0091](adr/0091-media-upload-and-storage.md))。
+`storage.rules` でクライアントからの直接の読み書きを全面禁止 (`allow read, write: if false;`) しており、書き込みは Cloud Functions (Admin SDK) 経由でのみ行われる。
+保存された画像オブジェクトは公開読み取り (`makePublic()`) に設定され、`https://storage.googleapis.com/${bucket}/${path}` から直接配信される。
 
 apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
 Firestore 上でもそのまま配列として保存する。コレクション単体での所属判定

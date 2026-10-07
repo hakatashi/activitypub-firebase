@@ -116,3 +116,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0088](0088-project-notifications-in-store.md) | 受信したアクティビティを通知として userInfos に射影し、Store で差分更新する | Accepted |
 | [0089](0089-notifications-api.md) | 通知 API の実装と組み立て・ページネーション・未読管理の仕様 | Accepted |
 | [0090](0090-derive-media-attachments-from-note.md) | Note の attachment から MediaAttachment を導出する | Accepted |
+| [0091](0091-media-upload-and-storage.md) | メディアのアップロードと Cloud Storage 保存 | Accepted |

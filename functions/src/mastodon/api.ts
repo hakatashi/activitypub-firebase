@@ -6,6 +6,7 @@ import accountsRouter from './routes/accounts.js';
 import appsRouter from './routes/apps.js';
 import instanceRouter from './routes/instance.js';
 import markersRouter from './routes/markers.js';
+import mediaRouter from './routes/media.js';
 import notificationsRouter from './routes/notifications.js';
 import statusActionsRouter from './routes/statusActions.js';
 import statusesRouter from './routes/statuses.js';
@@ -20,7 +21,7 @@ router.use(
 	'/',
 	cors({
 		origin: true,
-		methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+		methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 		allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
 		// これがないとブラウザ上のクライアントが Link ヘッダを読めずページネーションできない。
 		exposedHeaders: ['Link'],
@@ -35,6 +36,7 @@ router.use(timelinesRouter);
 router.use(statusesRouter);
 router.use(statusActionsRouter);
 router.use(notificationsRouter);
+router.use(mediaRouter);
 router.use(appsRouter);
 
 // fallback all /api routes to 404 (→ ADR-0067)
