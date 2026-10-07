@@ -1,13 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
 import { errorMessage } from '../values.js';
-import { getApex, getLocals } from './locals.js';
+import { getApex, getLocals, getRouteParam } from './locals.js';
 
 const acctReg = /acct:[@~]?(?<user>[^@]+)@?(?<domain>.*)/;
 
 export const respondNodeInfo = async (req: Request, res: Response): Promise<void> => {
 	const apex = getApex(req);
 	try {
-		const version = req.params.version || '2.1';
+		const version = getRouteParam(req, 'version') || '2.1';
 		if (version[0] !== '2') {
 			res.status(404).send('Only nodeinfo 2.x supported');
 			return;

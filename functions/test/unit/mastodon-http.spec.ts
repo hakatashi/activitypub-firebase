@@ -1,5 +1,6 @@
 import type express from 'express';
 import type { APActor } from 'activitypub-types';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { apex } from '../../src/apex.js';
@@ -28,6 +29,8 @@ import {
 	loadViewer,
 	loadVisibleStatus,
 } from '../../src/mastodon/http/loaders.js';
+import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
+import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
 
 describe('Mastodon HTTP Errors', () => {
 	it('creates HttpError with given status code and message', () => {
@@ -355,5 +358,45 @@ describe('Mastodon Resource Loaders', () => {
 			const result = await loadViewer(res);
 			expect(result).toBe(actorObj);
 		});
+	});
+});
+
+// Express 5 では async ハンドラの reject がエラーハンドラへ渡る (→ ADR-0087)
+describe('Mastodon API router on Express 5', () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		await resetFirestore();
+	});
+
+	it('responds with the HttpError status when an async handler rejects with it', async () => {
+		vi.spyOn(account, 'resolveAccountActor').mockResolvedValueOnce(undefined);
+
+		const response = await request(mastodon).get('/api/v1/accounts/12345');
+		expect(response.status).toBe(404);
+		expect(response.body).toEqual({ error: 'Record not found' });
+	});
+
+	it('responds with 500 when an async handler rejects with an unexpected error', async () => {
+		vi.spyOn(account, 'resolveAccountActor').mockRejectedValueOnce(new Error('boom'));
+
+		const response = await request(mastodon).get('/api/v1/accounts/12345');
+		expect(response.status).toBe(500);
+		expect(response.body).toEqual({ error: 'Internal server error' });
+	});
+
+	it('parses `id[]` array queries with the extended query parser', async () => {
+		await createLocalActor('hakatashi', { uid: 'uid-hakatashi' });
+		await addAccessToken('relationships-token', 'read');
+		const getRelationships = vi.spyOn(account, 'getRelationships').mockResolvedValueOnce([]);
+
+		const response = await request(mastodon)
+			.get('/api/v1/accounts/relationships?id[]=1&id[]=2')
+			.set('Authorization', 'Bearer relationships-token');
+		expect(response.status).toBe(200);
+		expect(getRelationships).toHaveBeenCalledWith(expect.anything(), ['1', '2']);
 	});
 });

@@ -35,3 +35,10 @@ export interface ApexLocals {
 export const getApex = (req: Request): Apex => req.app.locals.apex;
 
 export const getLocals = (res: Response): ApexLocals => res.locals.apex;
+
+// Express 5 の型では req.params の値が string | string[] になる (配列はワイルドカードのみ)。
+// apex のルートは名前付きパラメーターだけなので、文字列以外は無いものとして扱う。
+export const getRouteParam = (req: Request, name: string): string | undefined => {
+	const value = req.params[name];
+	return typeof value === 'string' ? value : undefined;
+};

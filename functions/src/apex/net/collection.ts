@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { CollectionPage } from '../pub/collection.js';
 import type { Apex, APObject } from '../types.js';
-import { getApex, getLocals } from './locals.js';
+import { getApex, getLocals, getRouteParam } from './locals.js';
 
 type CollectionGetter = (
 	apex: Apex,
@@ -73,7 +73,7 @@ export const likes = collectionMiddleware((apex, target, page, authorized) =>
 );
 
 export const added = collectionMiddleware((apex, target, page, authorized, req) => {
-	const colId = req.params[apex.collectionParam];
+	const colId = getRouteParam(req, apex.collectionParam);
 	return colId ? apex.getAdded(target, colId, page, authorized) : undefined;
 });
 

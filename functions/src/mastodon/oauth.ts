@@ -256,7 +256,7 @@ router.post('/authorize', async (req, res) => {
 	const request = new OauthRequest(req);
 	const response = new OauthResponse(res);
 
-	const parsedBody = oauthAuthorizeBodySchema.safeParse(req.body);
+	const parsedBody = oauthAuthorizeBodySchema.safeParse(req.body ?? {});
 	if (!parsedBody.success) {
 		res.sendStatus(400);
 		return;
@@ -314,7 +314,7 @@ router.post('/authorize', async (req, res) => {
 });
 
 router.post('/token', tokenCors, async (req, res) => {
-	const parsedBody = oauthTokenBodySchema.safeParse(req.body);
+	const parsedBody = oauthTokenBodySchema.safeParse(req.body ?? {});
 	if (!parsedBody.success) {
 		res.status(400).send('Bad request');
 		return;

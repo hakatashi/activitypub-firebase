@@ -23,6 +23,8 @@ import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 
 const app = express();
+// Express 5 の既定 (simple) では `id[]=1&id[]=2` 形式の配列クエリを解釈できない (→ ADR-0087)。
+app.set('query parser', 'extended');
 
 const adminOnly = (req: express.Request, res: express.Response, next: express.NextFunction) => {
 	if (process.env.FUNCTIONS_EMULATOR === 'true') {
@@ -143,7 +145,7 @@ app.post(
 	'/activitypub/createPost',
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
-		const parsedBody = createPostBodySchema.safeParse(req.body);
+		const parsedBody = createPostBodySchema.safeParse(req.body ?? {});
 		if (!parsedBody.success) {
 			res.status(400).send('Text is not correct type');
 			return;
@@ -196,7 +198,7 @@ app.post(
 	'/activitypub/deliveries/resend',
 	adminOnly,
 	async (req: express.Request, res: express.Response) => {
-		const parsedBody = resendDeliveryBodySchema.safeParse(req.body);
+		const parsedBody = resendDeliveryBodySchema.safeParse(req.body ?? {});
 		if (!parsedBody.success) {
 			res.status(400).send('activityId and inbox are required');
 			return;

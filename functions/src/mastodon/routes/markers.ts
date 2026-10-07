@@ -1,11 +1,11 @@
+import express from 'express';
 import firebase from 'firebase-admin';
 import { z } from 'zod';
 import { db, escapeFirestoreKey, toFirestoreKey } from '../../firebase.js';
 import { Markers } from '../../schema.js';
-import { createAsyncRouter } from '../http/asyncRouter.js';
 import { authRequired, getAuthActorId, scopeRequired } from '../http/auth.js';
 
-const router = createAsyncRouter();
+const router = express.Router();
 
 export const markersQuerySchema = z.object({
 	timeline: z.union([z.string(), z.array(z.string())]).optional(),
@@ -73,7 +73,7 @@ router.get('/v1/markers', authRequired, scopeRequired('read:statuses'), async (r
 });
 
 router.post('/v1/markers', authRequired, scopeRequired('write:statuses'), async (req, res) => {
-	const parsedBody = createMarkersBodySchema.safeParse(req.body);
+	const parsedBody = createMarkersBodySchema.safeParse(req.body ?? {});
 	if (!parsedBody.success) {
 		res.status(400).send('Bad request');
 		return;

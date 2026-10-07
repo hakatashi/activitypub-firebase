@@ -1,3 +1,4 @@
+import express from 'express';
 import assert from 'node:assert';
 import firebase from 'firebase-admin';
 import { apex } from '../../apex.js';
@@ -5,14 +6,13 @@ import { escapeFirestoreKey } from '../../firebase.js';
 import { UserInfos } from '../../schema.js';
 import { undoReactions } from '../../social/reactions.js';
 import { getAttributedTo, toIdArray } from '../../utils.js';
-import { createAsyncRouter } from '../http/asyncRouter.js';
 import { authRequired, scopeRequired } from '../http/auth.js';
 import { UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
 import { getStatusByIri, getViewerRelationships } from '../presenters/status.js';
 import { noteToVisibility } from '../statusAttributes.js';
 
-const router = createAsyncRouter();
+const router = express.Router();
 
 router.post(
 	'/v1/statuses/:id/favourite',
@@ -20,7 +20,7 @@ router.post(
 	scopeRequired('write:favourites'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		const viewerRelations = await getViewerRelationships(actor, [note]);
 		if (!viewerRelations.favourited.has(note.id)) {
@@ -43,7 +43,7 @@ router.post(
 	scopeRequired('write:favourites'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		await undoReactions(actor, note, 'favourites');
 
@@ -59,7 +59,7 @@ router.post(
 	scopeRequired('write:statuses'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		const visibility = noteToVisibility(note);
 		if (visibility === 'direct' || visibility === 'private') {
@@ -91,7 +91,7 @@ router.post(
 	scopeRequired('write:statuses'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		await undoReactions(actor, note, 'reblogs');
 
@@ -107,7 +107,7 @@ router.post(
 	scopeRequired('write:bookmarks'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);
@@ -128,7 +128,7 @@ router.post(
 	scopeRequired('write:bookmarks'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);
@@ -146,7 +146,7 @@ router.post(
 	scopeRequired('write:accounts'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		if (getAttributedTo(note) !== actor.id) {
 			throw new UnprocessableError('You can only pin your own posts');
@@ -182,7 +182,7 @@ router.post(
 	scopeRequired('write:accounts'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id ?? '', actor);
+		const { note } = await loadVisibleStatus(req.params.id, actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);

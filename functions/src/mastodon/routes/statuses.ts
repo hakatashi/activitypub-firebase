@@ -1,3 +1,4 @@
+import express from 'express';
 import assert from 'node:assert';
 import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
@@ -10,7 +11,6 @@ import { getIriByMastodonId } from '../../mastodonId.js';
 import { deleteNote, htmlToPlainText, publishNote } from '../../notes.js';
 import * as webfinger from '../../webfinger.js';
 import { getAttributedTo, isAPNote, toError } from '../../utils.js';
-import { createAsyncRouter } from '../http/asyncRouter.js';
 import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadStatus, loadViewer, loadVisibleStatus } from '../http/loaders.js';
@@ -27,7 +27,7 @@ import type { StatusEntity } from '../presenters/status.js';
 import { extractMentions, formatPostContent } from '../statusContent.js';
 import { isNoteVisibleTo } from '../statusAttributes.js';
 
-const router = createAsyncRouter();
+const router = express.Router();
 
 // JSON でもフォームでも届く。Elk は未指定の項目を `null` や空配列で送ってくる。
 export const createStatusBodySchema = z.object({
@@ -144,7 +144,7 @@ router.post(
 
 router.get('/v1/statuses/:id/context', async (req, res) => {
 	const viewer = await getOptionalViewer(req, res);
-	const { note, viewerFollowing } = await loadVisibleStatus(req.params.id ?? '', viewer, {
+	const { note, viewerFollowing } = await loadVisibleStatus(req.params.id, viewer, {
 		loadFollowing: true,
 	});
 
@@ -158,7 +158,7 @@ router.get('/v1/statuses/:id/context', async (req, res) => {
 
 router.get('/v1/statuses/:id', async (req, res) => {
 	const viewer = await getOptionalViewer(req, res);
-	const { note } = await loadVisibleStatus(req.params.id ?? '', viewer);
+	const { note } = await loadVisibleStatus(req.params.id, viewer);
 
 	const [status] = await notesToStatuses([note], viewer);
 	if (status === undefined) {
@@ -174,7 +174,7 @@ router.delete(
 	scopeRequired('write:statuses'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const note = await loadStatus(req.params.id ?? '');
+		const note = await loadStatus(req.params.id);
 
 		// 自分の投稿のみ削除可能。他人の投稿なら 404 (存在秘匿 → ADR-0064)。
 		if (getAttributedTo(note) !== actor.id) {
