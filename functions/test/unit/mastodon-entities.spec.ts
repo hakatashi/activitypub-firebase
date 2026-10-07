@@ -11,6 +11,7 @@ import type { StatusViewerContext } from '../../src/mastodon/statusAttributes.js
 import {
 	getMentionIris,
 	isNoteVisibleTo,
+	noteToMediaAttachments,
 	noteToMentions,
 	noteToViewerAttributes,
 } from '../../src/mastodon/statusAttributes.js';
@@ -207,6 +208,26 @@ describe('noteObjectToStatus', () => {
 		} as unknown as APNote;
 
 		expect(noteObjectToStatus(note, account, '00109547043225600000').content).toBe('first');
+	});
+
+	test('includes converted media attachments', () => {
+		const account = { username: 'hakatashi' } as unknown as CamelToSnake<mastodon.v1.Account>;
+		const note = {
+			id: 'https://remote.example/notes/with-media',
+			published: '2023-06-01T00:00:00.000Z',
+			attachment: [
+				{
+					type: 'Image',
+					url: 'https://remote.example/image.png',
+					name: 'alt',
+				},
+			],
+		} as unknown as APNote;
+
+		const status = noteObjectToStatus(note, account, '00109547043225600000');
+		expect(status.media_attachments).toHaveLength(1);
+		expect(status.media_attachments[0]?.url).toBe('https://remote.example/image.png');
+		expect(status.media_attachments[0]?.description).toBe('alt');
 	});
 });
 
@@ -565,5 +586,303 @@ describe('noteToViewerAttributes', () => {
 			bookmarked: false,
 			pinned: false,
 		});
+	});
+});
+
+describe('noteToMediaAttachments', () => {
+	const statusId = '00109547043225600000';
+
+	test('converts attachment from actual Mastodon received Note format in dev Firestore', () => {
+		const note = {
+			id: 'https://mastodon-test.hakatashi.com/ap/users/117216175383849817/statuses/117398803316109031',
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Document',
+					'http://joinmastodon.org/ns#blurhash': ['U209dghVfQhVhVfjfQfjfQfQfQfQhVfjfQfj'],
+					'http://joinmastodon.org/ns#focalPoint': [
+						{
+							'@list': [0.5, -0.5],
+						},
+					],
+					height: [2],
+					width: [2],
+					mediaType: ['image/png'],
+					name: ['test focal description'],
+					url: [
+						'https://mastodon-test.hakatashi.com/system/media_attachments/files/117/398/803/313/978/469/original/cda482ba8909cc2f.png',
+					],
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments).toEqual([
+			{
+				id: '001095470432256000000',
+				type: 'image',
+				url: 'https://mastodon-test.hakatashi.com/system/media_attachments/files/117/398/803/313/978/469/original/cda482ba8909cc2f.png',
+				preview_url:
+					'https://mastodon-test.hakatashi.com/system/media_attachments/files/117/398/803/313/978/469/original/cda482ba8909cc2f.png',
+				remote_url:
+					'https://mastodon-test.hakatashi.com/system/media_attachments/files/117/398/803/313/978/469/original/cda482ba8909cc2f.png',
+				preview_remote_url: null,
+				text_url: null,
+				meta: {
+					original: {
+						width: 2,
+						height: 2,
+						size: '2x2',
+						aspect: 1,
+					},
+					small: {
+						width: 2,
+						height: 2,
+						size: '2x2',
+						aspect: 1,
+					},
+					focus: {
+						x: 0.5,
+						y: -0.5,
+					},
+				},
+				description: 'test focal description',
+				blurhash: 'U209dghVfQhVhVfjfQfjfQfQfQfQhVfjfQfj',
+			},
+		]);
+	});
+
+	test('converts Misskey / Pleroma style attachment with Link object and plain properties', () => {
+		const note = {
+			id: 'https://misskey.example/notes/abc1234',
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Document',
+					name: 'Misskey image description',
+					blurhash: 'U209dghVfQhVhVfjfQfj',
+					focalPoint: [0.25, -0.75],
+					width: 1200,
+					height: 800,
+					url: [
+						{
+							type: 'Link',
+							href: 'https://misskey.example/files/photo.jpg',
+							mediaType: 'image/jpeg',
+						},
+					],
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments).toEqual([
+			{
+				id: '001095470432256000000',
+				type: 'image',
+				url: 'https://misskey.example/files/photo.jpg',
+				preview_url: 'https://misskey.example/files/photo.jpg',
+				remote_url: 'https://misskey.example/files/photo.jpg',
+				preview_remote_url: null,
+				text_url: null,
+				meta: {
+					original: {
+						width: 1200,
+						height: 800,
+						size: '1200x800',
+						aspect: 1.5,
+					},
+					small: {
+						width: 1200,
+						height: 800,
+						size: '1200x800',
+						aspect: 1.5,
+					},
+					focus: {
+						x: 0.25,
+						y: -0.75,
+					},
+				},
+				description: 'Misskey image description',
+				blurhash: 'U209dghVfQhVhVfjfQfj',
+			},
+		]);
+	});
+
+	test('converts video attachment and extracts preview from icon', () => {
+		const note = {
+			id: 'https://remote.example/notes/video1',
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Video',
+					mediaType: 'video/mp4',
+					url: 'https://remote.example/videos/movie.mp4',
+					icon: {
+						type: 'Image',
+						url: 'https://remote.example/videos/preview.jpg',
+					},
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments).toEqual([
+			{
+				id: '001095470432256000000',
+				type: 'video',
+				url: 'https://remote.example/videos/movie.mp4',
+				preview_url: 'https://remote.example/videos/preview.jpg',
+				remote_url: 'https://remote.example/videos/movie.mp4',
+				preview_remote_url: null,
+				text_url: null,
+				meta: null,
+				description: null,
+				blurhash: null,
+			},
+		]);
+	});
+
+	test('converts audio attachment with null preview_url', () => {
+		const note = {
+			id: 'https://remote.example/notes/audio1',
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Audio',
+					mediaType: 'audio/mpeg',
+					url: 'https://remote.example/audio/song.mp3',
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments).toEqual([
+			{
+				id: '001095470432256000000',
+				type: 'audio',
+				url: 'https://remote.example/audio/song.mp3',
+				preview_url: null,
+				remote_url: 'https://remote.example/audio/song.mp3',
+				preview_remote_url: null,
+				text_url: null,
+				meta: null,
+				description: null,
+				blurhash: null,
+			},
+		]);
+	});
+
+	test('converts unknown attachment type', () => {
+		const note = {
+			id: 'https://remote.example/notes/doc1',
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Document',
+					mediaType: 'application/pdf',
+					url: 'https://remote.example/docs/paper.pdf',
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments).toEqual([
+			{
+				id: '001095470432256000000',
+				type: 'unknown',
+				url: 'https://remote.example/docs/paper.pdf',
+				preview_url: null,
+				remote_url: 'https://remote.example/docs/paper.pdf',
+				preview_remote_url: null,
+				text_url: null,
+				meta: null,
+				description: null,
+				blurhash: null,
+			},
+		]);
+	});
+
+	test('sets remote_url to null for local note', () => {
+		const note = {
+			id: `https://${domain}/activitypub/o/local-note`,
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Image',
+					url: `https://${domain}/media/image.png`,
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments[0]?.remote_url).toBeNull();
+		expect(attachments[0]?.url).toBe(`https://${domain}/media/image.png`);
+	});
+
+	test('assigns sequential IDs to multiple attachments', () => {
+		const note = {
+			id: 'https://remote.example/notes/multi',
+			type: 'Note',
+			attachment: [
+				{
+					type: 'Image',
+					url: 'https://remote.example/1.png',
+				},
+				{
+					type: 'Image',
+					url: 'https://remote.example/2.png',
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments.map((a) => a.id)).toEqual([
+			'001095470432256000000',
+			'001095470432256000001',
+		]);
+	});
+
+	test('skips unsupported or invalid attachments', () => {
+		const note = {
+			id: 'https://remote.example/notes/invalid',
+			type: 'Note',
+			attachment: [
+				// Unsupported AP type
+				{
+					type: 'Article',
+					url: 'https://remote.example/article',
+				},
+				// Missing URL
+				{
+					type: 'Image',
+				},
+				// Invalid URL scheme
+				{
+					type: 'Image',
+					url: 'javascript:alert(1)',
+				},
+				// Non-object
+				'https://remote.example/string-attachment',
+				// Valid
+				{
+					type: 'Image',
+					url: 'https://remote.example/valid.png',
+				},
+			],
+		} as unknown as APNote;
+
+		const attachments = noteToMediaAttachments(note, statusId);
+
+		expect(attachments).toHaveLength(1);
+		expect(attachments[0]?.url).toBe('https://remote.example/valid.png');
+		expect(attachments[0]?.id).toBe('001095470432256000000');
 	});
 });
