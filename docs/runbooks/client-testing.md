@@ -43,8 +43,9 @@ gcloud storage buckets update gs://activitypub-firebase-dev.firebasestorage.app 
 ```bash
 node run.mjs                    # 両方、閲覧のみ
 node run.mjs --client elk       # 片方だけ
-node run.mjs --write            # 投稿も行い、API で投稿が作られたことを確かめる
+node run.mjs --post             # 投稿のみ行い、API で投稿が作られたことを確かめる
 node run.mjs --profile          # クライアント UI からのプロフィール更新をテスト(終了後に自動復元)
+node run.mjs --write            # 書き込み全般(--post と --profile のエイリアス)
 node run.mjs --headed           # 画面を出して動きを見る(デスクトップで実行するとき)
 
 # git worktree から実行するときは、メインの作業ツリーの .env を指す
@@ -61,8 +62,8 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 標準出力に、クライアントごとの問題の一覧が出る。詳細は `tools/client-e2e/out/<client>/` にある。
 
 - `report.json`: `failedRequests`(4xx/5xx と接続失敗)、`errors`(ページの例外とコンソールのエラー)、
-  `paginated`(スクロールで `max_id` 付きのタイムライン取得が走ったか)、`post`(`--write` の結果)、
-  `profile`(`--profile` の結果)
+  `paginated`(スクロールで `max_id` 付きのタイムライン取得が走ったか)、`post`(`--post` / `--write` の結果)、
+  `profile`(`--profile` / `--write` の結果)
 - `NN-<画面>.png`: 各画面のスクリーンショット。**Read で開いて目で確認する。**
 
 確認すること:
@@ -72,8 +73,8 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 - [ ] `paginated: true`(`Link` ヘッダが効いている)
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
   - `04-profile.png`: アバター画像・ヘッダー画像、表示名、プロフィール文が正しく描画されている
-- [ ] `--write` で `post: found in account statuses`
-- [ ] `--profile` で `profile: updated successfully via UI` (テスト終了後に元のプロフィールへ自動復元される)
+- [ ] `--post` (または `--write`) で `post: found in account statuses`
+- [ ] `--profile` (または `--write`) で `profile: updated successfully via UI` (テスト終了後に元のプロフィールへ自動復元される)
 
 ## 既知の出力(2026-10-08 時点)
 

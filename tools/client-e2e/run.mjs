@@ -2,7 +2,7 @@
 // スクリーンショット・ブラウザの例外・dev への失敗リクエストを out/ に書き出す。
 // 手順と前提は docs/runbooks/client-testing.md を参照。
 //
-//   node run.mjs [--client elk|phanpy|all] [--write] [--profile] [--headed]
+//   node run.mjs [--client elk|phanpy|all] [--write] [--post] [--profile] [--headed]
 //
 // アクセストークンは リポジトリルートの .env の MASTODON_DEV_TOKEN を使う。
 // トークンは出力のすべてから伏せ字にする。
@@ -24,10 +24,14 @@ const { values: args } = parseArgs({
 	options: {
 		client: { type: 'string', default: 'all' },
 		write: { type: 'boolean', default: false },
+		post: { type: 'boolean', default: false },
 		profile: { type: 'boolean', default: false },
 		headed: { type: 'boolean', default: false },
 	},
 });
+
+const shouldPost = args.post || args.write;
+const shouldUpdateProfile = args.profile || args.write;
 
 const SERVER = process.env.MASTODON_DEV_HOST ?? 'mastodon-dev.hakatashi.com';
 const TOKEN = process.env.MASTODON_DEV_TOKEN;
@@ -104,9 +108,13 @@ const clients = {
 			await settle(page);
 			const nameInput = page.locator('input[type="text"]').first();
 			await nameInput.fill(displayName);
+			const updated = page.waitForResponse(
+				(res) => res.url().includes('/api/v1/accounts/update_credentials') && res.status() === 200,
+				{ timeout: 30_000 },
+			);
 			const saveBtn = page.locator('button[type="submit"]').first();
 			await saveBtn.click();
-			await page.waitForTimeout(5000);
+			await updated;
 			await settle(page);
 		},
 	},
@@ -172,9 +180,13 @@ const clients = {
 				await fieldNameInput.fill('Website');
 				await page.locator('#edit-profile-container input[name="fields_attributes[0][value]"]').fill('https://hakatashi.com');
 			}
+			const updated = page.waitForResponse(
+				(res) => res.url().includes('/api/v1/accounts/update_credentials') && res.status() === 200,
+				{ timeout: 30_000 },
+			);
 			const saveBtn = page.locator('#edit-profile-container button[type="submit"]');
 			await saveBtn.click();
-			await page.waitForTimeout(5000);
+			await updated;
 			await settle(page);
 		},
 	},
@@ -268,7 +280,7 @@ const runClient = async (browser, name, context) => {
 		}
 	}
 
-	if (args.write) {
+	if (shouldPost) {
 		current = 'post';
 		const text = `client-e2e (${name}) ${new Date().toISOString()}`;
 		await client.post(page, text);
@@ -278,7 +290,7 @@ const runClient = async (browser, name, context) => {
 		report.post = { text, found: statuses.some((s) => s.content.includes(text)) };
 	}
 
-	if (args.profile) {
+	if (shouldUpdateProfile) {
 		current = 'profile-edit';
 		const testDisplayName = `hakatashi (${name}-${Date.now().toString().slice(-4)})`;
 		await client.updateProfile(
@@ -313,7 +325,7 @@ const context = { me, status };
 
 let originalAvatarBlob = null;
 let originalHeaderBlob = null;
-if (args.profile) {
+if (shouldUpdateProfile) {
 	if (context.me.avatar) {
 		originalAvatarBlob = await fetch(context.me.avatar)
 			.then((r) => r.blob())
@@ -361,7 +373,7 @@ try {
 		}
 	}
 } finally {
-	if (args.profile) {
+	if (shouldUpdateProfile) {
 		console.log('\nRestoring original profile...');
 		const formData = new FormData();
 		formData.append('display_name', context.me.display_name);
