@@ -89,11 +89,23 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 
 | 出力 | 原因 |
 |---|---|
-| Phanpy: `GET 404 /api/v2/search?q=from:me...` と `pageerror: _a: Record not found` | 検索は未実装(Phase 4、#9)。プロフィールの投稿統計で叩く。画面は表示される |
 | `GET 404 /api/v1/push/subscription`(Elk) | Web Push 未実装。購読がないときの 404 は Mastodon と同じ挙動 |
 | `net::ERR_BLOCKED_BY_ORB https://img.pawoo.net/...` | キャッシュしているリモート actor のアバター URL が古い |
 | Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...` | テスト用インスタンスのメディアの配信設定(CORS)。dev とは無関係 |
 | Phanpy: `net::ERR_FAILED .../accounts/avatars/...` | GCS のエッジキャッシュ(最大1時間)に CORS 設定前の古いレスポンスが残っている場合。キャッシュ期限切れや新規画像アップロードで解消する |
+
+## 検索(`/api/v2/search`)の確認
+
+`run.mjs` は検索を巡回しない。検索を変えたときは、Playwright で次の3つを確かめる(2026-10-09 に実施)。
+
+- Elk の `/<dev>/search` で `@user@<リモート>` を入力し、結果からプロフィールを開いてフォローできる。
+  相手は自前の `admin@mastodon-test.hakatashi.com` を使う(dev 側で一度アンフォローしてから試す)。
+- Elk で `/<リモートのホスト>/@user/<ID>` を開くと、`search?q=https://...&resolve=true&limit=1` で解決されて
+  `/<dev>/@user@<リモート>/<dev の ID>` に遷移し、投稿が表示される。
+- 投稿欄で `@adm` と打つと、`type=accounts&resolve=true` の補完にアカウントが出る。
+
+mastodon.social など Authorized Fetch のサーバーは署名付き GET が必要(→ [ADR-0098](../adr/0098-sign-outgoing-get-with-local-actor.md))。
+相手が dev の actor の公開鍵を取りに来るため、dev がコールドスタートだと初回は 5 秒のタイムアウトで空になることがある。
 
 ## ハマりどころ
 

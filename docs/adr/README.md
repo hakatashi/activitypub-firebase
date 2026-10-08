@@ -123,3 +123,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0095](0095-represent-boost-as-status-entity.md) | ブースト(Announce)を Status エンティティとして表現する | Accepted |
 | [0096](0096-boosts-in-timelines-and-account-statuses.md) | ホームタイムラインとアカウント投稿一覧にブースト(Announce)を表示する | Accepted |
 
+| [0097](0097-search-and-resolve-remote-resources.md) | `search` でアカウントを検索し、`resolve=true` でリモートのアカウント・投稿を解決する | Accepted |
+| [0098](0098-sign-outgoing-get-with-local-actor.md) | 外部への GET をローカル actor の鍵で署名する | Accepted |
