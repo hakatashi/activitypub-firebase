@@ -12,7 +12,7 @@ import { getFollowing } from './follows.js';
 import type { NoteObject } from './types.js';
 import { isNoteVisibleTo } from './visibility.js';
 
-// お気に入り・ブックマークの一覧 (→ ADR-0099)。どちらも `userInfos/{actor}/…/{Note}` のサブコレクションで、
+// お気に入り・ブックマークの一覧 (→ ADR-0100)。どちらも `userInfos/{actor}/…/{Note}` のサブコレクションで、
 // Status の ID ではなく、ドキュメントの `cursorId` (お気に入り・ブックマークした順) でページングする。
 
 export type NoteCollectionKind = 'favourites' | 'bookmarks';

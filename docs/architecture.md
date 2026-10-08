@@ -148,7 +148,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `contexts` | エスケープした URL | JSON-LD コンテキストのキャッシュ |
 | `deliveries` | エスケープした `アクティビティ ID + 宛先` | 配送結果(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
-| `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。ブックマークは一覧のカーソル `cursorId` を持つ(→ [ADR-0099](adr/0099-cursor-for-favourites-and-bookmarks.md)) |
+| `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。ブックマークは一覧のカーソル `cursorId` を持つ(→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
 | `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
 | `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | `userInfos/{actor}/notifications` | エスケープしたアクティビティ IRI | 通知の射影。受信したアクティビティ(Create / Like / Announce / Follow)を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0088](adr/0088-project-notifications-in-store.md)) |
@@ -232,7 +232,7 @@ Follow を書き換えるとき、同じトランザクションで射影と `fo
 `Store#removeActivity` で消すので、Undo とは突き合わせない(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md))。
 射影は一覧のカーソル `cursorId`(載っているアクティビティの Mastodon ID の最大値)も持ち、
 `GET /api/v1/favourites` はこれで並べる。`GET /api/v1/bookmarks` もブックマーク時刻から作った `cursorId` で並べる
-(`functions/src/social/noteCollections.ts`、→ [ADR-0099](adr/0099-cursor-for-favourites-and-bookmarks.md))。
+(`functions/src/social/noteCollections.ts`、→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md))。
 Store が呼ぶ射影は `functions/src/projections/index.ts` でまとめている。
 既存データからの組み立て直しには `functions/bin/backfillReactionProjection.ts` を、
 ブックマークの `cursorId` の補完には `functions/bin/backfillBookmarkCursor.ts` を使う。

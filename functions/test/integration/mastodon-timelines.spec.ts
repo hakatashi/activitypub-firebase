@@ -457,4 +457,51 @@ describe('Mastodon timelines (Issue #58)', () => {
 			expect(pageAscLimit1.map((s) => s.uri)).toEqual([newerBoost]);
 		});
 	});
+
+	describe('unresolved actors fallback (ADR-0099)', () => {
+		test('handles note whose reply target has an unresolved actor without error', async () => {
+			const REMOTE_UNKNOWN = 'https://remote-unknown.example/u/charlie';
+			// reply target note exists in DB, but charlie's Actor is NOT in Objects
+			const replyTargetNoteId = await saveNote(REMOTE_UNKNOWN, 'public');
+
+			// Alice replies to the unknown author's note
+			const replyNoteId = await saveNote(REMOTE_A, 'public', {
+				inReplyTo: [replyTargetNoteId],
+			});
+
+			await follow(REMOTE_A, true);
+
+			const timeline = await getHomeTimeline(me, { limit: 10 });
+			const replyStatus = timeline.find((s) => s.uri === replyNoteId);
+			expect(replyStatus).toBeDefined();
+			expect(replyStatus?.in_reply_to_id).toBeNull();
+			expect(replyStatus?.in_reply_to_account_id).toBeNull();
+		});
+
+		test('skips note whose author actor is missing from objects without error', async () => {
+			const REMOTE_GHOST = 'https://remote-ghost.example/u/ghost';
+			// Note exists but ghost's Actor is NOT in Objects
+			await saveNote(REMOTE_GHOST, 'public');
+			const validNote = await saveNote(REMOTE_A, 'public');
+
+			await follow(REMOTE_GHOST, true);
+			await follow(REMOTE_A, true);
+
+			const timeline = await getHomeTimeline(me, { limit: 10 });
+			expect(timeline.map((s) => s.uri)).toEqual([validNote]);
+		});
+
+		test('skips boost whose announce actor is missing from objects without error', async () => {
+			const REMOTE_GHOST = 'https://remote-ghost.example/u/ghost';
+			const targetNote = await saveNote(REMOTE_A, 'public');
+			// Announce exists but ghost's Actor is NOT in Objects
+			await saveAnnounce(REMOTE_GHOST, targetNote);
+
+			await follow(REMOTE_GHOST, true);
+			await follow(REMOTE_A, true);
+
+			const timeline = await getHomeTimeline(me, { limit: 10 });
+			expect(timeline.map((s) => s.uri)).toEqual([targetNote]);
+		});
+	});
 });

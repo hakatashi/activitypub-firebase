@@ -58,9 +58,9 @@
 | GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |
 | POST | `/api/v1/statuses/:id/favourite` / `unfavourite` | ✅ | `write:favourites` 必須。Like / Undo(Like) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | POST | `/api/v1/statuses/:id/reblog` / `unreblog` | ✅ | `write:statuses` 必須。Announce / Undo(Announce) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
-| POST | `/api/v1/statuses/:id/bookmark` / `unbookmark` | ✅ | `write:bookmarks` 必須。`userInfos/{actor}/bookmarks` 保存・削除(ブックマーク済みなら元の時刻を保つ)、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0099](adr/0099-cursor-for-favourites-and-bookmarks.md)) |
-| GET | `/api/v1/favourites` | ✅ | `read:favourites` 必須。お気に入りした順(新しい順)。カーソルは射影の `cursorId`(最新の Like の Mastodon ID)で `Link` ヘッダでページング。既定 20 / 最大 40。閲覧できないもの・Tombstone は飛ばす (→ [ADR-0099](adr/0099-cursor-for-favourites-and-bookmarks.md)) |
-| GET | `/api/v1/bookmarks` | ✅ | `read:bookmarks` 必須。ブックマークした順(新しい順)。カーソルはブックマークの `cursorId`。それ以外は favourites と同じ (→ [ADR-0099](adr/0099-cursor-for-favourites-and-bookmarks.md)) |
+| POST | `/api/v1/statuses/:id/bookmark` / `unbookmark` | ✅ | `write:bookmarks` 必須。`userInfos/{actor}/bookmarks` 保存・削除(ブックマーク済みなら元の時刻を保つ)、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
+| GET | `/api/v1/favourites` | ✅ | `read:favourites` 必須。お気に入りした順(新しい順)。カーソルは射影の `cursorId`(最新の Like の Mastodon ID)で `Link` ヘッダでページング。既定 20 / 最大 40。閲覧できないもの・Tombstone は飛ばす (→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
+| GET | `/api/v1/bookmarks` | ✅ | `read:bookmarks` 必須。ブックマークした順(新しい順)。カーソルはブックマークの `cursorId`。それ以外は favourites と同じ (→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
 | POST | `/api/v1/statuses/:id/pin` / `unpin` | ✅ | `write:accounts` 必須。自分の投稿のみ(上限5件)、`userInfos/{actor}/pins` 保存・削除、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
 | POST | `/api/v2/media` | ✅ | `write:media` 必須。同期的に画像処理(EXIF除去・サムネイル・blurhash)を行い Cloud Storage に保存、MediaAttachment 返却 (→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
 | POST | `/api/v1/media` | ✅ | `write:media` 必須。v2 と同一処理で 200 返却 (→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |

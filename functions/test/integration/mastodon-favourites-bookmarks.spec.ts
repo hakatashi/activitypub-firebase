@@ -32,7 +32,7 @@ const getLinkPath = (link: string | undefined, rel: 'next' | 'prev') => {
 	return `${url.pathname}${url.search}`;
 };
 
-describe('GET /api/v1/favourites and /api/v1/bookmarks (Issue #223, ADR-0099)', () => {
+describe('GET /api/v1/favourites and /api/v1/bookmarks (Issue #223, ADR-0100)', () => {
 	let me: LocalActor;
 	let alice: LocalActor;
 	let notes: APObject[];
@@ -174,7 +174,7 @@ describe('GET /api/v1/favourites and /api/v1/bookmarks (Issue #223, ADR-0099)', 
 		expect((await list('/api/v1/bookmarks')).ids).toEqual([statusIds[0]]);
 	});
 
-	test('backfill fills cursorId of bookmarks created before ADR-0099', async () => {
+	test('backfill fills cursorId of bookmarks created before ADR-0100', async () => {
 		const bookmarks = Bookmarks(escapeFirestoreKey(me.id));
 		for (const [index, note] of notes.entries()) {
 			await bookmarks.doc(escapeFirestoreKey(note.id)).set({

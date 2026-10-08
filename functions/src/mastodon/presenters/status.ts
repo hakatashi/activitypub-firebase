@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import type { APNote, APActor } from 'activitypub-types';
 import firebase from 'firebase-admin';
-import { chunk, uniq, zip } from 'lodash-es';
+import { chunk, uniq } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
 import type { APObject } from '../../apex/index.js';
@@ -41,7 +41,7 @@ import {
 	noteToVisibility,
 } from '../statusAttributes.js';
 import type { MediaAttachmentEntity, StatusViewerContext } from '../statusAttributes.js';
-import { resolveAccountIds, userIdsToAccounts } from './account.js';
+import { resolveAccountIds, userIdsToAccounts, userIdsToAccountsMap } from './account.js';
 import { getObjects } from '../../store/objects.js';
 
 // `id` には AP IRI ではなく、時系列順に採番した Mastodon ID を渡す (→ ADR-0006、ADR-0058)。
@@ -311,8 +311,7 @@ export const notesToStatuses = async (notes: NoteObject[], viewer?: APActor | un
 		),
 		getViewerRelationships(viewer, validNotes),
 	]);
-	const accounts = await userIdsToAccounts(authorIris, accountIds);
-	const accountsMap = new Map(zip(authorIris, accounts));
+	const accountsMap = await userIdsToAccountsMap(authorIris, accountIds);
 
 	const context: NoteResolutionContext = {
 		accountsMap,
@@ -373,8 +372,7 @@ export const timelineItemsToStatuses = async (
 		),
 		getViewerRelationships(viewer, validNotes),
 	]);
-	const accounts = await userIdsToAccounts(authorIris, accountIds);
-	const accountsMap = new Map(zip(authorIris, accounts));
+	const accountsMap = await userIdsToAccountsMap(authorIris, accountIds);
 
 	const context: NoteResolutionContext = {
 		accountsMap,

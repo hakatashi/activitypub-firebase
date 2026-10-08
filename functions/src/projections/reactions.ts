@@ -44,7 +44,7 @@ const serverTimestamp = () =>
 	firebase.firestore.FieldValue.serverTimestamp() as unknown as ReactionRelation['createdAt'];
 
 // 生きているアクティビティの一覧から射影を組み立てる。一覧が空なら undefined (射影を消す)。
-// cursorId は一覧の Mastodon ID の最大値 (= 最新のアクティビティ。→ ADR-0099)。
+// cursorId は一覧の Mastodon ID の最大値 (= 最新のアクティビティ。→ ADR-0100)。
 // oxlint-disable-next-line max-params
 const buildReactionRelation = (
 	object: string,
@@ -213,7 +213,7 @@ export const rebuildReactionProjection = async ({ dryRun = false } = {}) => {
 		}
 	}
 
-	// cursorId 用の Mastodon ID (→ ADR-0099)。未採番なら採番する (ADR-0058 と同じ規則)。
+	// cursorId 用の Mastodon ID (→ ADR-0100)。未採番なら採番する (ADR-0058 と同じ規則)。
 	// dry-run では採番せず、採番済みのものだけを使う。
 	const mastodonIds = dryRun
 		? await db.runTransaction(

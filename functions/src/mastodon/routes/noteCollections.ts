@@ -11,7 +11,7 @@ const router = express.Router();
 
 const PAGE_LIMITS = { defaultLimit: 20, maxLimit: 40 };
 
-// お気に入り・ブックマークの一覧 (→ ADR-0099)。お気に入り・ブックマークした順 (新しい順) に返す。
+// お気に入り・ブックマークの一覧 (→ ADR-0100)。お気に入り・ブックマークした順 (新しい順) に返す。
 // Link ヘッダのカーソルは Status の ID ではなく、お気に入り・ブックマーク自体の cursorId。
 const listNoteCollection =
 	(kind: NoteCollectionKind): express.RequestHandler =>

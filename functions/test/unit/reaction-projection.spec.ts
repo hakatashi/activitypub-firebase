@@ -147,7 +147,7 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		expect(await streamActivityIris('Undo')).toHaveLength(2);
 	});
 
-	test('cursorId is the Mastodon ID of the newest live Like (ADR-0099)', async () => {
+	test('cursorId is the Mastodon ID of the newest live Like (ADR-0100)', async () => {
 		const likeIris: string[] = [];
 		for (let i = 0; i < 2; i++) {
 			const like = await apex.buildActivity('Like', me.id, [alice.id], { object: note.id });
@@ -250,7 +250,7 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		await ReactionRelations(escapeFirestoreKey(me.id), 'reblogs')
 			.doc(escapeFirestoreKey(other.id))
 			.set(expectedReblogs.get(note.id)!);
-		// ADR-0099 より前の、cursorId のない射影
+		// ADR-0100 より前の、cursorId のない射影
 		await ReactionRelations(escapeFirestoreKey(me.id), 'reblogs')
 			.doc(escapeFirestoreKey(note.id))
 			.update({ cursorId: firebase.firestore.FieldValue.delete() });

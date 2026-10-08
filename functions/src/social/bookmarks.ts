@@ -9,7 +9,7 @@ import { Bookmarks } from '../schema.js';
 
 // ブックマーク一覧のカーソル。時刻から Mastodon ID 形式の値を作る。`mastodonIds` には登録しない。
 // 一意である必要があるのは 1 ユーザーのブックマークの中だけなので、同一ミリ秒の衝突はシーケンスの乱数で避ける
-// (→ ADR-0099)。
+// (→ ADR-0100)。
 export const buildBookmarkCursorId = (timestamp: number, sequence = randomInt(MAX_SEQUENCE + 1)) =>
 	buildMastodonId(timestamp, sequence);
 
@@ -35,7 +35,7 @@ export const removeBookmark = async (actorId: string, noteIri: string) => {
 	await bookmarkRef(actorId, noteIri).delete();
 };
 
-// cursorId がないブックマーク (ADR-0099 より前のもの) に、`createdAt` から cursorId を入れる。バックフィル用。
+// cursorId がないブックマーク (ADR-0100 より前のもの) に、`createdAt` から cursorId を入れる。バックフィル用。
 // 何度実行してもよい。
 export const backfillBookmarkCursors = async (actorId: string, { dryRun = false } = {}) => {
 	const docs = await Bookmarks(escapeFirestoreKey(actorId)).get();
