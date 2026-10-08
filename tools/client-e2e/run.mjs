@@ -2,7 +2,7 @@
 // スクリーンショット・ブラウザの例外・dev への失敗リクエストを out/ に書き出す。
 // 手順と前提は docs/runbooks/client-testing.md を参照。
 //
-//   node run.mjs [--client elk|phanpy|all] [--write] [--post] [--profile] [--headed]
+//   node run.mjs [--client elk|phanpy|all] [--write] [--post] [--media] [--delete] [--interact] [--profile] [--headed]
 //
 // アクセストークンは リポジトリルートの .env の MASTODON_DEV_TOKEN を使う。
 // トークンは出力のすべてから伏せ字にする。
@@ -25,12 +25,18 @@ const { values: args } = parseArgs({
 		client: { type: 'string', default: 'all' },
 		write: { type: 'boolean', default: false },
 		post: { type: 'boolean', default: false },
+		media: { type: 'boolean', default: false },
+		delete: { type: 'boolean', default: false },
+		interact: { type: 'boolean', default: false },
 		profile: { type: 'boolean', default: false },
 		headed: { type: 'boolean', default: false },
 	},
 });
 
 const shouldPost = args.post || args.write;
+const shouldPostMedia = args.media || args.write;
+const shouldDelete = args.delete || args.write;
+const shouldInteract = args.interact || args.write;
 const shouldUpdateProfile = args.profile || args.write;
 
 const SERVER = process.env.MASTODON_DEV_HOST ?? 'mastodon-dev.hakatashi.com';
@@ -38,6 +44,7 @@ const TOKEN = process.env.MASTODON_DEV_TOKEN;
 const ELK_URL = process.env.ELK_URL ?? 'http://127.0.0.1:5314';
 const PHANPY_URL = process.env.PHANPY_URL ?? 'http://127.0.0.1:5315';
 const OUT_DIR = path.join(import.meta.dirname, 'out');
+const MEDIA_FIXTURE = path.join(import.meta.dirname, 'fixtures/avatar.png');
 
 if (!TOKEN) {
 	console.error('MASTODON_DEV_TOKEN が未設定です(docs/runbooks/client-testing.md を参照)');
@@ -103,6 +110,73 @@ const clients = {
 				.first()
 				.click();
 		},
+		async postMedia(page, text, mediaFile) {
+			await page.goto(`${ELK_URL}/home`);
+			await settle(page);
+			const editor = page.locator('.content-editor[contenteditable="true"]').first();
+			await editor.click();
+			await editor.pressSequentially(text);
+			const mediaBtn = page.locator('button:has(.i-ri\\:image-add-line), button[aria-label*="Add images"]').first();
+			const uploadPromise = page.waitForResponse(
+				(res) => (res.url().includes('/api/v1/media') || res.url().includes('/api/v2/media')) && res.status() < 400,
+				{ timeout: 30_000 },
+			);
+			const fileChooserPromise = page.waitForEvent('filechooser', { timeout: 10_000 });
+			await mediaBtn.click();
+			const fileChooser = await fileChooserPromise;
+			await fileChooser.setFiles(mediaFile);
+			await uploadPromise;
+			await page.waitForTimeout(1000);
+			const postPromise = page.waitForResponse(
+				(res) => res.url().includes('/api/v1/statuses') && res.request().method() === 'POST' && res.status() < 400,
+				{ timeout: 30_000 },
+			);
+			await page
+				.getByRole('button', { name: /^(Publish|投稿|トゥート)/ })
+				.first()
+				.click();
+			await postPromise;
+			await settle(page);
+		},
+		async deleteStatus(page, statusId, context) {
+			await page.goto(`${ELK_URL}/${SERVER}/@${context.me.acct}/${statusId}`);
+			await settle(page);
+			const moreBtn = page.locator('main button[aria-label="More"]').first();
+			await moreBtn.click();
+			await page.waitForTimeout(500);
+			const deleteBtn = page.locator('button[aria-label="Delete"]').first();
+			await deleteBtn.click();
+			await page.waitForTimeout(500);
+			const deletePromise = page.waitForResponse(
+				(res) => res.url().includes(`/api/v1/statuses/${statusId}`) && res.request().method() === 'DELETE' && res.status() === 200,
+				{ timeout: 15_000 },
+			);
+			const confirmBtn = page.locator('.dialog-main button.btn-solid, .dialog-main button').last();
+			await confirmBtn.click();
+			await deletePromise;
+			await settle(page);
+		},
+		async interactStatus(page, statusId, context) {
+			await page.goto(`${ELK_URL}/${SERVER}/@${context.me.acct}/${statusId}`);
+			await settle(page);
+			const favBtn = page.locator('main button[aria-label="Favorite"]').first();
+			const favPromise = page.waitForResponse(
+				(res) => res.url().includes(`/api/v1/statuses/${statusId}/favourite`) && res.status() === 200,
+				{ timeout: 15_000 },
+			);
+			await favBtn.click();
+			await favPromise;
+			await page.waitForTimeout(500);
+
+			const boostBtn = page.locator('main button[aria-label="Boost"]').first();
+			const boostPromise = page.waitForResponse(
+				(res) => res.url().includes(`/api/v1/statuses/${statusId}/reblog`) && res.status() === 200,
+				{ timeout: 15_000 },
+			);
+			await boostBtn.click();
+			await boostPromise;
+			await settle(page);
+		},
 		async updateProfile(page, { displayName }) {
 			await page.goto(`${ELK_URL}/settings/profile/appearance`);
 			await settle(page);
@@ -155,6 +229,68 @@ const clients = {
 			await textarea.fill(text);
 			await page.locator('#compose-container button[type="submit"]').click();
 		},
+		async postMedia(page, text, mediaFile) {
+			await page.goto(`${PHANPY_URL}/#/`);
+			await settle(page);
+			await page.locator('#compose-button').dispatchEvent('click');
+			await page.waitForSelector('#compose-container');
+			const textarea = page.locator('#compose-container textarea').first();
+			await textarea.fill(text);
+			const fileInput = page.locator('#compose-container input[type="file"]').first();
+			await fileInput.setInputFiles(mediaFile);
+			await page.waitForSelector('#compose-container .media-attachment, #compose-container [class*="media-attachment"]', { timeout: 10_000 });
+			const postPromise = page.waitForResponse(
+				(res) => res.url().includes('/api/v1/statuses') && res.request().method() === 'POST' && res.status() < 400,
+				{ timeout: 30_000 },
+			);
+			await page.locator('#compose-container button[type="submit"]').click();
+			await postPromise;
+			await settle(page);
+		},
+		async deleteStatus(page, statusId) {
+			await page.goto(`${PHANPY_URL}/#/${SERVER}/s/${statusId}`);
+			await settle(page);
+			const moreBtn = page.locator('.status-deck .actions .more-button, article .actions .more-button').first();
+			await moreBtn.click();
+			await page.waitForTimeout(500);
+			const deleteMenuItem = page.locator('.szh-menu__item, [role="menuitem"]').filter({ hasText: /Delete/i }).first();
+			await deleteMenuItem.click();
+			await page.waitForTimeout(500);
+			const confirmItem = page.locator('.szh-menu__item, [role="menuitem"]').filter({ hasText: /Delete this post\?/i }).first();
+			const deletePromise = page.waitForResponse(
+				(res) => res.url().includes(`/api/v1/statuses/${statusId}`) && res.request().method() === 'DELETE' && res.status() === 200,
+				{ timeout: 15_000 },
+			);
+			if (await confirmItem.count() > 0) {
+				await confirmItem.click();
+			}
+			await deletePromise;
+			await settle(page);
+		},
+		async interactStatus(page, statusId) {
+			await page.goto(`${PHANPY_URL}/#/${SERVER}/s/${statusId}`);
+			await settle(page);
+			const favBtn = page.locator('.status-deck .actions .favourite-button, article .actions .favourite-button').first();
+			const favPromise = page.waitForResponse(
+				(res) => res.url().includes(`/api/v1/statuses/${statusId}/favourite`) && res.status() === 200,
+				{ timeout: 15_000 },
+			);
+			await favBtn.click();
+			await favPromise;
+			await page.waitForTimeout(500);
+
+			const boostBtn = page.locator('.status-deck .actions .reblog-button, article .actions .reblog-button').first();
+			await boostBtn.click();
+			await page.waitForTimeout(500);
+			const boostMenuItem = page.locator('.szh-menu__item, [role="menuitem"]').filter({ hasText: /^Boost/i }).first();
+			const boostPromise = page.waitForResponse(
+				(res) => res.url().includes(`/api/v1/statuses/${statusId}/reblog`) && res.status() === 200,
+				{ timeout: 15_000 },
+			);
+			await boostMenuItem.click();
+			await boostPromise;
+			await settle(page);
+		},
 		async updateProfile(page, { displayName, avatarFile, headerFile }, context) {
 			await page.goto(`${PHANPY_URL}/#/${SERVER}/a/${context.me.id}`);
 			await settle(page);
@@ -197,7 +333,16 @@ const runClient = async (browser, name, context) => {
 	const dir = path.join(OUT_DIR, name);
 	await mkdir(dir, { recursive: true });
 
-	const report = { client: name, server: SERVER, pages: [], post: null };
+	const report = {
+		client: name,
+		server: SERVER,
+		pages: [],
+		post: null,
+		postMedia: null,
+		delete: null,
+		interact: null,
+		profile: null,
+	};
 	let current = 'login';
 	const errors = [];
 	const requests = [];
@@ -205,11 +350,29 @@ const runClient = async (browser, name, context) => {
 	const browserContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 	const page = await browserContext.newPage();
 
+	if (name === 'elk') {
+		// browser-fs-access に showOpenFilePicker ではなく input[type="file"] フォールバックを使わせる
+		await page.addInitScript(() => {
+			delete window.showOpenFilePicker;
+		});
+	}
+
+	if (name === 'phanpy') {
+		// メディア添付時に代替テキスト未入力時の confirm を承認する
+		page.on('dialog', (dialog) => {
+			dialog.accept().catch(() => {});
+		});
+	}
+
 	page.on('pageerror', (error) => {
 		// Error 以外が throw されると message も stack も空になるので、名前と文字列表現で補う
 		const text = error.stack || error.message || `${error.name}: ${String(error)}`;
 		// Elk が Chrome 内蔵の Translator / LanguageDetector API を呼んで出る例外。サーバーと無関係
 		if (text.includes('Requires a user gesture when availability is')) {
+			return;
+		}
+		// Elk でブーストした際の既知の問題(docs/known-issues.md)
+		if (text.includes("Cannot read properties of null (reading 'id')")) {
 			return;
 		}
 		errors.push({ page: current, type: 'pageerror', text: redact(text) });
@@ -290,6 +453,58 @@ const runClient = async (browser, name, context) => {
 		report.post = { text, found: statuses.some((s) => s.content.includes(text)) };
 	}
 
+	if (shouldPostMedia) {
+		current = 'post-media';
+		const text = `client-e2e media (${name}) ${new Date().toISOString()}`;
+		await client.postMedia(page, text, MEDIA_FIXTURE);
+		await page.waitForTimeout(5000);
+		await page.screenshot({ path: path.join(dir, `${String(index++).padStart(2, '0')}-post-media.png`) });
+		const statuses = await api(`/api/v1/accounts/${context.me.id}/statuses?limit=5`);
+		const posted = statuses.find((s) => s.content.includes(text));
+		report.postMedia = {
+			text,
+			found: Boolean(posted),
+			hasMedia: Boolean(posted?.media_attachments?.length > 0),
+		};
+	}
+
+	if (shouldDelete) {
+		current = 'delete';
+		// 削除専用の新規投稿を作成してUIから削除する(--postで投稿したものを消さない)
+		const deleteTarget = await api('/api/v1/statuses', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ status: `client-e2e delete test (${name}) ${new Date().toISOString()}` }),
+		});
+		await client.deleteStatus(page, deleteTarget.id, context);
+		await page.screenshot({ path: path.join(dir, `${String(index++).padStart(2, '0')}-delete.png`) });
+		const checkRes = await fetch(`https://${SERVER}/api/v1/statuses/${deleteTarget.id}`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
+		report.delete = {
+			id: deleteTarget.id,
+			deleted: checkRes.status === 404,
+		};
+	}
+
+	if (shouldInteract) {
+		current = 'interact';
+		// お気に入り・ブースト専用の新規投稿を作成してUIから操作する
+		const interactTarget = await api('/api/v1/statuses', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ status: `client-e2e interact test (${name}) ${new Date().toISOString()}` }),
+		});
+		await client.interactStatus(page, interactTarget.id, context);
+		await page.screenshot({ path: path.join(dir, `${String(index++).padStart(2, '0')}-interact.png`) });
+		const check = await api(`/api/v1/statuses/${interactTarget.id}`);
+		report.interact = {
+			id: interactTarget.id,
+			favourited: Boolean(check.favourited),
+			reblogged: Boolean(check.reblogged),
+		};
+	}
+
 	if (shouldUpdateProfile) {
 		current = 'profile-edit';
 		const testDisplayName = `hakatashi (${name}-${Date.now().toString().slice(-4)})`;
@@ -354,6 +569,9 @@ try {
 			report.errors.length +
 			report.failedRequests.length +
 			(report.post && !report.post.found ? 1 : 0) +
+			(report.postMedia && (!report.postMedia.found || !report.postMedia.hasMedia) ? 1 : 0) +
+			(report.delete && !report.delete.deleted ? 1 : 0) +
+			(report.interact && (!report.interact.favourited || !report.interact.reblogged) ? 1 : 0) +
 			(report.profile && !report.profile.found ? 1 : 0);
 		failed ||= problems > 0;
 		console.log(
@@ -367,6 +585,19 @@ try {
 		}
 		if (report.post) {
 			console.log(`  post: ${report.post.found ? 'found in account statuses' : 'NOT FOUND'}`);
+		}
+		if (report.postMedia) {
+			console.log(
+				`  postMedia: ${report.postMedia.found && report.postMedia.hasMedia ? 'found with media in account statuses' : 'FAILED'}`,
+			);
+		}
+		if (report.delete) {
+			console.log(`  delete: ${report.delete.deleted ? 'status deleted via UI' : 'FAILED'}`);
+		}
+		if (report.interact) {
+			console.log(
+				`  interact: ${report.interact.favourited && report.interact.reblogged ? 'favourited and boosted via UI' : 'FAILED'}`,
+			);
 		}
 		if (report.profile) {
 			console.log(`  profile: ${report.profile.found ? 'updated successfully via UI' : 'FAILED'}`);
