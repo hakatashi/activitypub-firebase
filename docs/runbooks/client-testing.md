@@ -44,8 +44,11 @@ gcloud storage buckets update gs://activitypub-firebase-dev.firebasestorage.app 
 node run.mjs                    # 両方、閲覧のみ
 node run.mjs --client elk       # 片方だけ
 node run.mjs --post             # 投稿のみ行い、API で投稿が作られたことを確かめる
+node run.mjs --media            # メディア添付の投稿をテスト
+node run.mjs --delete           # 投稿の削除をテスト(削除専用の新規投稿を作成してUIから削除)
+node run.mjs --interact         # お気に入り・ブーストをテスト(専用の新規投稿に対して実行)
 node run.mjs --profile          # クライアント UI からのプロフィール更新をテスト(終了後に自動復元)
-node run.mjs --write            # 書き込み全般(--post と --profile のエイリアス)
+node run.mjs --write            # 書き込み全般(--post, --media, --delete, --interact, --profile のエイリアス)
 node run.mjs --headed           # 画面を出して動きを見る(デスクトップで実行するとき)
 
 # git worktree から実行するときは、メインの作業ツリーの .env を指す
@@ -63,7 +66,8 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 
 - `report.json`: `failedRequests`(4xx/5xx と接続失敗)、`errors`(ページの例外とコンソールのエラー)、
   `paginated`(スクロールで `max_id` 付きのタイムライン取得が走ったか)、`post`(`--post` / `--write` の結果)、
-  `profile`(`--profile` / `--write` の結果)
+  `postMedia`(`--media` / `--write` の結果)、`delete`(`--delete` / `--write` の結果)、
+  `interact`(`--interact` / `--write` の結果)、`profile`(`--profile` / `--write` の結果)
 - `NN-<画面>.png`: 各画面のスクリーンショット。**Read で開いて目で確認する。**
 
 確認すること:
@@ -74,6 +78,9 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
   - `04-profile.png`: アバター画像・ヘッダー画像、表示名、プロフィール文が正しく描画されている
 - [ ] `--post` (または `--write`) で `post: found in account statuses`
+- [ ] `--media` (または `--write`) で `postMedia: found with media in account statuses`
+- [ ] `--delete` (または `--write`) で `delete: status deleted via UI`
+- [ ] `--interact` (または `--write`) で `interact: favourited and boosted via UI`
 - [ ] `--profile` (または `--write`) で `profile: updated successfully via UI` (テスト終了後に元のプロフィールへ自動復元される)
 
 ## 既知の出力(2026-10-08 時点)
@@ -103,10 +110,8 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
   ただし同じ原因で、**`language` が Elk の表示言語(既定は英語)と異なる投稿は、ヘッドレス Chromium では本文が描画されない**
   (`useTranslation` が `Translator.availability()` を待ったまま進まない)。スクリーンショットで本文が空の投稿があっても、
   API の `content` が正しく `language` が `ja` などなら dev の不具合ではない。
-- `run.mjs` はお気に入り・ブーストのボタンを押さない。確かめるときは使い捨ての Playwright スクリプトで、投稿詳細の
-  ボタン(Elk は `main` 内の `Favorite` / `Boost` ボタン、Phanpy は `.status-deck .actions` の `.favourite-button` /
-  `.reblog-button`。Phanpy のブーストはメニューの `Boost` / `Unboost` まで押す)を押し、API の `favourited` / `reblogged`
-  とリロード後の表示を見る。Elk のブーストで出る `Cannot read properties of null (reading 'id')` は既知
-  (`docs/known-issues.md`「タイムラインにブーストが出ない」)。
+- **お気に入り・ブースト(`--interact` / `--write`)**: Elk は `main` 内の `Favorite` / `Boost` ボタン、Phanpy は `.status-deck .actions` の `.favourite-button` / `.reblog-button`(メニューの `Boost` まで押す)を操作する。Elk のブーストで出る `Cannot read properties of null (reading 'id')` は既知(`docs/known-issues.md`「タイムラインにブーストが出ない」)のため、エラー集計から除外している。
+- **メディア添付投稿(`--media` / `--write`)**: Elk では Chromium の File System Access API (`showOpenFilePicker`) が Playwright の `filechooser` イベントを発火させないため、`<input type="file">` フォールバックを利用する。Phanpy では代替テキスト未入力時の confirm ダイアログを自動承認している。
+- **投稿の削除(`--delete` / `--write`)**: `--post` で投稿したステータスとは別に削除専用のステータスを作成し、UI から削除操作を行って API で 404 になることを検証する。
 - **この仕組みは OAuth の認可画面(アプリ登録 → 認可 → トークン交換)を通らない。**
   ログインまわりの変更は、従来どおりブラウザで1回ログインして確かめる。
