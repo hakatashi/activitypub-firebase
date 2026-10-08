@@ -10,6 +10,7 @@ import {
 	getFollowersPageEntries,
 	getFollowingPageEntries,
 } from '../../social/follows.js';
+import { getReactionPageEntries } from '../../social/reactions.js';
 import {
 	domain,
 	escapeFirestoreKey,
@@ -20,6 +21,7 @@ import {
 import { getIriByMastodonId, getMastodonIds, getOrAssignMastodonId } from '../../mastodonId.js';
 import { htmlToPlainText } from '../../notes.js';
 import { Objects, UserInfo, UserInfos } from '../../schema.js';
+import type { ReactionKind } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { isAPActor } from '../../utils.js';
@@ -301,6 +303,21 @@ export const getFollowingPage = async (
 	return {
 		accounts: validEntries.map((entry) => accountsMap.get(entry.actorIri)!),
 		cursorIds: validEntries.map((entry) => entry.cursorId),
+	};
+};
+
+// Status をお気に入り / ブーストしたアカウントの 1 ページ (→ ADR-0101)。
+// カーソルはアクティビティの Mastodon ID。actor が引けず飛ばしたものも `cursorIds` に含め、
+// 次のページで読み直さないようにする。`cursorIds` は新しい順。
+export const getReactedByPage = async (noteIri: string, kind: ReactionKind, page: PageParams) => {
+	const pageEntries = await getReactionPageEntries(noteIri, kind, page);
+	const accountsMap = await userIdsToAccountsMap(pageEntries.map((entry) => entry.actorIri));
+	return {
+		accounts: pageEntries.flatMap((entry) => {
+			const account = accountsMap.get(entry.actorIri);
+			return account === undefined ? [] : [account];
+		}),
+		cursorIds: pageEntries.map((entry) => entry.cursorId),
 	};
 };
 

@@ -2,11 +2,16 @@ import type { APActor } from 'activitypub-types';
 import { apex } from '../apex.js';
 import type { APObject } from '../apex/index.js';
 import { db, escapeFirestoreKey } from '../firebase.js';
+import { getMastodonIds } from '../mastodonId.js';
+import { metaIndexPath } from '../meta.js';
+import type { PageParams } from '../pagination.js';
+import { isIdInRange, takePage } from '../pagination.js';
 import { forgetReactionActivity } from '../projections/reactions.js';
-import { ReactionRelations } from '../schema.js';
+import { ReactionRelations, Streams } from '../schema.js';
 import type { ReactionKind } from '../schema.js';
 import { toIdArray } from '../utils.js';
 import type { NoteObject } from './types.js';
+import { noteToVisibility } from './visibility.js';
 
 // お気に入り・ブーストは、ローカル actor ごとの射影 (`userInfos/{actor}/favourites|reblogs/{Note}`) から読む
 // (→ ADR-0084)。射影はローカル actor の分しかないので、リモートの actor を渡すと空になる。
@@ -75,4 +80,50 @@ export const undoReactions = async (
 		}
 		await undoReactionActivity(actor, activity, kind);
 	}
+};
+
+export interface ReactionPageEntry {
+	actorIri: string;
+	cursorId: string;
+}
+
+const REACTION_ACTIVITY_TYPES: Record<ReactionKind, string> = {
+	favourites: 'Like',
+	reblogs: 'Announce',
+};
+
+// noteIri を対象とする Like / Announce を行った actor を、アクティビティの Mastodon ID の新しい順に
+// 1 ページ分返す (→ ADR-0101)。streams を全件読み、アプリ側で並べて切り出す。
+// 同じ actor のものは最新の 1 件に寄せ、ブーストは public / unlisted のものだけを数える。
+export const getReactionPageEntries = async (
+	noteIri: string,
+	kind: ReactionKind,
+	page: PageParams,
+): Promise<ReactionPageEntry[]> => {
+	const docs = await Streams.where('type', '==', REACTION_ACTIVITY_TYPES[kind])
+		.where(metaIndexPath('objects', escapeFirestoreKey(noteIri)), '==', true)
+		.get();
+	const activities = docs.docs
+		.map((doc) => doc.data())
+		.filter(
+			(activity) =>
+				kind === 'favourites' || ['public', 'unlisted'].includes(noteToVisibility(activity)),
+		)
+		.flatMap((activity) => {
+			const actorIri = toIdArray(activity.actor)[0];
+			return actorIri === undefined ? [] : [{ activity, actorIri }];
+		});
+	const ids = await getMastodonIds(
+		activities.map(({ activity }) => ({ iri: activity.id, published: activity.published })),
+	);
+	const latestByActor = new Map<string, ReactionPageEntry>();
+	for (const { activity, actorIri } of activities) {
+		const cursorId = ids.get(activity.id);
+		const current = latestByActor.get(actorIri);
+		if (cursorId !== undefined && (current === undefined || current.cursorId < cursorId)) {
+			latestByActor.set(actorIri, { actorIri, cursorId });
+		}
+	}
+	const entries = [...latestByActor.values()].filter(({ cursorId }) => isIdInRange(cursorId, page));
+	return takePage(entries, (entry) => entry.cursorId, page);
 };
