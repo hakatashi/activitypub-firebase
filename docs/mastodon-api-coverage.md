@@ -35,7 +35,9 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | GET | `/api/v1/accounts/verify_credentials` | ✅ | 完全な CredentialAccount (source, role 含む) を返却 |
-| PATCH | `/api/v1/accounts/update_credentials` | ✅ | 表示名・bio・locked・discoverable・fields 更新、Update 配送 |
+| PATCH | `/api/v1/accounts/update_credentials` | ✅ | アバター・ヘッダー画像変更 (EXIF除去・リサイズ・Storage保存・古い画像削除)、表示名・bio・locked・discoverable・fields 更新、Update 配送 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
+| DELETE | `/api/v1/profile/avatar` | ✅ | アバター削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
+| DELETE | `/api/v1/profile/header` | ✅ | ヘッダー削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | GET | `/api/v1/accounts/lookup` | ✅ | ローカル acct と、手元にキャッシュ済みのリモート actor を解決。WebFinger では取りに行かない (→ [ADR-0073](adr/0073-lookup-cached-remote-accounts.md)) |
 | GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示。リモートの `url` は相手サーバーのプロフィール URL |
 | GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ページネーション対応、`?pinned=true` 対応。リモートアカウントにも対応 (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)) |

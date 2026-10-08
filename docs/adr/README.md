@@ -119,3 +119,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0091](0091-media-upload-and-storage.md) | メディアのアップロードと Cloud Storage 保存 | Accepted |
 | [0092](0092-post-status-with-media-and-attachment-lifecycle.md) | media_ids によるメディア添付投稿とライフサイクル | Accepted |
 | [0093](0093-split-media-upload-function.md) | メディアアップロード API の独立 Function 分離とリソース設計 | Accepted |
+| [0094](0094-avatar-header-update-and-credentials.md) | アバター・ヘッダー画像の変更とプロフィール管理 | Accepted |

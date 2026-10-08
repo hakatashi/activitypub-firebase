@@ -163,9 +163,10 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 
 アップロードされたメディア画像 (`POST /api/v2/media` 等) は Firebase 既定バケット (`${projectId}.firebasestorage.app`) に保存される (→ [ADR-0091](adr/0091-media-upload-and-storage.md))。
 `storage.rules` でクライアントからの直接の読み書きを全面禁止 (`allow read, write: if false;`) しており、書き込みは Cloud Functions (Admin SDK) 経由でのみ行われる。
-保存された画像オブジェクトは公開読み取り (`makePublic()`) に設定され、`https://storage.googleapis.com/${bucket}/${path}` から直接配信される。
+保存された画像オブジェクトは公開読み取り (`makePublic()`) に設定され、`https://storage.googleapis.com/${bucket}/${path}` から直接配信される。ブラウザクライアント (Elk / Phanpy 等) からクロスオリジンで読み込めるよう、バケットには `storage.cors.json` で CORS 設定 (`Access-Control-Allow-Origin: *`) が適用されている。
 投稿 (`POST /api/v1/statuses`) 時に `media_ids` として添付され、Note の `attachment` に組み込まれると `statusIri` が更新される。
 添付されないまま24時間以上経過したメディアは、日次スケジュール Function (`cleanupMediaTask`, `onSchedule`) により Cloud Storage のファイルと Firestore のメタデータの双方が自動削除される (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md))。
+アバター・ヘッダー画像 (`PATCH /api/v1/accounts/update_credentials` 等) も同様に Cloud Storage の `accounts/avatars/${id}.${ext}` および `accounts/headers/${id}.${ext}` に保存され、公開 URL が Actor オブジェクト (`icon`, `image`) に設定される。古い画像は変更時または削除 API (`DELETE /api/v1/profile/avatar`, `/header`) 実行時に Storage から即座に削除される (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md))。
 
 apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
 Firestore 上でもそのまま配列として保存する。コレクション単体での所属判定

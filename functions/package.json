@@ -39,6 +39,7 @@
 		"node-fetch": "^3.3.2",
 		"on-finished": "^2.4.1",
 		"overlaps": "^1.0.0",
+		"qs": "^6.16.0",
 		"sharp": "^0.35.5",
 		"undici": "^6.28.1",
 		"zod": "^4.5.4"
@@ -54,6 +55,7 @@
 		"@types/lodash-es": "^4.17.12",
 		"@types/nock": "^10.0.3",
 		"@types/on-finished": "^2.3.5",
+		"@types/qs": "^6.15.1",
 		"@types/supertest": "^2.0.16",
 		"activitypub-types": "^1.1.0",
 		"cross-env": "^7.0.3",

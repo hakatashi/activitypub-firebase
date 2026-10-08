@@ -1,12 +1,15 @@
 import express from 'express';
 import assert from 'node:assert';
+import qs from 'qs';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
 import { getFollowFlags, getFollowIri } from '../../social/follows.js';
 import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../../firebase.js';
+import { assignMediaMastodonId } from '../../mastodonId.js';
 import { plainTextToHtml } from '../../notes.js';
 import { UserInfo, UserInfos } from '../../schema.js';
-import { toIdArray } from '../../utils.js';
+import { deleteStorageFileByUrl, uploadProfileImage } from '../../storage/media.js';
+import { getImageUrl, toIdArray } from '../../utils.js';
 import {
 	authRequired,
 	getAuthActorId,
@@ -17,9 +20,11 @@ import {
 } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadAccount, loadViewer } from '../http/loaders.js';
+import { parseMultipart } from '../http/multipart.js';
+import type { MultipartFile } from '../http/multipart.js';
 import { idParamSchema, toBoolean } from '../http/params.js';
 import { respondWithStatuses, setLinkHeader } from '../http/responses.js';
-import { getValidBody, getValidParams, getValidQuery, validate } from '../http/validation.js';
+import { getValidParams, getValidQuery, validate } from '../http/validation.js';
 import { parsePageParams } from '../pagination.js';
 import {
 	FOLLOWERS_PAGE_LIMITS,
@@ -114,9 +119,29 @@ router.patch(
 	'/v1/accounts/update_credentials',
 	authRequired,
 	scopeRequired('write:accounts'),
-	validate({ body: updateCredentialsBodySchema }),
 	async (req, res) => {
-		const body = getValidBody(res, updateCredentialsBodySchema);
+		let bodyInput: unknown = req.body;
+		let avatarFile: MultipartFile | undefined;
+		let headerFile: MultipartFile | undefined;
+
+		const contentType = req.headers['content-type']?.toLowerCase() ?? '';
+		if (contentType.includes('multipart/form-data')) {
+			const { files, fields } = await parseMultipart(req);
+			avatarFile = files.avatar;
+			headerFile = files.header;
+
+			const qsStr = new URLSearchParams(fields).toString();
+			bodyInput = qs.parse(qsStr);
+		}
+
+		const parsed = updateCredentialsBodySchema.safeParse(bodyInput);
+		if (!parsed.success) {
+			throw new UnprocessableError(
+				parsed.error.issues.map((issue) => issue.message).join(', ') || 'Validation failed',
+			);
+		}
+		const body = parsed.data;
+
 		const actorId = getAuthActorId(res);
 		const actor = await loadViewer(res);
 
@@ -124,6 +149,50 @@ router.patch(
 		const userInfoDoc = await userInfoRef.get();
 		assert(userInfoDoc.exists, 'userInfoDoc does not exist');
 		const userUpdates: Partial<UserInfo> = {};
+
+		if (avatarFile && avatarFile.buffer.length > 0) {
+			const { processProfileImage } = await import('../profileImage.js');
+			const processed = await processProfileImage(avatarFile.buffer, 'avatar');
+			const fileId = await assignMediaMastodonId();
+			const uploaded = await uploadProfileImage({
+				type: 'avatar',
+				id: fileId,
+				buffer: processed.buffer,
+				mimeType: processed.mimeType,
+				extension: processed.extension,
+			});
+			const oldUrl = getImageUrl(actor.icon);
+			if (typeof oldUrl === 'string') {
+				await deleteStorageFileByUrl(oldUrl);
+			}
+			actor.icon = {
+				type: 'Image',
+				mediaType: processed.mimeType,
+				url: uploaded.url,
+			};
+		}
+
+		if (headerFile && headerFile.buffer.length > 0) {
+			const { processProfileImage } = await import('../profileImage.js');
+			const processed = await processProfileImage(headerFile.buffer, 'header');
+			const fileId = await assignMediaMastodonId();
+			const uploaded = await uploadProfileImage({
+				type: 'header',
+				id: fileId,
+				buffer: processed.buffer,
+				mimeType: processed.mimeType,
+				extension: processed.extension,
+			});
+			const oldUrl = getImageUrl(actor.image);
+			if (typeof oldUrl === 'string') {
+				await deleteStorageFileByUrl(oldUrl);
+			}
+			actor.image = {
+				type: 'Image',
+				mediaType: processed.mimeType,
+				url: uploaded.url,
+			};
+		}
 
 		if (body.display_name !== undefined) {
 			actor.name = body.display_name;

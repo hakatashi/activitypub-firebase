@@ -32,6 +32,10 @@ npx playwright install chromium # 初回と playwright の更新時だけ
 # 両クライアントが起動しているか
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5314/   # Elk
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5315/   # Phanpy
+
+# (初回またはバケット作成時) Cloud Storage の CORS 設定
+# Web クライアントからアバター・ヘッダー画像を読み込むために必要
+gcloud storage buckets update gs://activitypub-firebase-dev.firebasestorage.app --cors-file=../../storage.cors.json
 ```
 
 ## 1. 実行
@@ -39,7 +43,9 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5315/   # Phanpy
 ```bash
 node run.mjs                    # 両方、閲覧のみ
 node run.mjs --client elk       # 片方だけ
-node run.mjs --write            # 投稿も行い、API で投稿が作られたことを確かめる
+node run.mjs --post             # 投稿のみ行い、API で投稿が作られたことを確かめる
+node run.mjs --profile          # クライアント UI からのプロフィール更新をテスト(終了後に自動復元)
+node run.mjs --write            # 書き込み全般(--post と --profile のエイリアス)
 node run.mjs --headed           # 画面を出して動きを見る(デスクトップで実行するとき)
 
 # git worktree から実行するときは、メインの作業ツリーの .env を指す
@@ -56,7 +62,8 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 標準出力に、クライアントごとの問題の一覧が出る。詳細は `tools/client-e2e/out/<client>/` にある。
 
 - `report.json`: `failedRequests`(4xx/5xx と接続失敗)、`errors`(ページの例外とコンソールのエラー)、
-  `paginated`(スクロールで `max_id` 付きのタイムライン取得が走ったか)、`post`(`--write` の結果)
+  `paginated`(スクロールで `max_id` 付きのタイムライン取得が走ったか)、`post`(`--post` / `--write` の結果)、
+  `profile`(`--profile` / `--write` の結果)
 - `NN-<画面>.png`: 各画面のスクリーンショット。**Read で開いて目で確認する。**
 
 確認すること:
@@ -65,9 +72,11 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 - [ ] `errors` に `pageerror` がない(dev の応答の形がクライアントの想定と違うと出る)
 - [ ] `paginated: true`(`Link` ヘッダが効いている)
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
-- [ ] `--write` で `post: found in account statuses`
+  - `04-profile.png`: アバター画像・ヘッダー画像、表示名、プロフィール文が正しく描画されている
+- [ ] `--post` (または `--write`) で `post: found in account statuses`
+- [ ] `--profile` (または `--write`) で `profile: updated successfully via UI` (テスト終了後に元のプロフィールへ自動復元される)
 
-## 既知の出力(2026-10-07 時点)
+## 既知の出力(2026-10-08 時点)
 
 dev の実装が追いつけば消える。消えたらこの節も更新する。
 
@@ -77,6 +86,7 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 | `GET 404 /api/v1/push/subscription`(Elk) | Web Push 未実装。購読がないときの 404 は Mastodon と同じ挙動 |
 | `net::ERR_BLOCKED_BY_ORB https://img.pawoo.net/...` | キャッシュしているリモート actor のアバター URL が古い |
 | Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...` | テスト用インスタンスのメディアの配信設定(CORS)。dev とは無関係 |
+| Phanpy: `net::ERR_FAILED .../accounts/avatars/...` | GCS のエッジキャッシュ(最大1時間)に CORS 設定前の古いレスポンスが残っている場合。キャッシュ期限切れや新規画像アップロードで解消する |
 
 ## ハマりどころ
 
@@ -84,6 +94,7 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
   (`mastodon-dev` / `activitypub-dev` など)の設定が崩れると、LAN 内でだけ名前解決が遅れたり失敗したりする。
   dev につながらない・初回だけ極端に遅いときは、まず
   `dig mastodon-dev.hakatashi.com AAAA` が即答するかを見る(構成と切り分け手順は HakataMatrix 側の `~/docs/lan-dns.md`)。
+- **Cloud Storage の CORS 設定**: Web クライアント (Elk / Phanpy) が Cloud Storage の画像 (アバター・ヘッダー、添付メディア) を読み込む際、ブラウザの同一オリジンポリシーにより CORS ヘッダ (`Access-Control-Allow-Origin: *`) が必要になる。特に Phanpy はアバターの透過検出やヘッダーの背景色抽出のため `crossOrigin="anonymous"` で画像をロードする。バケットに CORS が設定されていない場合は `gcloud storage buckets update gs://<bucket> --cors-file=storage.cors.json` で設定する。
 - Elk はログイン処理(`verify_credentials`)が終わる前に画面を遷移させる。
   画面遷移ではなく `verify_credentials` の応答を待つこと。
 - Elk の `/` はビルド時に事前描画されており、`NUXT_PUBLIC_DEFAULT_SERVER` が効かない(既定の `m.webtoo.ls` が出る)。
