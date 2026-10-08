@@ -84,6 +84,9 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
 - `Like` / `Announce` の受信カウントは apex 本体のコレクション機構(activity 専用)を使わず、
   `onStreamCreated` トリガーで対象オブジェクトの `_meta.likesCount` / `sharesCount` を
   直接インクリメント/デクリメントする(→ ADR-0037, ADR-0039)。
+- 返信数は、返信先 Note の `_meta.repliesCount` に `Store#saveObject` / `updateObject` が
+  書き換え前後の差分から増減する(Tombstone 化・`direct` を数えない。→ [ADR-0102](adr/0102-replies-count-as-denormalized-counter.md))。
+  Status の `replies_count` はこれと受信した `replies.totalItems` の大きい方。
 - **リモートオブジェクトの取得は apex フォークの `requestObject` が SSRF セーフに行う**
   (`functions/src/apex/pub/federation.ts` / `ssrf.ts`。→ [ADR-0050](adr/0050-ssrf-safe-request-object-in-apex.md))。
   スキームは既定で `https` のみ、アドレスは `unicast` のみ。`apex.ts` が
@@ -186,6 +189,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.privateKey` | `objects` | `string` | ローカルアクターの HTTP 署名用 RSA 秘密鍵 (PEM)。アクター作成時 (`createActor`) に生成・保存され、連合配信時の署名およびローカルユーザー判定 (`getUserCount`) に使用される。 |
 | `_meta.isPublic` | `streams` | `boolean` | apex の `isPublic()` (`pub/utils.ts`) が `to`/`cc` の `as:Public` と並んで読む宛先判定のショートカット。`Follow` は `to`/`cc` を持たないため、承認時に `Store#markActivityPublic` (`activitypub.ts` の Follow 自動承認処理) が明示的に `true` を書き込み、匿名の `/followers` コレクションに表示されるようにする (→ [ADR-0035](adr/0035-mark-accepted-follow-as-public.md))。 |
 | `_meta.likesCount` / `_meta.sharesCount` | `objects` | `number` | `Like` / `Announce` の受信カウント。apex 本体の likes/shares コレクション機構は activity (streams) 専用で Note のような object を対象にすると機能しないため使わず、`onStreamCreated` トリガーが対象オブジェクトへ直接インクリメント/デクリメントする (→ [ADR-0037](adr/0037-denormalize-like-announce-counts.md))。 |
+| `_meta.repliesCount` | `objects` | `number` | 手元にある返信 (Tombstone・`direct` を除く) の数。`Store#saveObject` / `updateObject` が返信の保存・Tombstone 化・返信先の変更に合わせて返信先へ増減し、Note の新規保存時には既にある返信を数えて初期値にする。既存データは `functions/bin/backfillRepliesCount.ts` (→ [ADR-0102](adr/0102-replies-count-as-denormalized-counter.md))。 |
 | `_meta.published` | `objects` | `string` | タイムラインの並べ替え・範囲指定用の `published`。ミリ秒つき ISO 8601 (UTC) で、Mastodon ID のタイムスタンプと同じ規則で決める(未来は現在時刻に丸める)。AP の `published` は apex の `fromJSONLD` が配列に展開する (`compactArrays: false`) ため Firestore のクエリには使えず、`Store#saveObject` / `updateObject` が非正規化して書く。既存データの再計算は `functions/bin/backfillPublishedMeta.ts` (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。 |
 | `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
 | `_meta.actor` / `_meta.published` | `streams` (Announce) | `string` | タイムライン検索用に、Announce アクティビティの actor と published を文字列に正規化した写し。`Store#saveActivity` で保存時に非正規化して書く。既存データは `functions/bin/backfillActivityQueryMeta.ts` (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。 |

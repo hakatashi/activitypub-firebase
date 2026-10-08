@@ -322,6 +322,20 @@ describe('noteObjectToStatus attribute derivation', () => {
 		});
 	});
 
+	// 返信数は手元の数と受信した totalItems の大きい方 (→ ADR-0102)。
+	test('uses the larger of _meta.repliesCount and replies.totalItems', () => {
+		const note = make({ replies: { totalItems: 3 } });
+		expect(noteObjectToStatus(note, account, '1', { meta: { repliesCount: 5 } })).toMatchObject({
+			replies_count: 5,
+		});
+		expect(noteObjectToStatus(note, account, '1', { meta: { repliesCount: 1 } })).toMatchObject({
+			replies_count: 3,
+		});
+		expect(noteObjectToStatus(make({}), account, '1', { meta: { repliesCount: 2 } })).toMatchObject(
+			{ replies_count: 2 },
+		);
+	});
+
 	test('builds mentions, tags and emojis from tag', () => {
 		const status = noteObjectToStatus(
 			make({

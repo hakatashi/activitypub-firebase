@@ -76,7 +76,8 @@ const getVisibleNotes = async (
 	viewer: APActor,
 	viewerFollowing: ReadonlySet<string>,
 ): Promise<Map<string, NoteObject>> => {
-	const notes = (await getObjects(noteIris)).filter(
+	// Status の件数に使う `_meta` 付きで読む (→ ADR-0102)。
+	const notes = (await getObjects(noteIris, true)).filter(
 		(object): object is NoteObject =>
 			isAPNote(object) &&
 			!toTypeArray(object.type).includes('Tombstone') &&

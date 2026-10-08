@@ -202,7 +202,8 @@ export const collectTimelineItems = async ({
 				.map((a) => toIdArray(a.object)[0])
 				.filter((iri): iri is string => iri !== undefined),
 		);
-		const targetObjects = await getObjects(targetIris);
+		// Status の件数に使う `_meta` 付きで読む (→ ADR-0102)。
+		const targetObjects = await getObjects(targetIris, true);
 		const targetNotesMap = new Map(targetObjects.filter(isAPNote).map((note) => [note.id, note]));
 
 		const eligibleAnnounces: { activity: APObject; targetNote: NoteObject }[] = [];
@@ -323,7 +324,7 @@ export const getAccountTimelineItems = async (
 			return [];
 		}
 		const noteIris = pinsSnap.docs.map((doc) => unescapeFirestoreKey(toFirestoreKey(doc.id)));
-		const notes = (await getObjects(noteIris)).filter(isAPNote);
+		const notes = (await getObjects(noteIris, true)).filter(isAPNote);
 		const visibleNotes = notes.filter((note) => isNoteVisibleTo(note, viewer?.id, viewerFollowing));
 		const ids = await getMastodonIds(
 			visibleNotes.map((note) => ({ iri: note.id, published: note.published })),

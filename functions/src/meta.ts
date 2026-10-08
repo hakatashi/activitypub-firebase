@@ -30,6 +30,8 @@ declare module './apex/types.js' {
 		// objects コレクションのみで使う非正規化カウンタ (→ ADR-0037)。
 		likesCount?: number;
 		sharesCount?: number;
+		// objects コレクションのみで使う返信数の非正規化カウンタ (→ ADR-0102)。
+		repliesCount?: number;
 		// タイムラインの並べ替え・範囲指定用の published (→ ADR-0062, ADR-0096)。objects / streams コレクション。
 		published?: string;
 		// objects の検索用に、配列にもスカラーにもなりうるフィールドを正規化した写し (→ ADR-0086)。
