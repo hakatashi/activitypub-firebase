@@ -5,7 +5,7 @@ import {
 	accountToCredentialAccount,
 	actorObjectToAccount,
 } from '../../src/mastodon/presenters/account.js';
-import { noteObjectToStatus } from '../../src/mastodon/presenters/status.js';
+import { announceToStatus, noteObjectToStatus } from '../../src/mastodon/presenters/status.js';
 import * as mastodonIdModule from '../../src/mastodonId.js';
 import type { StatusViewerContext } from '../../src/mastodon/statusAttributes.js';
 import {
@@ -911,5 +911,80 @@ describe('noteToMediaAttachments', () => {
 			'https://storage.googleapis.com/my-bucket/media_attachments/files/01924294028402948201/small.jpeg',
 		);
 		expect(attachments[0]?.remote_url).toBeNull();
+	});
+});
+
+describe('announceToStatus', () => {
+	test('converts an Announce activity into a Mastodon Status wrapping original Status (ADR-0095)', () => {
+		const account: CamelToSnake<mastodon.v1.Account> = {
+			id: '100',
+			username: 'booster',
+			acct: 'booster',
+			display_name: 'Booster',
+			locked: false,
+			bot: false,
+			discoverable: true,
+			roles: [],
+			created_at: '2023-01-01T00:00:00.000Z',
+			note: '',
+			url: 'https://example.com/@booster',
+			avatar: 'https://example.com/avatar.png',
+			avatar_static: 'https://example.com/avatar.png',
+			header: 'https://example.com/header.png',
+			header_static: 'https://example.com/header.png',
+			followers_count: 0,
+			following_count: 0,
+			statuses_count: 1,
+			last_status_at: '',
+			emojis: [],
+			fields: [],
+		};
+
+		const originalNote: APNote = {
+			id: 'https://remote.example/o/1',
+			type: 'Note',
+			attributedTo: 'https://remote.example/u/author',
+			content: '<p>Original post</p>',
+			published: '2026-10-08T00:00:00.000Z',
+			to: ['https://www.w3.org/ns/activitystreams#Public'],
+		};
+		const originalStatus = noteObjectToStatus(
+			originalNote,
+			{ ...account, id: '200', username: 'author' },
+			'00100000000000000001',
+		);
+
+		const activity = {
+			id: `https://${domain}/activitypub/a/announce-1`,
+			type: 'Announce',
+			actor: `https://${domain}/activitypub/u/booster`,
+			object: originalNote.id,
+			published: '2026-10-08T12:00:00.000Z',
+			to: ['https://www.w3.org/ns/activitystreams#Public'],
+			cc: [`https://${domain}/activitypub/u/booster/followers`, 'https://remote.example/u/author'],
+		};
+
+		const status = announceToStatus(activity, account, '00100000000000000002', originalStatus);
+
+		expect(status.id).toBe('00100000000000000002');
+		expect(status.created_at).toBe('2026-10-08T12:00:00.000Z');
+		expect(status.content).toBe('<p>Original post</p>');
+		expect(status.visibility).toBe('public');
+		expect(status.sensitive).toBe(false);
+		expect(status.spoiler_text).toBe('');
+		expect(status.reblogged).toBe(true);
+		expect(status.favourited).toBe(false);
+		expect(status.bookmarked).toBe(false);
+		expect(status.pinned).toBe(false);
+		expect(status.reblog).toBe(originalStatus);
+		expect(status.account).toBe(account);
+		expect(status.media_attachments).toEqual([]);
+		expect(status.mentions).toEqual([]);
+		expect(status.tags).toEqual([]);
+		expect(status.emojis).toEqual([]);
+		expect(status.application).toEqual({
+			name: 'activitypub-firebase',
+			website: `https://${domain}`,
+		});
 	});
 });
