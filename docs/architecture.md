@@ -35,6 +35,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
+| `remoteActorRefreshTask` | Cloud Tasks (`onTaskDispatched`) | リモート actor の `followers` / `following` / `outbox` の件数と最終投稿日を取り直して `_meta` に保存する(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
 | `cleanupMediaTask` | Scheduled (`onSchedule`) | 未添付のまま24時間経過したメディアを Storage と Firestore から削除する (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 
@@ -257,7 +258,9 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、相手への代表の Follow `getFollowIri`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
 | `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ハッシュタグ・ホームタイムラインの収集(重複ブースト排除・可視性判定を含む) |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
-| `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)、ハッシュタグの完全一致検索と、URL・acct からのリモートの actor / Note の解決(WebFinger、オリジン検証付きの取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
+| `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)、ハッシュタグの完全一致検索と、URL・acct からのリモートの actor / Note の解決(WebFinger と `remoteResolution.ts` による取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
+| `remoteResolution.ts` | リモートの AP オブジェクト・actor の取得(SSRF セーフな `requestObject`、オリジン検証。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
+| `remoteActorCounts.ts` | リモート actor の件数・最終投稿日の取得と `_meta` への保存、古いときの取得依頼(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
@@ -320,6 +323,10 @@ unfollow で Undo する Follow は apex の following / outbox コレクショ�
 
 ローカルアカウントの Account ID は `userInfos` の `id`、リモートアカウントは Mastodon ID で採番した値を使い、
 Status の `mentions[].id` もこれに揃える(→ [ADR-0069](adr/0069-mastodon-account-id-and-status-mentions.md))。
+リモートアカウントの `followers_count` / `following_count` / `statuses_count` / `last_status_at` は actor の
+`_meta` に保存した値を読み、`created_at` は actor の `published` から作る。`GET /api/v1/accounts/:id`・`/lookup` で
+保存した値が 24 時間より古ければ `remoteActorRefreshTask` に取り直しを頼み、レスポンスは待たずに返す
+(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md))。
 Status の `favourited` / `reblogged` / `bookmarked` / `pinned` は認証ユーザーの
 `userInfos/{actor}/favourites`・`reblogs`・`bookmarks`・`pins` から判定する
 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md))。

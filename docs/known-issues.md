@@ -19,8 +19,3 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 `POST /oauth/revoke` による失効には対応しているが、期限切れのアクセストークン・
 リフレッシュトークン・認可コードを `functions/src/mastodon/oauth2Model.ts` の外から掃除する仕組みがない。
 
-### リモートアカウントのカウントと登録日が固定値
-
-リモートアカウントの Account は `externalUserInfo` を下敷きにしており、`followers_count` /
-`following_count` / `statuses_count` は 0、`created_at` は `2021-01-01` 固定
-(→ [ADR-0075](adr/0075-recompute-follow-counts.md) の「未対応」)。

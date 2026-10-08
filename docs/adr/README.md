@@ -130,3 +130,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0101](0101-favourited-by-and-reblogged-by.md) | `favourited_by` / `reblogged_by` は streams を全件読んでアプリ側でページングする | Accepted |
 | [0102](0102-replies-count-as-denormalized-counter.md) | 返信数を返信先 Note の `_meta.repliesCount` に Store で非正規化する | Accepted |
 | [0103](0103-hashtag-timeline-and-search.md) | ハッシュタグを `_meta.hashtags` に正規化し、タグのタイムラインと検索を引く | Accepted |
+| [0104](0104-remote-actor-counts-via-background-refresh.md) | リモートアカウントの件数はプロフィール閲覧時に Cloud Tasks で取得して `_meta` に持つ | Accepted |

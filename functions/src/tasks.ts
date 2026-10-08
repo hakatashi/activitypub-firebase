@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { apex } from './apex.js';
 import { toError } from './utils.js';
 import { recordDeliveryResult } from './store/deliveries.js';
+import { refreshRemoteActorCounts } from './social/remoteActorCounts.js';
 
 export const pingTaskPayloadSchema = z.object({
 	message: z.string(),
@@ -204,5 +205,34 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			error: `Delivery to ${address} failed with status ${result.statusCode}`,
 		});
 		throw new Error(`Delivery to ${address} failed with status ${result.statusCode}`);
+	},
+);
+
+export const remoteActorRefreshTaskPayloadSchema = z.object({
+	actorIri: z.string().min(1),
+});
+
+// リモート actor の件数を取り直す (→ ADR-0104)。取得の失敗は refreshRemoteActorCounts の中で吸収し、
+// 再試行は翌日の閲覧に任せるため、ここではリトライしない。
+export const remoteActorRefreshTask = onTaskDispatched<unknown>(
+	{
+		retryConfig: { maxAttempts: 1 },
+		rateLimits: {
+			maxConcurrentDispatches: 5,
+			maxDispatchesPerSecond: 2,
+		},
+		timeoutSeconds: 60,
+	},
+	async (request) => {
+		const parsed = remoteActorRefreshTaskPayloadSchema.safeParse(request.data);
+		if (!parsed.success) {
+			logger.error({
+				type: 'remoteActorRefreshTaskInvalidPayload',
+				error: parsed.error,
+				data: request.data,
+			});
+			return;
+		}
+		await refreshRemoteActorCounts(parsed.data.actorIri);
 	},
 );
