@@ -5,6 +5,7 @@ import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
 import { getFollowing } from '../../social/follows.js';
+import { undoReactions } from '../../social/reactions.js';
 import type { NoteObject } from '../../social/types.js';
 import { escapeFirestoreKey, mastodonDomain } from '../../firebase.js';
 import { reserveIdempotencyKey } from '../../idempotency.js';
@@ -14,14 +15,18 @@ import type { NoteAttachment } from '../../notes.js';
 import { MediaAttachments } from '../../schema.js';
 import type { MediaAttachmentRecord } from '../../schema.js';
 import * as webfinger from '../../webfinger.js';
-import { getAttributedTo, isAPNote, toError } from '../../utils.js';
+import { getAttributedTo, isAPAnnounce, isAPNote, toError, toIdArray } from '../../utils.js';
+import type { APNote } from 'activitypub-types';
 import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
-import { loadStatus, loadViewer, loadVisibleStatus } from '../http/loaders.js';
-import { isPresent, toBoolean } from '../http/params.js';
+import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
+import { idParamSchema, isPresent, toBoolean } from '../http/params.js';
+import { isNoteVisibleTo, noteToVisibility } from '../statusAttributes.js';
 import { getValidBody, validate } from '../http/validation.js';
 import { instanceV2 } from '../instanceInformation.js';
+import { userIdsToAccounts } from '../presenters/account.js';
 import {
+	announceToStatus,
 	getStatusAncestors,
 	getStatusById,
 	getStatusByIri,
@@ -30,7 +35,6 @@ import {
 } from '../presenters/status.js';
 import type { StatusEntity } from '../presenters/status.js';
 import { extractMentions, formatPostContent } from '../statusContent.js';
-import { isNoteVisibleTo } from '../statusAttributes.js';
 
 const router = express.Router();
 
@@ -233,6 +237,29 @@ router.post(
 
 router.get('/v1/statuses/:id/context', async (req, res) => {
 	const viewer = await getOptionalViewer(req, res);
+	const parsed = idParamSchema.safeParse({ id: req.params.id });
+	if (!parsed.success) {
+		throw new NotFoundError();
+	}
+	const iri = await getIriByMastodonId(parsed.data.id);
+	if (iri === undefined) {
+		throw new NotFoundError();
+	}
+
+	const activity = await apex.store.getActivity(iri);
+	if (isAPAnnounce(activity)) {
+		const boostAuthor = toIdArray(activity.actor)[0];
+		const boostVisibility = noteToVisibility(activity as unknown as APNote);
+		const needsFollowing =
+			boostVisibility === 'private' && viewer !== undefined && boostAuthor !== viewer.id;
+		const viewerFollowing = new Set(needsFollowing && viewer ? await getFollowing(viewer) : []);
+		if (!isNoteVisibleTo(activity as unknown as APNote, viewer?.id, viewerFollowing)) {
+			throw new NotFoundError();
+		}
+		res.json({ ancestors: [], descendants: [] });
+		return;
+	}
+
 	const { note, viewerFollowing } = await loadVisibleStatus(req.params.id, viewer, {
 		loadFollowing: true,
 	});
@@ -261,24 +288,67 @@ router.delete(
 	scopeRequired('write:statuses'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const note = await loadStatus(req.params.id);
-
-		// 自分の投稿のみ削除可能。他人の投稿なら 404 (存在秘匿 → ADR-0064)。
-		if (getAttributedTo(note) !== actor.id) {
+		const id = req.params.id;
+		if (typeof id !== 'string') {
+			throw new NotFoundError();
+		}
+		const iri = await getIriByMastodonId(id);
+		if (iri === undefined) {
 			throw new NotFoundError();
 		}
 
-		// 削除前の Note から Status を生成する (Mastodon 仕様: 削除して再編集するために本文が必要)。
-		const [status] = await notesToStatuses([note]);
-		assert(status !== undefined, 'status is undefined');
-		const statusWithText: StatusEntity = {
-			...status,
-			text: htmlToPlainText(status.content),
-		};
+		const object = await apex.store.getObject(iri);
+		if (isAPNote(object)) {
+			// 自分の投稿のみ削除可能。他人の投稿なら 404 (存在秘匿 → ADR-0064)。
+			if (getAttributedTo(object) !== actor.id) {
+				throw new NotFoundError();
+			}
 
-		await deleteNote(actor, note);
+			// 削除前の Note から Status を生成する (Mastodon 仕様: 削除して再編集するために本文が必要)。
+			const [status] = await notesToStatuses([object]);
+			assert(status !== undefined, 'status is undefined');
+			const statusWithText: StatusEntity = {
+				...status,
+				text: htmlToPlainText(status.content),
+			};
 
-		res.json(statusWithText);
+			await deleteNote(actor, object);
+
+			res.json(statusWithText);
+			return;
+		}
+
+		const activity = await apex.store.getActivity(iri);
+		if (isAPAnnounce(activity)) {
+			// 自分のブーストのみ削除可能 (取り消し)。他人のブーストなら 404 (存在秘匿)。
+			const boostAuthor = toIdArray(activity.actor)[0];
+			if (boostAuthor !== actor.id) {
+				throw new NotFoundError();
+			}
+
+			const targetIri = toIdArray(activity.object)[0];
+			const targetNote = targetIri ? await apex.store.getObject(targetIri) : undefined;
+			if (!isAPNote(targetNote)) {
+				throw new NotFoundError();
+			}
+
+			const [originalStatus] = await notesToStatuses([targetNote], actor);
+			assert(originalStatus !== undefined, 'originalStatus is undefined');
+			const [actorAccount] = await userIdsToAccounts([actor.id]);
+			assert(actorAccount !== undefined, 'actorAccount is undefined');
+			const status = announceToStatus(activity, actorAccount, id, originalStatus);
+			const statusWithText: StatusEntity = {
+				...status,
+				text: htmlToPlainText(status.content),
+			};
+
+			await undoReactions(actor, targetNote, 'reblogs');
+
+			res.json(statusWithText);
+			return;
+		}
+
+		throw new NotFoundError();
 	},
 );
 

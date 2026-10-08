@@ -40,7 +40,7 @@
 | DELETE | `/api/v1/profile/header` | ✅ | ヘッダー削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | GET | `/api/v1/accounts/lookup` | ✅ | ローカル acct と、手元にキャッシュ済みのリモート actor を解決。WebFinger では取りに行かない (→ [ADR-0073](adr/0073-lookup-cached-remote-accounts.md)) |
 | GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示。リモートの `url` は相手サーバーのプロフィール URL |
-| GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ページネーション対応、`?pinned=true` 対応。リモートアカウントにも対応 (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)) |
+| GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ブーストの表示と `exclude_reblogs` 対応、ページネーション対応、`?pinned=true` 対応。リモートアカウントにも対応 (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)、[ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
 | GET | `/api/v1/accounts/:id/followers` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/:id/following` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/relationships` | ✅ | フォロー・被フォロー・申請中の実データから Relationship を返却 |
@@ -53,7 +53,7 @@
 |---|---|---|---|
 | POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids`(最大4件、画像のみ)対応、Note の `attachment` として配送。`poll` / `scheduled_at` は 422。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 | GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404。favourited / reblogged / bookmarked / pinned を認証ユーザーから判定、media_attachments を Note から導出 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)) |
-| DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却 |
+| DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Note 削除時は Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却。ブースト ID 指定時はブースト取り消しを行い Status を返却 (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
 | GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |
 | POST | `/api/v1/statuses/:id/favourite` / `unfavourite` | ✅ | `write:favourites` 必須。Like / Undo(Like) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | POST | `/api/v1/statuses/:id/reblog` / `unreblog` | ✅ | `write:statuses` 必須。Announce / Undo(Announce) 配送、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
@@ -69,7 +69,7 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | GET | `/api/v1/timelines/public` | ✅ | public のみ。ページネーション対応 |
-| GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ページネーション対応。リモートの Note (`attributedTo` が配列) も含む (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)) |
+| GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ブースト表示・重複ブースト排除対応。ページネーション対応。リモートの Note (`attributedTo` が配列) も含む (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)、[ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
 | GET | `/api/v1/timelines/tag/:hashtag` | ⬜ | |
 | — | ページネーション + `Link` ヘッダ | ✅ | `max_id`/`since_id`/`min_id`/`limit`、`Access-Control-Expose-Headers: Link`(→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md)) |
 

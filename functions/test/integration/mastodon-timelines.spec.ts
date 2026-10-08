@@ -44,6 +44,27 @@ describe('Mastodon timelines (Issue #58)', () => {
 		return id;
 	};
 
+	const saveAnnounce = async (
+		actor: string,
+		targetNoteId: string,
+		extra: Record<string, unknown> = {},
+	) => {
+		n++;
+		const followers = `${actor}/followers`;
+		const id = `${actor}/announces/${n}`;
+		await apex.store.saveActivity({
+			id,
+			type: 'Announce',
+			actor,
+			object: targetNoteId,
+			published: new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString(),
+			to: [PUBLIC],
+			cc: [followers],
+			...extra,
+		} as unknown as APObject);
+		return id;
+	};
+
 	beforeEach(async () => {
 		me = (await apex.createActor('hakatashi', 'hakatashi', '', '', 'Person')) as LocalActor;
 		await apex.store.saveObject(me);
@@ -218,6 +239,122 @@ describe('Mastodon timelines (Issue #58)', () => {
 			expect(page.map((s) => s.uri)).toEqual([publicUris[2], publicUris[1]]);
 			const next = await getPublicTimeline({ limit: 2, maxId: page.at(-1)?.id });
 			expect(next.map((s) => s.uri)).toEqual([publicUris[0]]);
+		});
+	});
+
+	describe('boosts (Issue #225, ADR-0096)', () => {
+		test('home timeline includes own and followed boosts at their boost time', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			await saveAnnounce(REMOTE_A, b1);
+			const myBoost = await saveAnnounce(me.id, b1);
+			const myNote = await saveNote(me.id, 'public');
+
+			await follow(REMOTE_A, true);
+
+			const home = await getHomeTimeline(me, { limit: 20 });
+			// 重複排除により、同じ b1 をブーストしたものは新しい方 (myBoost) が残る
+			expect(home.map((s) => s.uri)).toEqual([myNote, myBoost]);
+			expect(home[0]?.reblog).toBeNull();
+			expect(home[1]?.reblog?.uri).toBe(b1);
+			expect(home[1]?.account.username).toBe('hakatashi');
+		});
+
+		test('home timeline excludes boosts from unfollowed accounts', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			await saveAnnounce(REMOTE_A, b1);
+
+			const home = await getHomeTimeline(me, { limit: 20 });
+			expect(home).toEqual([]);
+		});
+
+		test('account statuses include boosts and exclude_reblogs=true excludes them', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			const a1 = await saveNote(REMOTE_A, 'public');
+			const aBoost = await saveAnnounce(REMOTE_A, b1);
+
+			const all = await getAccountStatuses(REMOTE_A, me, { limit: 20 });
+			expect(all.map((s) => s.uri)).toEqual([aBoost, a1]);
+			expect(all[0]?.reblog?.uri).toBe(b1);
+
+			const withoutReblogs = await getAccountStatuses(
+				REMOTE_A,
+				me,
+				{ limit: 20 },
+				{ excludeReblogs: true },
+			);
+			expect(withoutReblogs.map((s) => s.uri)).toEqual([a1]);
+		});
+
+		test('pinned=true excludes boosts', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			await saveAnnounce(REMOTE_A, b1);
+
+			const pinned = await getAccountStatuses(REMOTE_A, me, { limit: 20 }, { pinned: true });
+			expect(pinned).toEqual([]);
+		});
+
+		test('boosts of private notes or non-existent notes are excluded', async () => {
+			const privNote = await saveNote(REMOTE_B, 'private');
+			await saveAnnounce(REMOTE_A, privNote);
+			await saveAnnounce(REMOTE_A, 'https://remote.example/non-existent');
+
+			await follow(REMOTE_A, true);
+			const home = await getHomeTimeline(me, { limit: 20 });
+			expect(home).toEqual([]);
+		});
+
+		test('pagination mixes notes and boosts in order without duplication', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			const b2 = await saveNote(REMOTE_B, 'public');
+			const a1 = await saveNote(REMOTE_A, 'public');
+			const aBoost = await saveAnnounce(REMOTE_A, b1);
+			const a2 = await saveNote(REMOTE_A, 'public');
+			const aBoost2 = await saveAnnounce(REMOTE_A, b2);
+
+			const page1 = await getAccountStatuses(REMOTE_A, me, { limit: 2 });
+			expect(page1.map((s) => s.uri)).toEqual([aBoost2, a2]);
+
+			const page2 = await getAccountStatuses(REMOTE_A, me, { limit: 2, maxId: page1[1]?.id });
+			expect(page2.map((s) => s.uri)).toEqual([aBoost, a1]);
+
+			const pageRev = await getAccountStatuses(REMOTE_A, me, { limit: 2, minId: page2[0]?.id });
+			expect(pageRev.map((s) => s.uri)).toEqual([aBoost2, a2]);
+		});
+
+		test('handles notes and boosts published at the same millisecond', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			const sameTime = new Date(Date.UTC(2026, 0, 1, 12, 0, 0, 500)).toISOString();
+
+			const noteId = `${REMOTE_A}/notes/same-time`;
+			await apex.store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: REMOTE_A,
+				content: 'same-time-note',
+				published: sameTime,
+				to: [PUBLIC],
+				cc: [],
+			} as unknown as APObject);
+
+			const boostId = `${REMOTE_A}/announces/same-time`;
+			await apex.store.saveActivity({
+				id: boostId,
+				type: 'Announce',
+				actor: REMOTE_A,
+				object: b1,
+				published: sameTime,
+				to: [PUBLIC],
+				cc: [],
+			} as unknown as APObject);
+
+			const statuses = await getAccountStatuses(REMOTE_A, me, { limit: 10 });
+			expect(statuses).toHaveLength(2);
+			expect(statuses.map((s) => s.uri).sort()).toEqual([noteId, boostId].sort());
+
+			const first = statuses[0]!;
+			const next = await getAccountStatuses(REMOTE_A, me, { limit: 10, maxId: first.id });
+			expect(next).toHaveLength(1);
+			expect(next[0]?.id).not.toBe(first.id);
 		});
 	});
 });

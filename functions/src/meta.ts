@@ -1,7 +1,7 @@
 import firebase from 'firebase-admin';
 import type { FirestoreKey } from './firebase.js';
 import { escapeFirestoreKey } from './firebase.js';
-import { toIdArray, toStringValue } from './utils.js';
+import { isAPAnnounce, toIdArray, toStringValue } from './utils.js';
 
 // `streams` ドキュメントの `_meta.index` は、Firestore に絞り込ませるためだけに存在する
 // 非正規化インデックス(→ ADR-0021)。IRI の集合を `{ エスケープした IRI: true }` の map として
@@ -30,12 +30,14 @@ declare module './apex/types.js' {
 		// objects コレクションのみで使う非正規化カウンタ (→ ADR-0037)。
 		likesCount?: number;
 		sharesCount?: number;
-		// タイムラインの並べ替え・範囲指定用の published (→ ADR-0062)。objects コレクションのみ。
+		// タイムラインの並べ替え・範囲指定用の published (→ ADR-0062, ADR-0096)。objects / streams コレクション。
 		published?: string;
 		// objects の検索用に、配列にもスカラーにもなりうるフィールドを正規化した写し (→ ADR-0086)。
 		attributedTo?: string;
 		inReplyTo?: string;
 		preferredUsername?: string;
+		// streams の検索用に、配列にもスカラーにもなりうる actor を正規化した写し (→ ADR-0096)。
+		actor?: string;
 	}
 }
 
@@ -85,3 +87,19 @@ export const buildObjectQueryMeta = (object: {
 			return value === undefined ? [] : [[key, value]];
 		}),
 	);
+
+// `streams` ドキュメントの `_meta` に非正規化する検索用フィールド (→ ADR-0096)。
+// タイムライン検索の対象となる Announce アクティビティのみを対象とする。
+export const ACTIVITY_QUERY_META_KEYS = ['actor'] as const;
+
+export type ActivityQueryMetaKey = (typeof ACTIVITY_QUERY_META_KEYS)[number];
+
+export const buildActivityQueryMeta = (activity: {
+	[key: string]: unknown;
+}): Partial<Record<ActivityQueryMetaKey, string>> => {
+	if (!isAPAnnounce(activity)) {
+		return {};
+	}
+	const actor = toIdArray(activity.actor)[0];
+	return actor === undefined ? {} : { actor };
+};
