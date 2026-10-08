@@ -71,9 +71,10 @@ export const updateCredentialsBodySchema = z.object({
 		.optional(),
 	source: z
 		.object({
-			privacy: z.enum(['public', 'unlisted', 'private', 'direct']).optional(),
+			// 既定の公開範囲に direct は指定できない (Mastodon と同じ。→ ADR-0105)
+			privacy: z.enum(['public', 'unlisted', 'private']).optional(),
 			sensitive: z.union([z.boolean(), z.string()]).transform(toBoolean).optional(),
-			language: z.string().optional(),
+			language: z.string().nullable().optional(),
 		})
 		.optional(),
 });
@@ -226,6 +227,17 @@ router.patch(
 				name: f.name,
 				value: f.value,
 			}));
+		}
+
+		if (body.source !== undefined) {
+			const current = userInfoDoc.data()?.source;
+			const { privacy, sensitive, language } = body.source;
+			userUpdates.source = {
+				privacy: privacy ?? current?.privacy ?? null,
+				sensitive: sensitive ?? current?.sensitive ?? null,
+				// 空文字は「未設定」として扱う
+				language: language === undefined ? (current?.language ?? null) : language?.trim() || null,
+			};
 		}
 
 		if (Object.keys(userUpdates).length > 0) {

@@ -40,7 +40,17 @@ export type UserInfo = Pick<
 	| 'roles'
 > & {
 	uid: string | null;
+	// 投稿の既定値 (→ ADR-0105)。古いドキュメントにはないので、読み取り側で既定値を補う。
+	source?: UserInfoSource;
 };
+
+export type DefaultPrivacy = 'public' | 'unlisted' | 'private';
+
+export interface UserInfoSource {
+	privacy: DefaultPrivacy | null;
+	sensitive: boolean | null;
+	language: string | null;
+}
 
 export const UserInfos = db.collection('userInfos') as CollectionReference<UserInfo>;
 

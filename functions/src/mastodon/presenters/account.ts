@@ -21,7 +21,7 @@ import {
 import { getIriByMastodonId, getMastodonIds, getOrAssignMastodonId } from '../../mastodonId.js';
 import { htmlToPlainText } from '../../notes.js';
 import { Objects, UserInfo, UserInfos } from '../../schema.js';
-import type { ReactionKind } from '../../schema.js';
+import type { DefaultPrivacy, ReactionKind } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { isAPActor } from '../../utils.js';
@@ -105,7 +105,7 @@ export const actorObjectToAccount = async (
 		id ?? userInfo?.id ?? (await getOrAssignMastodonId(actor.id, actorObject.published));
 
 	return {
-		...baseUserInfo,
+		...omit(baseUserInfo, 'source'),
 		id: accountId,
 		username,
 		acct: isLocal ? username : `${username}@${actorDomain}`,
@@ -150,15 +150,26 @@ export const defaultRole: RoleEntity = {
 	highlighted: false,
 };
 
+export interface ResolvedAccountSource {
+	privacy: DefaultPrivacy;
+	sensitive: boolean;
+	language: string;
+}
+
+// 保存された投稿の既定値に、未設定の項目の既定値を補う (→ ADR-0105)。
+export const resolveAccountSource = (userInfo: UserInfo): ResolvedAccountSource => ({
+	privacy: userInfo.source?.privacy ?? (userInfo.locked ? 'private' : 'public'),
+	sensitive: userInfo.source?.sensitive ?? false,
+	language: userInfo.source?.language ?? 'ja',
+});
+
 export const accountToCredentialAccount = (
 	account: CamelToSnake<mastodon.v1.Account>,
 	userInfo: UserInfo,
 ): CredentialAccountEntity => ({
 	...account,
 	source: {
-		privacy: 'public',
-		sensitive: false,
-		language: 'ja',
+		...resolveAccountSource(userInfo),
 		note: htmlToPlainText(account.note),
 		fields: userInfo.fields ?? [],
 		follow_requests_count: 0,

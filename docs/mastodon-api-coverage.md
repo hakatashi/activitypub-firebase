@@ -35,7 +35,7 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | GET | `/api/v1/accounts/verify_credentials` | ✅ | 完全な CredentialAccount (source, role 含む) を返却 |
-| PATCH | `/api/v1/accounts/update_credentials` | ✅ | アバター・ヘッダー画像変更 (EXIF除去・リサイズ・Storage保存・古い画像削除)、表示名・bio・locked・discoverable・fields 更新、Update 配送 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
+| PATCH | `/api/v1/accounts/update_credentials` | ✅ | アバター・ヘッダー画像変更 (EXIF除去・リサイズ・Storage保存・古い画像削除)、表示名・bio・locked・discoverable・fields・source (既定の公開範囲・sensitive・言語。→ [ADR-0105](adr/0105-account-source-defaults.md)) 更新、Update 配送 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | DELETE | `/api/v1/profile/avatar` | ✅ | アバター削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | DELETE | `/api/v1/profile/header` | ✅ | ヘッダー削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | GET | `/api/v1/accounts/search` | ✅ | `/api/v2/search` のアカウント部分と同じ処理。認証必須 (→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
@@ -46,13 +46,13 @@
 | GET | `/api/v1/accounts/:id/following` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/relationships` | ✅ | フォロー・被フォロー・申請中の実データから Relationship を返却 |
 | POST | `/api/v1/accounts/:id/follow` / `unfollow` | ✅ | Follow / Undo(Follow) 配送、Relationship 返却 |
-| GET | `/api/v1/preferences` | ✅ | 固定値を返す |
+| GET | `/api/v1/preferences` | ✅ | `posting:default:*` は `update_credentials` の `source` で保存した値 (→ [ADR-0105](adr/0105-account-source-defaults.md))。`reading:*` は固定値 |
 
 ## 投稿
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids`(最大4件、画像のみ)対応、Note の `attachment` として配送。`poll` / `scheduled_at` は 422。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
+| POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids`(最大4件、画像のみ)対応、Note の `attachment` として配送。`poll` / `scheduled_at` は 422。`visibility` / `sensitive` / `language` の省略時はアカウントの既定値を使う。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0105](adr/0105-account-source-defaults.md)、[ADR-0071](adr/0071-post-content-formatting-and-mentions.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 | GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404。favourited / reblogged / bookmarked / pinned を認証ユーザーから判定、media_attachments を Note から導出 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)) |
 | DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Note 削除時は Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却。ブースト ID 指定時はブースト取り消しを行い Status を返却 (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
 | GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |
