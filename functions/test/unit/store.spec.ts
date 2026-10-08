@@ -832,6 +832,55 @@ describe('Store', () => {
 		});
 	});
 
+	// `tag` の Hashtag の名前を正規化して `_meta.hashtags` に写す (→ ADR-0103)。
+	describe('query meta (_meta.hashtags)', () => {
+		const noteId = 'https://remote.example/notes/1';
+		const author = 'https://remote.example/users/alice';
+		const hashtag = (name: string) => ({
+			type: 'Hashtag',
+			name,
+			href: `https://remote.example/tags/${name}`,
+		});
+
+		test('normalizes Hashtag names and ignores other tags', async () => {
+			await store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: author,
+				tag: [
+					hashtag('#Foo'),
+					{ ...hashtag('#ＦＯＯ'), type: ['Hashtag'] },
+					hashtag(['#日本語'] as unknown as string),
+					{ type: 'Mention', name: '@bob', href: 'https://remote.example/users/bob' },
+				],
+			});
+			expect((await store.getObject(noteId, true))?._meta).toEqual({
+				attributedTo: author,
+				hashtags: ['foo', '日本語'],
+			});
+		});
+
+		test('omits the key when there are no hashtags', async () => {
+			await store.saveObject({ id: noteId, type: 'Note', attributedTo: author, tag: [] });
+			expect((await store.getObject(noteId, true))?._meta).toEqual({ attributedTo: author });
+		});
+
+		test('rewrites hashtags only when tag is updated on partial updateObject', async () => {
+			await store.saveObject({
+				id: noteId,
+				type: 'Note',
+				attributedTo: author,
+				tag: [hashtag('#foo')],
+			});
+			await store.updateObject({ id: noteId, type: 'Note', content: 'edited' }, null, false);
+			expect((await store.getObject(noteId, true))?._meta?.hashtags).toEqual(['foo']);
+			await store.updateObject({ id: noteId, type: 'Note', tag: [hashtag('#Bar')] }, null, false);
+			expect((await store.getObject(noteId, true))?._meta?.hashtags).toEqual(['bar']);
+			await store.updateObject({ id: noteId, type: 'Note', tag: null }, null, false);
+			expect((await store.getObject(noteId, true))?._meta).toEqual({ attributedTo: author });
+		});
+	});
+
 	describe('recordDeliveryResult / getDelivery / getFailedDeliveries', () => {
 		const activityId = 'https://example.com/activities/1';
 		const actorId = 'https://example.com/users/hakatashi';

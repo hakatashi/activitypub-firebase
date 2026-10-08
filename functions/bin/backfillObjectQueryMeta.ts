@@ -3,8 +3,8 @@ import { isEqual, pick } from 'lodash-es';
 import { OBJECT_QUERY_META_KEYS, buildObjectQueryMeta } from '../src/meta.js';
 import { Objects } from '../src/schema.js';
 
-// objects に検索用の `_meta.attributedTo` / `inReplyTo` / `preferredUsername` を入れるバックフィル
-// (→ ADR-0086)。保存時と同じ規則 (buildObjectQueryMeta) で計算し、値が合っているものはスキップする
+// objects に検索用の `_meta.attributedTo` / `inReplyTo` / `preferredUsername` / `hashtags` を入れるバックフィル
+// (→ ADR-0086、ADR-0103)。保存時と同じ規則 (buildObjectQueryMeta) で計算し、値が合っているものはスキップする
 // ので、何度実行してもよい。`--dry-run` で書き込まずに件数だけ出す。
 
 const dryRun = process.argv.includes('--dry-run');

@@ -112,6 +112,10 @@
         {
           "source": "/nodeinfo/:version*",
           "function": "mastodonApi"
+        },
+        {
+          "source": "/tags/**",
+          "function": "mastodonApi"
         }
       ]
     }

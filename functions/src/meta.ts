@@ -1,6 +1,7 @@
 import firebase from 'firebase-admin';
 import type { FirestoreKey } from './firebase.js';
 import { escapeFirestoreKey } from './firebase.js';
+import { getObjectHashtags } from './hashtags.js';
 import { isAPAnnounce, toIdArray, toStringValue } from './utils.js';
 
 // `streams` ドキュメントの `_meta.index` は、Firestore に絞り込ませるためだけに存在する
@@ -38,6 +39,8 @@ declare module './apex/types.js' {
 		attributedTo?: string;
 		inReplyTo?: string;
 		preferredUsername?: string;
+		// objects のタグ検索用に、`tag` の Hashtag の名前を正規化した写し (→ ADR-0103)。
+		hashtags?: string[];
 		// streams の検索用に、配列にもスカラーにもなりうる actor を正規化した写し (→ ADR-0096)。
 		actor?: string;
 	}
@@ -69,26 +72,53 @@ export const buildMetaIndex = (stream: {
 
 // `objects` ドキュメントの `_meta` に非正規化する検索用フィールド (→ ADR-0086)。apex が受信した
 // オブジェクトは `compactArrays: false` で配列になり、ローカルで作ったものはスカラーのままなので、
-// クエリはこれらの写しだけを見る。値はいずれも先頭の1件で、解決できなければキーごと持たない。
-export const OBJECT_QUERY_META_KEYS = ['attributedTo', 'inReplyTo', 'preferredUsername'] as const;
+// クエリはこれらの写しだけを見る。`hashtags` 以外は先頭の1件で、解決できなければキーごと持たない。
+// `hashtags` は `tag` の Hashtag の名前を正規化した配列で、空ならキーごと持たない (→ ADR-0103)。
+export const OBJECT_QUERY_META_KEYS = [
+	'attributedTo',
+	'inReplyTo',
+	'preferredUsername',
+	'hashtags',
+] as const;
 
 export type ObjectQueryMetaKey = (typeof OBJECT_QUERY_META_KEYS)[number];
 
-export const toObjectQueryMetaValue = (
-	key: ObjectQueryMetaKey,
-	value: unknown,
-): string | undefined => (key === 'preferredUsername' ? toStringValue(value) : toIdArray(value)[0]);
+export interface ObjectQueryMeta {
+	attributedTo?: string;
+	inReplyTo?: string;
+	preferredUsername?: string;
+	hashtags?: string[];
+}
+
+// 各写しの元になる object のフィールド。部分更新ではこのフィールドを含むときだけ写しを書き直す。
+export const OBJECT_QUERY_META_SOURCES: Record<ObjectQueryMetaKey, string> = {
+	attributedTo: 'attributedTo',
+	inReplyTo: 'inReplyTo',
+	preferredUsername: 'preferredUsername',
+	hashtags: 'tag',
+};
 
 // object の現在の内容から、あるべき検索用の `_meta` を計算する。
-export const buildObjectQueryMeta = (object: {
-	[key: string]: unknown;
-}): Partial<Record<ObjectQueryMetaKey, string>> =>
-	Object.fromEntries(
-		OBJECT_QUERY_META_KEYS.flatMap((key) => {
-			const value = toObjectQueryMetaValue(key, object[key]);
-			return value === undefined ? [] : [[key, value]];
-		}),
-	);
+export const buildObjectQueryMeta = (object: { [key: string]: unknown }): ObjectQueryMeta => {
+	const meta: ObjectQueryMeta = {};
+	const attributedTo = toIdArray(object.attributedTo)[0];
+	if (attributedTo !== undefined) {
+		meta.attributedTo = attributedTo;
+	}
+	const inReplyTo = toIdArray(object.inReplyTo)[0];
+	if (inReplyTo !== undefined) {
+		meta.inReplyTo = inReplyTo;
+	}
+	const preferredUsername = toStringValue(object.preferredUsername);
+	if (preferredUsername !== undefined) {
+		meta.preferredUsername = preferredUsername;
+	}
+	const hashtags = getObjectHashtags(object);
+	if (hashtags.length > 0) {
+		meta.hashtags = hashtags;
+	}
+	return meta;
+};
 
 // `streams` ドキュメントの `_meta` に非正規化する検索用フィールド (→ ADR-0096)。
 // タイムライン検索の対象となる Announce アクティビティのみを対象とする。

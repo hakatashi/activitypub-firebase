@@ -11,6 +11,7 @@ import searchRouter from './routes/search.js';
 import statusActionsRouter from './routes/statusActions.js';
 import statusesRouter from './routes/statuses.js';
 import stubsRouter from './routes/stubs.js';
+import tagsRouter from './routes/tags.js';
 import timelinesRouter from './routes/timelines.js';
 
 // `/api/**` のルーティング。各リソースのルートは `routes/` に、エンティティ変換は `presenters/` にある。
@@ -28,6 +29,7 @@ router.use(searchRouter);
 router.use(accountsRouter);
 router.use(profileRouter);
 router.use(timelinesRouter);
+router.use(tagsRouter);
 router.use(statusesRouter);
 router.use(statusActionsRouter);
 router.use(noteCollectionsRouter);

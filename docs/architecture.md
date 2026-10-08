@@ -29,7 +29,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | Function | 種別 | 役割 |
 |---|---|---|
 | `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ |
-| `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ (256MiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
+| `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ。本文のハッシュタグのリンク先 `/tags/:name` は Elk のタグのページへリダイレクト (256MiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
 | `mediaUploadApi` | HTTP | メディアアップロード・取得・編集 API。Hosting rewrite でマップ (2GiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
@@ -132,7 +132,7 @@ apex の `IApexStore` インターフェースを Firestore で実装した `Sto
 | `index.ts` | `Store` クラス(apex の契約)。apex は `apex.store` 越しにこれを呼ぶ |
 | `updates.ts` | `Store` の更新系メソッドが共有する内部処理(`_meta` の引き継ぎ、`streams` の埋め込みコピーの差し替え) |
 | `objects.ts` | `objects` を IRI の一覧でまとめて引く `getObjects` |
-| `notes.ts` | タイムライン用の `getNotes`、スレッド用の `getReplies` |
+| `notes.ts` | タイムライン用の `getNotes`(作者・ハッシュタグでの絞り込み)、スレッド用の `getReplies` |
 | `activities.ts` | `streams` に対する apex の契約外の操作(`markActivityPublic`、タイムライン用の `getAnnounces`) |
 | `deliveries.ts` | Cloud Tasks への配送タスクの発行と、配送結果の記録・取得(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `limits.ts` | `FIRESTORE_IN_QUERY_LIMIT` などの Firestore の制約に関する定数 |
@@ -192,6 +192,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.repliesCount` | `objects` | `number` | 手元にある返信 (Tombstone・`direct` を除く) の数。`Store#saveObject` / `updateObject` が返信の保存・Tombstone 化・返信先の変更に合わせて返信先へ増減し、Note の新規保存時には既にある返信を数えて初期値にする。既存データは `functions/bin/backfillRepliesCount.ts` (→ [ADR-0102](adr/0102-replies-count-as-denormalized-counter.md))。 |
 | `_meta.published` | `objects` | `string` | タイムラインの並べ替え・範囲指定用の `published`。ミリ秒つき ISO 8601 (UTC) で、Mastodon ID のタイムスタンプと同じ規則で決める(未来は現在時刻に丸める)。AP の `published` は apex の `fromJSONLD` が配列に展開する (`compactArrays: false`) ため Firestore のクエリには使えず、`Store#saveObject` / `updateObject` が非正規化して書く。既存データの再計算は `functions/bin/backfillPublishedMeta.ts` (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。 |
 | `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
+| `_meta.hashtags` | `objects` | `string[]` | タグ検索用に、`tag` の `Hashtag` の `name` を正規化(NFKC・先頭の `#` を除く・小文字化・使えない文字を除く。`functions/src/hashtags.ts`)した名前の配列。`getNotes` が `array-contains-any` で引く。タグが無ければキーを持たない。`Store#saveObject` / `updateObject` が書き、既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md))。 |
 | `_meta.actor` / `_meta.published` | `streams` (Announce) | `string` | タイムライン検索用に、Announce アクティビティの actor と published を文字列に正規化した写し。`Store#saveActivity` で保存時に非正規化して書く。既存データは `functions/bin/backfillActivityQueryMeta.ts` (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
@@ -254,9 +255,9 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | ファイル | 役割 |
 |---|---|
 | `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、相手への代表の Follow `getFollowIri`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
-| `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ホームタイムラインの収集(重複ブースト排除・可視性判定を含む) |
+| `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ハッシュタグ・ホームタイムラインの収集(重複ブースト排除・可視性判定を含む) |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
-| `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)と、URL・acct からのリモートの actor / Note の解決(WebFinger、オリジン検証付きの取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
+| `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)、ハッシュタグの完全一致検索と、URL・acct からのリモートの actor / Note の解決(WebFinger、オリジン検証付きの取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
@@ -271,9 +272,10 @@ Follow を書き換える Store の処理と同じトランザクションで差
 |---|---|
 | `index.ts` | express アプリ、`beforeUserCreate` |
 | `api.ts` | `/api/**` のルーター。CORS、`routes/` の各ルーターの登録、404 フォールバックとエラーハンドラ |
-| `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `search` / `accounts` / `timelines` / `statuses` / `statusActions` / `apps`) |
+| `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `search` / `accounts` / `timelines` / `tags` / `statuses` / `statusActions` / `apps`) |
 | `presenters/account.ts` | AP actor → Account / CredentialAccount / Relationship の変換と、アカウント ID の解決 |
 | `presenters/status.ts` | Note / Announce → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
+| `presenters/tag.ts` | タグ名 → Tag エンティティの変換(→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `authIfPresent` / `getOptionalViewer`)と有効なスコープの一覧 |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |
