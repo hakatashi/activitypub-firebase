@@ -121,6 +121,19 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
   ダイアログが開く。「Favorited By」「Boosted By」の両タブにアカウントが並び、続きの `max_id` 付きの取得が 200 で
   「End of the list」になる。Elk の投稿詳細のお気に入り数・ブースト数はリンクではなく、このメニューからしか開けない。
 
+## ハッシュタグのタイムライン(`timelines/tag`)の確認
+
+`run.mjs` は巡回しない。変えたときは、Playwright で次を確かめる(2026-10-09 に実施)。
+
+- API でハッシュタグ付きの公開投稿を作り、投稿の詳細を開いて本文のハッシュタグを押す。
+  Elk は `/<dev>/tags/<名前>` に遷移して `tags/:name` → `timelines/tag/:hashtag` を呼び、スクロールで `max_id` 付きの取得が走る。
+  Phanpy は `/#/<dev>/t/<名前>` に遷移する。Phanpy は投稿の詳細をモーダル(`.status-deck`)で開くので、
+  背後のタイムラインではなくモーダルの中のリンクを押すこと。
+- Elk はログイン(`verify_credentials`)の完了前に別の画面へ `goto` するとログアウト状態になり、
+  タグのページがスケルトンのまま `timelines/tag` を呼ばない。ホームを開いてから進む。
+- 自前の `admin@mastodon-test.hakatashi.com` からタグ付きで投稿し、dev のタグのタイムラインに出ることも確かめる
+  (受信した Note の `Hashtag` は `as:Hashtag` で保存される。→ [ADR-0103](../adr/0103-hashtag-timeline-and-search.md))。
+
 ## ハマりどころ
 
 - 自宅 LAN の DNS(NAS)は `hakatashi.com` をヘアピン DNS として持っている。Firebase Hosting を指すホスト名
