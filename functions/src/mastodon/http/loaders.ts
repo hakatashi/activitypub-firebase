@@ -1,4 +1,4 @@
-import type { APActor, APNote } from 'activitypub-types';
+import type { APActor } from 'activitypub-types';
 import type express from 'express';
 import { apex } from '../../apex.js';
 import type { APObject as ApexObject } from '../../apex/index.js';
@@ -43,6 +43,7 @@ export const loadStatus = async (id: unknown): Promise<NoteObject> => {
 export interface VisibleStatusResult {
 	note: NoteObject;
 	viewerFollowing: Set<string>;
+	isAnnounce: boolean;
 }
 
 export interface LoadVisibleStatusOptions {
@@ -73,17 +74,17 @@ export const loadVisibleStatus = async (
 		if (!isNoteVisibleTo(object, viewer?.id, viewerFollowing)) {
 			throw new NotFoundError();
 		}
-		return { note: object, viewerFollowing };
+		return { note: object, viewerFollowing, isAnnounce: false };
 	}
 	const activity = await apex.store.getActivity(iri);
 	if (isAPAnnounce(activity)) {
 		const boostAuthor = toIdArray(activity.actor)[0];
-		const boostVisibility = noteToVisibility(activity as unknown as APNote);
+		const boostVisibility = noteToVisibility(activity);
 		const needsFollowing =
 			options?.loadFollowing === true ||
 			(boostVisibility === 'private' && viewer !== undefined && boostAuthor !== viewer.id);
 		const viewerFollowing = new Set(needsFollowing && viewer ? await getFollowing(viewer) : []);
-		if (!isNoteVisibleTo(activity as unknown as APNote, viewer?.id, viewerFollowing)) {
+		if (!isNoteVisibleTo(activity, viewer?.id, viewerFollowing)) {
 			throw new NotFoundError();
 		}
 
@@ -106,7 +107,7 @@ export const loadVisibleStatus = async (
 		if (!isNoteVisibleTo(targetNote, viewer?.id, targetViewerFollowing)) {
 			throw new NotFoundError();
 		}
-		return { note: targetNote, viewerFollowing: targetViewerFollowing };
+		return { note: targetNote, viewerFollowing: targetViewerFollowing, isAnnounce: true };
 	}
 	throw new NotFoundError();
 };

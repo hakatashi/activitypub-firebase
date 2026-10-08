@@ -7,6 +7,7 @@ import {
 	getPublicTimeline,
 } from '../../src/mastodon/presenters/status.js';
 import { getFollowing } from '../../src/social/follows.js';
+import { getMastodonIds } from '../../src/mastodonId.js';
 import { resetFirestore } from '../helpers/index.js';
 import type { LocalActor } from '../helpers/index.js';
 
@@ -355,6 +356,105 @@ describe('Mastodon timelines (Issue #58)', () => {
 			const next = await getAccountStatuses(REMOTE_A, me, { limit: 10, maxId: first.id });
 			expect(next).toHaveLength(1);
 			expect(next[0]?.id).not.toBe(first.id);
+		});
+
+		test('third-party boost reflects viewer relationships with target note', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			const boostId = await saveAnnounce(REMOTE_A, b1);
+			await follow(REMOTE_A, true);
+
+			// Initially viewer has not favourited or reblogged b1
+			const home1 = await getHomeTimeline(me, { limit: 10 });
+			expect(home1).toHaveLength(1);
+			expect(home1[0]?.uri).toBe(boostId);
+			expect(home1[0]?.reblogged).toBe(false);
+			expect(home1[0]?.favourited).toBe(false);
+			expect(home1[0]?.reblog?.reblogged).toBe(false);
+			expect(home1[0]?.reblog?.favourited).toBe(false);
+
+			// Viewer favourites b1
+			await apex.store.saveActivity({
+				id: `${me.id}/likes/1`,
+				type: 'Like',
+				actor: me.id,
+				object: b1,
+				published: new Date().toISOString(),
+			} as unknown as APObject);
+
+			const home2 = await getHomeTimeline(me, { limit: 10 });
+			expect(home2[0]?.favourited).toBe(true);
+			expect(home2[0]?.reblog?.favourited).toBe(true);
+			expect(home2[0]?.reblogged).toBe(false);
+
+			// Viewer also reblogs b1
+			await apex.store.saveActivity({
+				id: `${me.id}/announces/my-reblog`,
+				type: 'Announce',
+				actor: me.id,
+				object: b1,
+				published: new Date().toISOString(),
+			} as unknown as APObject);
+
+			const statuses = await getAccountStatuses(REMOTE_A, me, { limit: 10 });
+			expect(statuses[0]?.uri).toBe(boostId);
+			expect(statuses[0]?.reblogged).toBe(true);
+			expect(statuses[0]?.favourited).toBe(true);
+			expect(statuses[0]?.reblog?.reblogged).toBe(true);
+			expect(statuses[0]?.reblog?.favourited).toBe(true);
+		});
+
+		test('followers-only boost is visible to followers and hidden from non-followers', async () => {
+			const b1 = await saveNote(REMOTE_B, 'public');
+			const privBoost = await saveAnnounce(REMOTE_A, b1, {
+				to: [`${REMOTE_A}/followers`],
+				cc: [],
+			});
+
+			// When not following, home timeline is empty
+			const homeUnfollowed = await getHomeTimeline(me, { limit: 10 });
+			expect(homeUnfollowed).toEqual([]);
+
+			// Account statuses without auth or without following should exclude it
+			const statusesUnfollowed = await getAccountStatuses(REMOTE_A, undefined, { limit: 10 });
+			expect(statusesUnfollowed).toEqual([]);
+
+			// Now follow REMOTE_A
+			await follow(REMOTE_A, true);
+
+			const homeFollowed = await getHomeTimeline(me, { limit: 10 });
+			expect(homeFollowed.map((s) => s.uri)).toEqual([privBoost]);
+			expect(homeFollowed[0]?.visibility).toBe('private');
+
+			const statusesFollowed = await getAccountStatuses(REMOTE_A, me, { limit: 10 });
+			expect(statusesFollowed.map((s) => s.uri)).toEqual([privBoost]);
+		});
+
+		test('pagination with min_id prioritizes newer duplicate boosts over older ones', async () => {
+			const targetNote = await saveNote(REMOTE_B, 'public');
+			const olderBoost = await saveAnnounce(REMOTE_A, targetNote);
+			const newerBoost = await saveAnnounce(REMOTE_B, targetNote);
+			const laterNote = await saveNote(REMOTE_A, 'public');
+
+			await follow(REMOTE_A, true);
+			await follow(REMOTE_B, true);
+
+			// In descending order: laterNote, newerBoost, targetNote (olderBoost dropped, original targetNote preserved)
+			const desc = await getHomeTimeline(me, { limit: 10 });
+			expect(desc.map((s) => s.uri)).toEqual([laterNote, newerBoost, targetNote]);
+			expect(desc.map((s) => s.uri)).not.toContain(olderBoost);
+
+			// With min_id: paginate upwards from targetNote's mastodon ID
+			const ids = await getMastodonIds([
+				{ iri: targetNote, published: new Date(Date.UTC(2026, 0, 1, 0, 1)).toISOString() },
+			]);
+			const targetNoteId = ids.get(targetNote)!;
+
+			const pageAsc = await getHomeTimeline(me, { limit: 10, minId: targetNoteId });
+			expect(pageAsc.map((s) => s.uri)).toEqual([laterNote, newerBoost]);
+
+			// With limit: 1 and min_id, newerBoost (not olderBoost) is chosen
+			const pageAscLimit1 = await getHomeTimeline(me, { limit: 1, minId: targetNoteId });
+			expect(pageAscLimit1.map((s) => s.uri)).toEqual([newerBoost]);
 		});
 	});
 });

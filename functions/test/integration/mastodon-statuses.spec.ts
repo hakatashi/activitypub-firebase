@@ -294,6 +294,54 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			expect(res.body).toEqual({ ancestors: [], descendants: [] });
 		});
 
+		test('returns 404 for a boost ID when target note does not exist', async () => {
+			const boostId = `${REMOTE_BOB}/announces/ghost-boost`;
+			await apex.store.saveActivity({
+				id: boostId,
+				type: 'Announce',
+				actor: REMOTE_BOB,
+				object: 'https://remote.example/notes/ghost',
+				published: new Date().toISOString(),
+				to: ['https://www.w3.org/ns/activitystreams#Public'],
+				cc: [],
+			} as unknown as APObject);
+			const ids = await getMastodonIds([{ iri: boostId, published: new Date().toISOString() }]);
+			const mastodonId = ids.get(boostId)!;
+
+			const res = await getContext(mastodonId);
+			expect(res.status).toBe(404);
+		});
+
+		test('returns 404 for a boost ID when target note is private and viewer cannot view it', async () => {
+			const privNote = 'https://remote.example/notes/secret';
+			await apex.store.saveObject({
+				id: privNote,
+				type: 'Note',
+				attributedTo: REMOTE_BOB,
+				content: 'Secret note',
+				published: new Date().toISOString(),
+				to: [`${REMOTE_BOB}/followers`],
+				cc: [],
+			} as unknown as APObject);
+
+			const boostId = `${REMOTE_BOB}/announces/secret-boost`;
+			await apex.store.saveActivity({
+				id: boostId,
+				type: 'Announce',
+				actor: REMOTE_BOB,
+				object: privNote,
+				published: new Date().toISOString(),
+				to: ['https://www.w3.org/ns/activitystreams#Public'],
+				cc: [],
+			} as unknown as APObject);
+			const ids = await getMastodonIds([{ iri: boostId, published: new Date().toISOString() }]);
+			const mastodonId = ids.get(boostId)!;
+
+			// me does not follow REMOTE_BOB
+			const res = await getContext(mastodonId, 'me-token');
+			expect(res.status).toBe(404);
+		});
+
 		test('returns ancestors in chronological order (root to direct parent)', async () => {
 			// Grandparent -> Parent -> Child
 			const { object: grandparent } = await publishNote(me, {

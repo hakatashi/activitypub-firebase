@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { chunk, uniq } from 'lodash-es';
-import type { APActor, APNote } from 'activitypub-types';
+import type { APActor } from 'activitypub-types';
 import type { APObject } from '../apex/index.js';
 import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../firebase.js';
 import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
@@ -105,7 +105,7 @@ export const collectTimelineItems = async ({
 	const fetchSize = Math.max(page.limit * TIMELINE_FETCH_FACTOR, MIN_TIMELINE_FETCH_SIZE);
 
 	const collected: TimelineItem[] = [];
-	const seenNoteIris = new Set<string>();
+	const seenBoostedNoteIris = new Set<string>();
 
 	let noteCursor: string | undefined;
 	let announceCursor: string | undefined;
@@ -113,7 +113,11 @@ export const collectTimelineItems = async ({
 	let announcesExhausted = !includeAnnounces;
 
 	const noteBuffer: { id: string; note: NoteObject }[] = [];
-	const announceBuffer: { id: string; activity: APObject; targetNote: NoteObject }[] = [];
+	const uncollectedAnnounces = new Map<
+		string,
+		{ id: string; activity: APObject; targetNote: NoteObject }
+	>();
+	let announceBuffer: { id: string; activity: APObject; targetNote: NoteObject }[] = [];
 
 	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < page.limit; round++) {
 		// Note バッファが空なら fetch
@@ -168,7 +172,7 @@ export const collectTimelineItems = async ({
 				if (actor === undefined) {
 					return false;
 				}
-				if (!isNoteVisibleTo(row as unknown as APNote, viewer?.id, viewerFollowing)) {
+				if (!isNoteVisibleTo(row, viewer?.id, viewerFollowing)) {
 					return false;
 				}
 				const targetIri = toIdArray(row.object)[0];
@@ -209,9 +213,18 @@ export const collectTimelineItems = async ({
 			for (const { activity, targetNote } of eligibleAnnounces) {
 				const id = ids.get(activity.id);
 				if (id !== undefined && isIdInRange(id, page)) {
-					announceBuffer.push({ id, activity, targetNote });
+					if (!ascending && seenBoostedNoteIris.has(targetNote.id)) {
+						continue;
+					}
+					const existing = uncollectedAnnounces.get(targetNote.id);
+					if (existing === undefined || id.localeCompare(existing.id) > 0) {
+						uncollectedAnnounces.set(targetNote.id, { id, activity, targetNote });
+					}
 				}
 			}
+			announceBuffer = [...uncollectedAnnounces.values()].sort((a, b) =>
+				ascending ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id),
+			);
 
 			const lastPublished = rows.at(-1)?._meta?.published;
 			if (rows.length < fetchSize || lastPublished === undefined) {
@@ -247,19 +260,17 @@ export const collectTimelineItems = async ({
 
 			if (takeFrom === 'note') {
 				const item = noteBuffer.shift()!;
-				seenNoteIris.add(item.note.id);
 				collected.push({ type: 'note', id: item.id, note: item.note });
 			} else {
 				const item = announceBuffer.shift()!;
-				if (!seenNoteIris.has(item.targetNote.id)) {
-					seenNoteIris.add(item.targetNote.id);
-					collected.push({
-						type: 'announce',
-						id: item.id,
-						activity: item.activity,
-						targetNote: item.targetNote,
-					});
-				}
+				uncollectedAnnounces.delete(item.targetNote.id);
+				seenBoostedNoteIris.add(item.targetNote.id);
+				collected.push({
+					type: 'announce',
+					id: item.id,
+					activity: item.activity,
+					targetNote: item.targetNote,
+				});
 			}
 		}
 
@@ -272,7 +283,23 @@ export const collectTimelineItems = async ({
 		}
 	}
 
-	return takePage(collected, (entry) => entry.id, page);
+	// 重複ブーストは常に最新のものを優先
+	const sortedDesc = [...collected].sort((a, b) => b.id.localeCompare(a.id));
+	const deduplicatedBoostNoteIris = new Set<string>();
+	const keptAnnounceIds = new Set<string>();
+	for (const item of sortedDesc) {
+		if (item.type === 'announce') {
+			if (!deduplicatedBoostNoteIris.has(item.targetNote.id)) {
+				deduplicatedBoostNoteIris.add(item.targetNote.id);
+				keptAnnounceIds.add(item.id);
+			}
+		}
+	}
+	const deduplicated = collected.filter(
+		(item) => item.type === 'note' || keptAnnounceIds.has(item.id),
+	);
+
+	return takePage(deduplicated, (entry) => entry.id, page);
 };
 
 // actor のタイムラインアイテム (Note + Announce)。viewer に見えるものだけを返す。
@@ -360,20 +387,21 @@ export const getHomeTimelineItems = async (
 	const merged = chunkedResults.flat().sort((a, b) => {
 		return ascending ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id);
 	});
-	// チャンクを跨いだ重複ブーストの排除
-	const seenNoteIris = new Set<string>();
-	const deduplicated: TimelineItem[] = [];
-	for (const item of merged) {
-		if (item.type === 'note') {
-			seenNoteIris.add(item.note.id);
-			deduplicated.push(item);
-		} else {
-			if (!seenNoteIris.has(item.targetNote.id)) {
-				seenNoteIris.add(item.targetNote.id);
-				deduplicated.push(item);
+	// チャンクを跨いだ重複ブーストの排除 (常に最新のブーストを優先)
+	const sortedDesc = [...merged].sort((a, b) => b.id.localeCompare(a.id));
+	const seenBoostedNoteIris = new Set<string>();
+	const keptAnnounceIds = new Set<string>();
+	for (const item of sortedDesc) {
+		if (item.type === 'announce') {
+			if (!seenBoostedNoteIris.has(item.targetNote.id)) {
+				seenBoostedNoteIris.add(item.targetNote.id);
+				keptAnnounceIds.add(item.id);
 			}
 		}
 	}
+	const deduplicated = merged.filter(
+		(item) => item.type === 'note' || keptAnnounceIds.has(item.id),
+	);
 	return takePage(deduplicated, (entry) => entry.id, page);
 };
 

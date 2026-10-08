@@ -16,12 +16,11 @@ import { MediaAttachments } from '../../schema.js';
 import type { MediaAttachmentRecord } from '../../schema.js';
 import * as webfinger from '../../webfinger.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toError, toIdArray } from '../../utils.js';
-import type { APNote } from 'activitypub-types';
 import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
-import { idParamSchema, isPresent, toBoolean } from '../http/params.js';
-import { isNoteVisibleTo, noteToVisibility } from '../statusAttributes.js';
+import { isPresent, toBoolean } from '../http/params.js';
+import { isNoteVisibleTo } from '../statusAttributes.js';
 import { getValidBody, validate } from '../http/validation.js';
 import { instanceV2 } from '../instanceInformation.js';
 import { userIdsToAccounts } from '../presenters/account.js';
@@ -237,32 +236,14 @@ router.post(
 
 router.get('/v1/statuses/:id/context', async (req, res) => {
 	const viewer = await getOptionalViewer(req, res);
-	const parsed = idParamSchema.safeParse({ id: req.params.id });
-	if (!parsed.success) {
-		throw new NotFoundError();
-	}
-	const iri = await getIriByMastodonId(parsed.data.id);
-	if (iri === undefined) {
-		throw new NotFoundError();
-	}
+	const { note, viewerFollowing, isAnnounce } = await loadVisibleStatus(req.params.id, viewer, {
+		loadFollowing: true,
+	});
 
-	const activity = await apex.store.getActivity(iri);
-	if (isAPAnnounce(activity)) {
-		const boostAuthor = toIdArray(activity.actor)[0];
-		const boostVisibility = noteToVisibility(activity as unknown as APNote);
-		const needsFollowing =
-			boostVisibility === 'private' && viewer !== undefined && boostAuthor !== viewer.id;
-		const viewerFollowing = new Set(needsFollowing && viewer ? await getFollowing(viewer) : []);
-		if (!isNoteVisibleTo(activity as unknown as APNote, viewer?.id, viewerFollowing)) {
-			throw new NotFoundError();
-		}
+	if (isAnnounce) {
 		res.json({ ancestors: [], descendants: [] });
 		return;
 	}
-
-	const { note, viewerFollowing } = await loadVisibleStatus(req.params.id, viewer, {
-		loadFollowing: true,
-	});
 
 	const [ancestors, descendants] = await Promise.all([
 		getStatusAncestors(note, viewer, viewerFollowing),

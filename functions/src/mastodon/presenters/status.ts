@@ -143,17 +143,17 @@ export const announceToStatus = (
 		in_reply_to_account_id: null,
 		sensitive: false,
 		spoiler_text: '',
-		visibility: noteToVisibility(activity as unknown as APNote),
+		visibility: noteToVisibility(activity),
 		language: null,
 		uri: activityId,
 		url: toIdArray(activity.url)[0] ?? activityId,
 		replies_count: 0,
 		reblogs_count: 0,
 		favourites_count: 0,
-		favourited: false,
-		reblogged: true,
+		favourited: reblog.favourited ?? false,
+		reblogged: reblog.reblogged ?? false,
 		muted: false,
-		bookmarked: false,
+		bookmarked: reblog.bookmarked ?? false,
 		pinned: false,
 		content: reblog.content,
 		reblog,
@@ -507,13 +507,13 @@ export const getStatusById = async (
 	const activity = await apex.store.getActivity(iri);
 	if (isAPAnnounce(activity)) {
 		const author = toIdArray(activity.actor)[0];
-		const visibility = noteToVisibility(activity as unknown as APNote);
+		const visibility = noteToVisibility(activity);
 		const viewerFollowing = new Set(
 			visibility === 'private' && viewer !== undefined && author !== viewer.id
 				? await getFollowing(viewer)
 				: [],
 		);
-		if (!isNoteVisibleTo(activity as unknown as APNote, viewer?.id, viewerFollowing)) {
+		if (!isNoteVisibleTo(activity, viewer?.id, viewerFollowing)) {
 			return undefined;
 		}
 
