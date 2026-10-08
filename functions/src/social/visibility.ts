@@ -58,8 +58,6 @@ export const noteToVisibility = (
 	return 'direct';
 };
 
-export const activityToVisibility = noteToVisibility;
-
 // viewer (ローカル actor の IRI。未認証なら undefined) が note / activity を閲覧できるか。
 // `viewerFollowing` は viewer がフォロー中の actor IRI の集合。
 // Status エンティティの `visibility` と同じ noteToVisibility を使い、判定を1箇所に集約する。
@@ -86,8 +84,6 @@ export const isNoteVisibleTo = (
 	// direct (および private で followers 経由でない場合) は宛先に明示されているときだけ。
 	return [...toIdArray(fields.to), ...toIdArray(fields.cc)].includes(viewer);
 };
-
-export const isActivityVisibleTo = isNoteVisibleTo;
 
 // 公開タイムラインに載せるのは public のみ (unlisted は載せない)。
 export const isNotePublicTimelineEligible = (objectOrActivity: HasAddressing): boolean =>

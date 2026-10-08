@@ -83,6 +83,22 @@ export const collectVisibleNotes = async ({
 	return takePage(collected, (entry) => entry.id, page);
 };
 
+// 重複ブーストは常に最新のものを優先して1件のみ残す (→ ADR-0096 決定3)。
+const dedupeBoosts = (items: TimelineItem[]): TimelineItem[] => {
+	const sortedDesc = [...items].sort((a, b) => b.id.localeCompare(a.id));
+	const seenBoostedNoteIris = new Set<string>();
+	const keptAnnounceIds = new Set<string>();
+	for (const item of sortedDesc) {
+		if (item.type === 'announce') {
+			if (!seenBoostedNoteIris.has(item.targetNote.id)) {
+				seenBoostedNoteIris.add(item.targetNote.id);
+				keptAnnounceIds.add(item.id);
+			}
+		}
+	}
+	return items.filter((item) => item.type === 'note' || keptAnnounceIds.has(item.id));
+};
+
 // Note と Announce を混ぜて 1 ページ分集める (→ ADR-0096)。
 // 各情報源のカーソルを独立して進め、可視性チェックを通過した有効なアイテムを Mastodon ID 順にマージする。
 export const collectTimelineItems = async ({
@@ -119,120 +135,125 @@ export const collectTimelineItems = async ({
 	>();
 	let announceBuffer: { id: string; activity: APObject; targetNote: NoteObject }[] = [];
 
+	const fetchNotes = async () => {
+		if (noteBuffer.length !== 0 || notesExhausted) {
+			return;
+		}
+		const rows = await getNotes({
+			actors,
+			limit: fetchSize,
+			order: ascending ? 'asc' : 'desc',
+			lower,
+			upper,
+			cursor: noteCursor,
+		});
+		const visible = rows
+			.filter(isAPNote)
+			.filter(
+				(note) =>
+					getAttributedTo(note) !== undefined && isNoteVisibleTo(note, viewer?.id, viewerFollowing),
+			);
+		const ids = await getMastodonIds(
+			visible.map((note) => ({ iri: note.id, published: note.published })),
+		);
+		for (const note of visible) {
+			const id = ids.get(note.id);
+			if (id !== undefined && isIdInRange(id, page)) {
+				noteBuffer.push({ id, note });
+			}
+		}
+		const lastPublished = rows.at(-1)?._meta?.published;
+		if (rows.length < fetchSize || lastPublished === undefined) {
+			notesExhausted = true;
+		} else {
+			noteCursor = lastPublished;
+		}
+	};
+
+	const fetchAnnounces = async () => {
+		if (!includeAnnounces || announceBuffer.length !== 0 || announcesExhausted) {
+			return;
+		}
+		const rows = await getAnnounces({
+			actors,
+			limit: fetchSize,
+			order: ascending ? 'asc' : 'desc',
+			lower,
+			upper,
+			cursor: announceCursor,
+		});
+		const validAnnounces = rows.filter((row): row is APObject => {
+			if (!isAPAnnounce(row)) {
+				return false;
+			}
+			const actor = toIdArray(row.actor)[0];
+			if (actor === undefined) {
+				return false;
+			}
+			if (!isNoteVisibleTo(row, viewer?.id, viewerFollowing)) {
+				return false;
+			}
+			const targetIri = toIdArray(row.object)[0];
+			return targetIri !== undefined;
+		});
+
+		const targetIris = uniq(
+			validAnnounces
+				.map((a) => toIdArray(a.object)[0])
+				.filter((iri): iri is string => iri !== undefined),
+		);
+		const targetObjects = await getObjects(targetIris);
+		const targetNotesMap = new Map(targetObjects.filter(isAPNote).map((note) => [note.id, note]));
+
+		const eligibleAnnounces: { activity: APObject; targetNote: NoteObject }[] = [];
+		for (const activity of validAnnounces) {
+			const targetIri = toIdArray(activity.object)[0] as string;
+			const targetNote = targetNotesMap.get(targetIri);
+			if (targetNote === undefined) {
+				continue;
+			}
+			const targetVis = noteToVisibility(targetNote);
+			if (targetVis !== 'public' && targetVis !== 'unlisted') {
+				continue;
+			}
+			if (!isNoteVisibleTo(targetNote, viewer?.id, viewerFollowing)) {
+				continue;
+			}
+			eligibleAnnounces.push({ activity, targetNote });
+		}
+
+		const ids = await getMastodonIds(
+			eligibleAnnounces.map(({ activity }) => ({
+				iri: activity.id,
+				published: activity.published,
+			})),
+		);
+		for (const { activity, targetNote } of eligibleAnnounces) {
+			const id = ids.get(activity.id);
+			if (id !== undefined && isIdInRange(id, page)) {
+				if (!ascending && seenBoostedNoteIris.has(targetNote.id)) {
+					continue;
+				}
+				const existing = uncollectedAnnounces.get(targetNote.id);
+				if (existing === undefined || id.localeCompare(existing.id) > 0) {
+					uncollectedAnnounces.set(targetNote.id, { id, activity, targetNote });
+				}
+			}
+		}
+		announceBuffer = [...uncollectedAnnounces.values()].sort((a, b) =>
+			ascending ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id),
+		);
+
+		const lastPublished = rows.at(-1)?._meta?.published;
+		if (rows.length < fetchSize || lastPublished === undefined) {
+			announcesExhausted = true;
+		} else {
+			announceCursor = lastPublished;
+		}
+	};
+
 	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < page.limit; round++) {
-		// Note バッファが空なら fetch
-		if (noteBuffer.length === 0 && !notesExhausted) {
-			const rows = await getNotes({
-				actors,
-				limit: fetchSize,
-				order: ascending ? 'asc' : 'desc',
-				lower,
-				upper,
-				cursor: noteCursor,
-			});
-			const visible = rows
-				.filter(isAPNote)
-				.filter(
-					(note) =>
-						getAttributedTo(note) !== undefined &&
-						isNoteVisibleTo(note, viewer?.id, viewerFollowing),
-				);
-			const ids = await getMastodonIds(
-				visible.map((note) => ({ iri: note.id, published: note.published })),
-			);
-			for (const note of visible) {
-				const id = ids.get(note.id);
-				if (id !== undefined && isIdInRange(id, page)) {
-					noteBuffer.push({ id, note });
-				}
-			}
-			const lastPublished = rows.at(-1)?._meta?.published;
-			if (rows.length < fetchSize || lastPublished === undefined) {
-				notesExhausted = true;
-			} else {
-				noteCursor = lastPublished;
-			}
-		}
-
-		// Announce バッファが空なら fetch
-		if (includeAnnounces && announceBuffer.length === 0 && !announcesExhausted) {
-			const rows = await getAnnounces({
-				actors,
-				limit: fetchSize,
-				order: ascending ? 'asc' : 'desc',
-				lower,
-				upper,
-				cursor: announceCursor,
-			});
-			const validAnnounces = rows.filter((row): row is APObject => {
-				if (!isAPAnnounce(row)) {
-					return false;
-				}
-				const actor = toIdArray(row.actor)[0];
-				if (actor === undefined) {
-					return false;
-				}
-				if (!isNoteVisibleTo(row, viewer?.id, viewerFollowing)) {
-					return false;
-				}
-				const targetIri = toIdArray(row.object)[0];
-				return targetIri !== undefined;
-			});
-
-			const targetIris = uniq(
-				validAnnounces
-					.map((a) => toIdArray(a.object)[0])
-					.filter((iri): iri is string => iri !== undefined),
-			);
-			const targetObjects = await getObjects(targetIris);
-			const targetNotesMap = new Map(targetObjects.filter(isAPNote).map((note) => [note.id, note]));
-
-			const eligibleAnnounces: { activity: APObject; targetNote: NoteObject }[] = [];
-			for (const activity of validAnnounces) {
-				const targetIri = toIdArray(activity.object)[0] as string;
-				const targetNote = targetNotesMap.get(targetIri);
-				if (targetNote === undefined) {
-					continue;
-				}
-				const targetVis = noteToVisibility(targetNote);
-				if (targetVis !== 'public' && targetVis !== 'unlisted') {
-					continue;
-				}
-				if (!isNoteVisibleTo(targetNote, viewer?.id, viewerFollowing)) {
-					continue;
-				}
-				eligibleAnnounces.push({ activity, targetNote });
-			}
-
-			const ids = await getMastodonIds(
-				eligibleAnnounces.map(({ activity }) => ({
-					iri: activity.id,
-					published: activity.published,
-				})),
-			);
-			for (const { activity, targetNote } of eligibleAnnounces) {
-				const id = ids.get(activity.id);
-				if (id !== undefined && isIdInRange(id, page)) {
-					if (!ascending && seenBoostedNoteIris.has(targetNote.id)) {
-						continue;
-					}
-					const existing = uncollectedAnnounces.get(targetNote.id);
-					if (existing === undefined || id.localeCompare(existing.id) > 0) {
-						uncollectedAnnounces.set(targetNote.id, { id, activity, targetNote });
-					}
-				}
-			}
-			announceBuffer = [...uncollectedAnnounces.values()].sort((a, b) =>
-				ascending ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id),
-			);
-
-			const lastPublished = rows.at(-1)?._meta?.published;
-			if (rows.length < fetchSize || lastPublished === undefined) {
-				announcesExhausted = true;
-			} else {
-				announceCursor = lastPublished;
-			}
-		}
+		await Promise.all([fetchNotes(), fetchAnnounces()]);
 
 		// バッファからアイテムを取り出してマージ
 		while (collected.length < page.limit && (noteBuffer.length > 0 || announceBuffer.length > 0)) {
@@ -283,23 +304,7 @@ export const collectTimelineItems = async ({
 		}
 	}
 
-	// 重複ブーストは常に最新のものを優先
-	const sortedDesc = [...collected].sort((a, b) => b.id.localeCompare(a.id));
-	const deduplicatedBoostNoteIris = new Set<string>();
-	const keptAnnounceIds = new Set<string>();
-	for (const item of sortedDesc) {
-		if (item.type === 'announce') {
-			if (!deduplicatedBoostNoteIris.has(item.targetNote.id)) {
-				deduplicatedBoostNoteIris.add(item.targetNote.id);
-				keptAnnounceIds.add(item.id);
-			}
-		}
-	}
-	const deduplicated = collected.filter(
-		(item) => item.type === 'note' || keptAnnounceIds.has(item.id),
-	);
-
-	return takePage(deduplicated, (entry) => entry.id, page);
+	return takePage(dedupeBoosts(collected), (entry) => entry.id, page);
 };
 
 // actor のタイムラインアイテム (Note + Announce)。viewer に見えるものだけを返す。
@@ -341,23 +346,6 @@ export const getAccountTimelineItems = async (
 	});
 };
 
-// actor の投稿一覧 (Note)。後方互換用。
-// oxlint-disable-next-line max-params
-export const getAccountNotes = async (
-	actorId: string,
-	viewer: APActor | undefined,
-	page: PageParams,
-	options: { pinned?: boolean } = {},
-): Promise<NoteObject[]> => {
-	const items = await getAccountTimelineItems(actorId, viewer, page, {
-		...options,
-		excludeReblogs: true,
-	});
-	return items
-		.filter((item): item is { type: 'note'; id: string; note: NoteObject } => item.type === 'note')
-		.map((item) => item.note);
-};
-
 // 公開タイムラインの Note。public な投稿のみ (unlisted / private / direct は載せない)。
 export const getPublicTimelineNotes = async (page: PageParams): Promise<NoteObject[]> => {
 	const notes = await collectVisibleNotes({ page, isVisible: isNotePublicTimelineEligible });
@@ -383,35 +371,6 @@ export const getHomeTimelineItems = async (
 			}),
 		),
 	);
-	const ascending = isAscending(page);
-	const merged = chunkedResults.flat().sort((a, b) => {
-		return ascending ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id);
-	});
-	// チャンクを跨いだ重複ブーストの排除 (常に最新のブーストを優先)
-	const sortedDesc = [...merged].sort((a, b) => b.id.localeCompare(a.id));
-	const seenBoostedNoteIris = new Set<string>();
-	const keptAnnounceIds = new Set<string>();
-	for (const item of sortedDesc) {
-		if (item.type === 'announce') {
-			if (!seenBoostedNoteIris.has(item.targetNote.id)) {
-				seenBoostedNoteIris.add(item.targetNote.id);
-				keptAnnounceIds.add(item.id);
-			}
-		}
-	}
-	const deduplicated = merged.filter(
-		(item) => item.type === 'note' || keptAnnounceIds.has(item.id),
-	);
+	const deduplicated = dedupeBoosts(chunkedResults.flat());
 	return takePage(deduplicated, (entry) => entry.id, page);
-};
-
-// ホームタイムラインの Note。後方互換用。
-export const getHomeTimelineNotes = async (
-	viewer: APActor,
-	page: PageParams,
-): Promise<NoteObject[]> => {
-	const items = await getHomeTimelineItems(viewer, page);
-	return items
-		.filter((item): item is { type: 'note'; id: string; note: NoteObject } => item.type === 'note')
-		.map((item) => item.note);
 };

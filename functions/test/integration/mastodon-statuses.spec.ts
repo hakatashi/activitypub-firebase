@@ -829,8 +829,10 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			// Me favourites using the boost ID
 			const favRes = await postStatusAction(boostId, 'favourite', 'me-favourites-token');
 			expect(favRes.status).toBe(200);
-			expect(favRes.body.id).toBe(noteId);
+			expect(favRes.body.id).toBe(boostId);
 			expect(favRes.body.favourited).toBe(true);
+			expect(favRes.body.reblog.id).toBe(noteId);
+			expect(favRes.body.reblog.favourited).toBe(true);
 
 			// Original note is favourited
 			const getRes = await getStatus(noteId, 'me-token');
@@ -930,6 +932,13 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			const directPinRes = await postStatusAction(directStatusId, 'pin', 'me-accounts-token');
 			expect(directPinRes.status).toBe(422);
 			expect(directPinRes.body.error).toBe('You cannot pin direct posts');
+
+			// ブーストをピン留めしようとすると 422 (Mastodon 仕様: reblog は pin 不可)
+			const myBoostRes = await postStatusAction(myStatusId, 'reblog', 'me-statuses-token');
+			const myBoostId = myBoostRes.body.id;
+			const boostPinRes = await postStatusAction(myBoostId, 'pin', 'me-accounts-token');
+			expect(boostPinRes.status).toBe(422);
+			expect(boostPinRes.body.error).toBe('You cannot pin a reblog');
 
 			// 自分の公開投稿をピン留め
 			const pinRes = await postStatusAction(myStatusId, 'pin', 'me-accounts-token');

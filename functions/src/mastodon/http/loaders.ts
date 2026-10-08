@@ -41,6 +41,7 @@ export const loadStatus = async (id: unknown): Promise<NoteObject> => {
 };
 
 export interface VisibleStatusResult {
+	id: string;
 	note: NoteObject;
 	viewerFollowing: Set<string>;
 	isAnnounce: boolean;
@@ -59,10 +60,19 @@ export const loadVisibleStatus = async (
 	if (!parsed.success) {
 		throw new NotFoundError();
 	}
-	const iri = await getIriByMastodonId(parsed.data.id);
+	const statusId = parsed.data.id;
+	const iri = await getIriByMastodonId(statusId);
 	if (iri === undefined) {
 		throw new NotFoundError();
 	}
+	let cachedFollowing: Set<string> | undefined;
+	const getViewerFollowing = async (): Promise<Set<string>> => {
+		if (cachedFollowing === undefined) {
+			cachedFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+		}
+		return cachedFollowing;
+	};
+
 	const object = await apex.store.getObject(iri);
 	if (isAPNote(object)) {
 		const visibility = noteToVisibility(object);
@@ -70,11 +80,11 @@ export const loadVisibleStatus = async (
 		const needsFollowing =
 			options?.loadFollowing === true ||
 			(visibility === 'private' && viewer !== undefined && author !== viewer.id);
-		const viewerFollowing = new Set(needsFollowing && viewer ? await getFollowing(viewer) : []);
+		const viewerFollowing = needsFollowing ? await getViewerFollowing() : new Set<string>();
 		if (!isNoteVisibleTo(object, viewer?.id, viewerFollowing)) {
 			throw new NotFoundError();
 		}
-		return { note: object, viewerFollowing, isAnnounce: false };
+		return { id: statusId, note: object, viewerFollowing, isAnnounce: false };
 	}
 	const activity = await apex.store.getActivity(iri);
 	if (isAPAnnounce(activity)) {
@@ -83,8 +93,8 @@ export const loadVisibleStatus = async (
 		const needsFollowing =
 			options?.loadFollowing === true ||
 			(boostVisibility === 'private' && viewer !== undefined && boostAuthor !== viewer.id);
-		const viewerFollowing = new Set(needsFollowing && viewer ? await getFollowing(viewer) : []);
-		if (!isNoteVisibleTo(activity, viewer?.id, viewerFollowing)) {
+		const boostViewerFollowing = needsFollowing ? await getViewerFollowing() : new Set<string>();
+		if (!isNoteVisibleTo(activity, viewer?.id, boostViewerFollowing)) {
 			throw new NotFoundError();
 		}
 
@@ -101,13 +111,18 @@ export const loadVisibleStatus = async (
 		const targetNeedsFollowing =
 			options?.loadFollowing === true ||
 			(targetVisibility === 'private' && viewer !== undefined && targetAuthor !== viewer.id);
-		const targetViewerFollowing = new Set(
-			targetNeedsFollowing && viewer ? await getFollowing(viewer) : [],
-		);
+		const targetViewerFollowing = targetNeedsFollowing
+			? await getViewerFollowing()
+			: new Set<string>();
 		if (!isNoteVisibleTo(targetNote, viewer?.id, targetViewerFollowing)) {
 			throw new NotFoundError();
 		}
-		return { note: targetNote, viewerFollowing: targetViewerFollowing, isAnnounce: true };
+		return {
+			id: statusId,
+			note: targetNote,
+			viewerFollowing: targetViewerFollowing,
+			isAnnounce: true,
+		};
 	}
 	throw new NotFoundError();
 };

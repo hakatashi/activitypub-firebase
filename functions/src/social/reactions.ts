@@ -38,8 +38,28 @@ export const getReactionActivityIris = async (
 	return ref === undefined ? [] : ((await ref.get()).data()?.activityIris ?? []);
 };
 
-// actor が note に送った Like / Announce をすべて Undo する。Undo を outbox に積み、元のアクティビティを
-// Store 経由で消すので、射影も同じトランザクションで外れる (→ ADR-0084)。
+// actor が送った 1 件の Like / Announce アクティビティを Undo する。
+// Undo を outbox に積み、元のアクティビティを Store 経由で消す (射影も同じトランザクションで外れる → ADR-0084)。
+export const undoReactionActivity = async (
+	actor: APObject & APActor,
+	activity: APObject,
+	kind: ReactionKind,
+) => {
+	const actorId = actor.id;
+	const undo =
+		kind === 'favourites'
+			? await apex.buildActivity('Undo', actorId, toIdArray(activity.to), {
+					object: activity,
+				})
+			: await apex.buildActivity('Undo', actorId, toIdArray(activity.to), {
+					cc: toIdArray(activity.cc),
+					object: activity,
+				});
+	await apex.addToOutbox(actor, undo);
+	await apex.store.removeActivity(activity, actorId);
+};
+
+// actor が note に送った Like / Announce をすべて Undo する。
 // streams に元のアクティビティがない IRI は、射影から外すだけにする。
 export const undoReactions = async (
 	actor: APObject & APActor,
@@ -53,16 +73,6 @@ export const undoReactions = async (
 			await forgetReactionActivity(kind, note.id, activityIri);
 			continue;
 		}
-		const undo =
-			kind === 'favourites'
-				? await apex.buildActivity('Undo', actorId, toIdArray(note.attributedTo), {
-						object: activity,
-					})
-				: await apex.buildActivity('Undo', actorId, toIdArray(activity.to), {
-						cc: toIdArray(activity.cc),
-						object: activity,
-					});
-		await apex.addToOutbox(actor, undo);
-		await apex.store.removeActivity(activity, actorId);
+		await undoReactionActivity(actor, activity, kind);
 	}
 };

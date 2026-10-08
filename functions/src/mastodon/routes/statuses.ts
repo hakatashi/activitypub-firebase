@@ -5,7 +5,7 @@ import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
 import { getFollowing } from '../../social/follows.js';
-import { undoReactions } from '../../social/reactions.js';
+import { undoReactionActivity } from '../../social/reactions.js';
 import type { NoteObject } from '../../social/types.js';
 import { escapeFirestoreKey, mastodonDomain } from '../../firebase.js';
 import { reserveIdempotencyKey } from '../../idempotency.js';
@@ -323,7 +323,7 @@ router.delete(
 				text: htmlToPlainText(status.content),
 			};
 
-			await undoReactions(actor, targetNote, 'reblogs');
+			await undoReactionActivity(actor, activity, 'reblogs');
 
 			res.json(statusWithText);
 			return;

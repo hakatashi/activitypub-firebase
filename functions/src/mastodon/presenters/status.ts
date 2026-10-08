@@ -247,6 +247,47 @@ export const getViewerRelationships = async (
 	return { favourited, reblogged, bookmarked, pinned };
 };
 
+interface NoteResolutionContext {
+	accountsMap: Map<string | undefined, CamelToSnake<mastodon.v1.Account> | undefined>;
+	replyTargetMap: Map<string, NoteObject>;
+	mastodonIds: Map<string, string>;
+	accountIds: Map<string, string>;
+	viewerRelations: ViewerRelationships;
+}
+
+const buildStatusFromNote = (
+	note: NoteObject,
+	mastodonId: string,
+	context: NoteResolutionContext,
+): StatusEntity | undefined => {
+	const attributedTo = getAttributedTo(note);
+	if (attributedTo === undefined) {
+		return undefined;
+	}
+	const account = context.accountsMap.get(attributedTo);
+	if (account === undefined) {
+		return undefined;
+	}
+
+	const replyTarget = context.replyTargetMap.get(toIdArray(note.inReplyTo)[0] ?? '');
+	const replyTargetAuthor = replyTarget && getAttributedTo(replyTarget);
+	const replyTargetId = replyTarget && context.mastodonIds.get(replyTarget.id);
+	const replyTargetAccount = replyTargetAuthor
+		? context.accountsMap.get(replyTargetAuthor)
+		: undefined;
+	const inReplyTo =
+		replyTargetId !== undefined && replyTargetAccount !== undefined
+			? { id: replyTargetId, accountId: replyTargetAccount.id }
+			: undefined;
+
+	return noteObjectToStatus(note, account, mastodonId, {
+		inReplyTo,
+		meta: note._meta,
+		mentionIds: context.accountIds,
+		viewer: context.viewerRelations,
+	});
+};
+
 export const notesToStatuses = async (notes: NoteObject[], viewer?: APActor | undefined) => {
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
 
@@ -273,31 +314,19 @@ export const notesToStatuses = async (notes: NoteObject[], viewer?: APActor | un
 	const accounts = await userIdsToAccounts(authorIris, accountIds);
 	const accountsMap = new Map(zip(authorIris, accounts));
 
-	return validNotes.map((note) => {
-		const attributedTo = getAttributedTo(note);
-		assert(attributedTo !== undefined, 'attributedTo is undefined');
+	const context: NoteResolutionContext = {
+		accountsMap,
+		replyTargetMap,
+		mastodonIds,
+		accountIds,
+		viewerRelations,
+	};
 
-		const account = accountsMap.get(attributedTo);
-		assert(account !== undefined, 'account is undefined');
-
+	return validNotes.flatMap((note) => {
 		const mastodonId = mastodonIds.get(note.id);
 		assert(mastodonId !== undefined, 'mastodonId is undefined');
-
-		const replyTarget = replyTargetMap.get(toIdArray(note.inReplyTo)[0] ?? '');
-		const replyTargetAuthor = replyTarget && getAttributedTo(replyTarget);
-		const replyTargetId = replyTarget && mastodonIds.get(replyTarget.id);
-		const replyTargetAccount = replyTargetAuthor ? accountsMap.get(replyTargetAuthor) : undefined;
-		const inReplyTo =
-			replyTargetId !== undefined && replyTargetAccount !== undefined
-				? { id: replyTargetId, accountId: replyTargetAccount.id }
-				: undefined;
-
-		return noteObjectToStatus(note, account, mastodonId, {
-			inReplyTo,
-			meta: note._meta,
-			mentionIds: accountIds,
-			viewer: viewerRelations,
-		});
+		const status = buildStatusFromNote(note, mastodonId, context);
+		return status === undefined ? [] : [status];
 	});
 };
 
@@ -309,14 +338,7 @@ export const timelineItemsToStatuses = async (
 		return [];
 	}
 
-	const notes: NoteObject[] = [];
-	for (const item of items) {
-		if (item.type === 'note') {
-			notes.push(item.note);
-		} else {
-			notes.push(item.targetNote);
-		}
-	}
+	const notes = items.map((item) => (item.type === 'note' ? item.note : item.targetNote));
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
 
 	// リプライ先は手元に保存済みのものだけ解決する (リモートへは取りに行かない → ADR-0059)。
@@ -354,68 +376,30 @@ export const timelineItemsToStatuses = async (
 	const accounts = await userIdsToAccounts(authorIris, accountIds);
 	const accountsMap = new Map(zip(authorIris, accounts));
 
+	const context: NoteResolutionContext = {
+		accountsMap,
+		replyTargetMap,
+		mastodonIds,
+		accountIds,
+		viewerRelations,
+	};
+
 	const statuses: StatusEntity[] = [];
 	for (const item of items) {
 		if (item.type === 'note') {
-			const note = item.note;
-			const attributedTo = getAttributedTo(note);
-			if (attributedTo === undefined) {
-				continue;
+			const status = buildStatusFromNote(item.note, item.id, context);
+			if (status !== undefined) {
+				statuses.push(status);
 			}
-			const account = accountsMap.get(attributedTo);
-			if (account === undefined) {
-				continue;
-			}
-
-			const replyTarget = replyTargetMap.get(toIdArray(note.inReplyTo)[0] ?? '');
-			const replyTargetAuthor = replyTarget && getAttributedTo(replyTarget);
-			const replyTargetId = replyTarget && mastodonIds.get(replyTarget.id);
-			const replyTargetAccount = replyTargetAuthor ? accountsMap.get(replyTargetAuthor) : undefined;
-			const inReplyTo =
-				replyTargetId !== undefined && replyTargetAccount !== undefined
-					? { id: replyTargetId, accountId: replyTargetAccount.id }
-					: undefined;
-
-			statuses.push(
-				noteObjectToStatus(note, account, item.id, {
-					inReplyTo,
-					meta: note._meta,
-					mentionIds: accountIds,
-					viewer: viewerRelations,
-				}),
-			);
 		} else {
-			const targetNote = item.targetNote;
-			const targetAttributedTo = getAttributedTo(targetNote);
-			if (targetAttributedTo === undefined) {
-				continue;
-			}
-			const targetAccount = accountsMap.get(targetAttributedTo);
-			if (targetAccount === undefined) {
-				continue;
-			}
-
-			const targetMastodonId = mastodonIds.get(targetNote.id);
+			const targetMastodonId = mastodonIds.get(item.targetNote.id);
 			if (targetMastodonId === undefined) {
 				continue;
 			}
-
-			const replyTarget = replyTargetMap.get(toIdArray(targetNote.inReplyTo)[0] ?? '');
-			const replyTargetAuthor = replyTarget && getAttributedTo(replyTarget);
-			const replyTargetId = replyTarget && mastodonIds.get(replyTarget.id);
-			const replyTargetAccount = replyTargetAuthor ? accountsMap.get(replyTargetAuthor) : undefined;
-			const inReplyTo =
-				replyTargetId !== undefined && replyTargetAccount !== undefined
-					? { id: replyTargetId, accountId: replyTargetAccount.id }
-					: undefined;
-
-			const originalStatus = noteObjectToStatus(targetNote, targetAccount, targetMastodonId, {
-				inReplyTo,
-				meta: targetNote._meta,
-				mentionIds: accountIds,
-				viewer: viewerRelations,
-			});
-
+			const originalStatus = buildStatusFromNote(item.targetNote, targetMastodonId, context);
+			if (originalStatus === undefined) {
+				continue;
+			}
 			const announceActor = toIdArray(item.activity.actor)[0];
 			if (announceActor === undefined) {
 				continue;
@@ -424,7 +408,6 @@ export const timelineItemsToStatuses = async (
 			if (announceAccount === undefined) {
 				continue;
 			}
-
 			statuses.push(announceToStatus(item.activity, announceAccount, item.id, originalStatus));
 		}
 	}
@@ -488,15 +471,22 @@ export const getStatusById = async (
 		return undefined;
 	}
 
+	let cachedFollowing: Set<string> | undefined;
+	const getViewerFollowing = async (): Promise<Set<string>> => {
+		if (cachedFollowing === undefined) {
+			cachedFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+		}
+		return cachedFollowing;
+	};
+
 	const object = await apex.store.getObject(iri);
 	if (isAPNote(object)) {
 		const visibility = noteToVisibility(object);
 		const author = toIdArray(object.attributedTo)[0];
-		const viewerFollowing = new Set(
+		const viewerFollowing =
 			visibility === 'private' && viewer !== undefined && author !== viewer.id
-				? await getFollowing(viewer)
-				: [],
-		);
+				? await getViewerFollowing()
+				: new Set<string>();
 		if (!isNoteVisibleTo(object, viewer?.id, viewerFollowing)) {
 			return undefined;
 		}
@@ -508,11 +498,10 @@ export const getStatusById = async (
 	if (isAPAnnounce(activity)) {
 		const author = toIdArray(activity.actor)[0];
 		const visibility = noteToVisibility(activity);
-		const viewerFollowing = new Set(
+		const viewerFollowing =
 			visibility === 'private' && viewer !== undefined && author !== viewer.id
-				? await getFollowing(viewer)
-				: [],
-		);
+				? await getViewerFollowing()
+				: new Set<string>();
 		if (!isNoteVisibleTo(activity, viewer?.id, viewerFollowing)) {
 			return undefined;
 		}
@@ -529,11 +518,10 @@ export const getStatusById = async (
 
 		const targetVisibility = noteToVisibility(targetNote);
 		const targetAuthor = toIdArray(targetNote.attributedTo)[0];
-		const targetViewerFollowing = new Set(
+		const targetViewerFollowing =
 			targetVisibility === 'private' && viewer !== undefined && targetAuthor !== viewer.id
-				? await getFollowing(viewer)
-				: [],
-		);
+				? await getViewerFollowing()
+				: new Set<string>();
 		if (!isNoteVisibleTo(targetNote, viewer?.id, targetViewerFollowing)) {
 			return undefined;
 		}
