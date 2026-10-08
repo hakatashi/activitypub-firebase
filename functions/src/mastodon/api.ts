@@ -4,6 +4,7 @@ import accountsRouter from './routes/accounts.js';
 import appsRouter from './routes/apps.js';
 import instanceRouter from './routes/instance.js';
 import markersRouter from './routes/markers.js';
+import noteCollectionsRouter from './routes/noteCollections.js';
 import notificationsRouter from './routes/notifications.js';
 import profileRouter from './routes/profile.js';
 import searchRouter from './routes/search.js';
@@ -29,6 +30,7 @@ router.use(profileRouter);
 router.use(timelinesRouter);
 router.use(statusesRouter);
 router.use(statusActionsRouter);
+router.use(noteCollectionsRouter);
 router.use(notificationsRouter);
 router.use(appsRouter);
 

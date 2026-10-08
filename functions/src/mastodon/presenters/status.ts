@@ -22,7 +22,7 @@ import {
 	unescapeFirestoreKey,
 } from '../../firebase.js';
 import { getIriByMastodonId, getMastodonIds } from '../../mastodonId.js';
-import { UserInfos } from '../../schema.js';
+import { Bookmarks, UserInfos } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toIdArray, toStringValue } from '../../utils.js';
@@ -212,7 +212,7 @@ export const getViewerRelationships = async (
 
 	// 2. Bookmarks from userInfos/{actorKey}/bookmarks
 	const bookmarked = new Set<string>();
-	const bookmarksCollection = UserInfos.doc(actorKey).collection('bookmarks');
+	const bookmarksCollection = Bookmarks(actorKey);
 	const noteIdChunks = chunk(noteIris.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
 	const bookmarkSnaps = await Promise.all(
 		noteIdChunks.map((idChunk) =>

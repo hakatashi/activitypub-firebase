@@ -78,11 +78,24 @@ export interface ReactionRelation {
 	object: string;
 	// その Note への生きている Like / Announce の IRI
 	activityIris: string[];
+	// 一覧のカーソル。activityIris の Mastodon ID の最大値 (未採番なら null。→ ADR-0099)
+	cursorId: string | null;
 	createdAt: Timestamp;
 }
 
 export const ReactionRelations = (userInfoKey: FirestoreKey, kind: ReactionKind) =>
 	UserInfos.doc(userInfoKey).collection(kind) as CollectionReference<ReactionRelation>;
+
+// ブックマーク (→ ADR-0070, ADR-0099)。`userInfos/{ローカル actor}/bookmarks/{Note}`。
+export interface Bookmark {
+	noteIri: string;
+	// 一覧のカーソル。ブックマーク時刻から作る Mastodon ID 形式の値 (→ ADR-0099)
+	cursorId: string;
+	createdAt: Timestamp;
+}
+
+export const Bookmarks = (userInfoKey: FirestoreKey) =>
+	UserInfos.doc(userInfoKey).collection('bookmarks') as CollectionReference<Bookmark>;
 
 // 通知の射影 (→ ADR-0088)。`userInfos/{ローカル actor}/notifications/{アクティビティ IRI}`。
 export type NotificationType = 'mention' | 'favourite' | 'reblog' | 'follow';

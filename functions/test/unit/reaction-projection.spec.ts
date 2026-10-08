@@ -1,3 +1,4 @@
+import firebase from 'firebase-admin';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/apex.js';
@@ -91,8 +92,11 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 
 		const favourites = await getRelations('favourites');
 		expect([...favourites.keys()]).toEqual([note.id]);
-		expect(favourites.get(note.id)?.activityIris).toEqual(await streamActivityIris('Like'));
-		expect(await streamActivityIris('Like')).toHaveLength(1);
+		const likeIris = await streamActivityIris('Like');
+		expect(favourites.get(note.id)?.activityIris).toEqual(likeIris);
+		expect(likeIris).toHaveLength(1);
+		const likeIds = await getMastodonIds([{ iri: likeIris[0]!, published: undefined }]);
+		expect(favourites.get(note.id)?.cursorId).toBe(likeIds.get(likeIris[0]!));
 		await expectConsistent();
 		expect((await getStatus()).favourited).toBe(true);
 		expect((await getStatus('alice-token')).favourited).toBe(false);
@@ -141,6 +145,23 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		expect((await getRelations('favourites')).size).toBe(0);
 		expect(await streamActivityIris('Like')).toHaveLength(0);
 		expect(await streamActivityIris('Undo')).toHaveLength(2);
+	});
+
+	test('cursorId is the Mastodon ID of the newest live Like (ADR-0099)', async () => {
+		const likeIris: string[] = [];
+		for (let i = 0; i < 2; i++) {
+			const like = await apex.buildActivity('Like', me.id, [alice.id], { object: note.id });
+			await apex.addToOutbox(me, like);
+			likeIris.push(like.id);
+		}
+		const ids = await getMastodonIds(likeIris.map((iri) => ({ iri, published: undefined })));
+		const [olderId, newerId] = likeIris.map((iri) => ids.get(iri)!).toSorted();
+		expect((await getRelations('favourites')).get(note.id)?.cursorId).toBe(newerId);
+
+		const newerIri = likeIris.find((iri) => ids.get(iri) === newerId)!;
+		const newer = await apex.store.getActivity(newerIri);
+		await apex.store.removeActivity(newer!, me.id);
+		expect((await getRelations('favourites')).get(note.id)?.cursorId).toBe(olderId);
 	});
 
 	test('adding the Like to the liked collection does not change the projection', async () => {
@@ -229,13 +250,17 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		await ReactionRelations(escapeFirestoreKey(me.id), 'reblogs')
 			.doc(escapeFirestoreKey(other.id))
 			.set(expectedReblogs.get(note.id)!);
+		// ADR-0099 より前の、cursorId のない射影
+		await ReactionRelations(escapeFirestoreKey(me.id), 'reblogs')
+			.doc(escapeFirestoreKey(note.id))
+			.update({ cursorId: firebase.firestore.FieldValue.delete() });
 
 		expect(await rebuildReactionProjection({ dryRun: true })).toMatchObject({
-			written: 1,
+			written: 2,
 			deleted: 1,
 		});
 		expect(await rebuildReactionProjection()).toEqual({
-			written: 1,
+			written: 2,
 			deleted: 1,
 			favourites: 1,
 			reblogs: 1,
@@ -246,6 +271,7 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		expect(favourites.get(note.id)?.activityIris).toEqual(
 			expectedFavourites.get(note.id)?.activityIris,
 		);
+		expect(favourites.get(note.id)?.cursorId).toBe(expectedFavourites.get(note.id)?.cursorId);
 		expect(await getRelations('reblogs')).toEqual(expectedReblogs);
 
 		expect(await rebuildReactionProjection()).toMatchObject({ written: 0, deleted: 0 });

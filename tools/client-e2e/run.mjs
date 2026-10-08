@@ -98,6 +98,8 @@ const clients = {
 			followers: `${ELK_URL}/${SERVER}/@${me.acct}/followers`,
 			...(status && { status: `${ELK_URL}/${SERVER}/@${status.account.acct}/${status.id}` }),
 			'public-local': `${ELK_URL}/${SERVER}/public/local`,
+			favourites: `${ELK_URL}/favourites`,
+			bookmarks: `${ELK_URL}/bookmarks`,
 		}),
 		async post(page, text) {
 			await page.goto(`${ELK_URL}/home`);
@@ -219,6 +221,8 @@ const clients = {
 			profile: `${PHANPY_URL}/#/${SERVER}/a/${me.id}`,
 			...(status && { status: `${PHANPY_URL}/#/${SERVER}/s/${status.id}` }),
 			'public-local': `${PHANPY_URL}/#/${SERVER}/p/l`,
+			favourites: `${PHANPY_URL}/#/f`,
+			bookmarks: `${PHANPY_URL}/#/b`,
 		}),
 		async post(page, text) {
 			await page.goto(`${PHANPY_URL}/#/`);
@@ -337,6 +341,7 @@ const runClient = async (browser, name, context) => {
 		client: name,
 		server: SERVER,
 		pages: [],
+		paginatedCollections: { favourites: false, bookmarks: false },
 		post: null,
 		postMedia: null,
 		delete: null,
@@ -404,12 +409,14 @@ const runClient = async (browser, name, context) => {
 			requests.push(entry);
 		}
 		// スクロールで2ページ目を取りに行ったか(Link ヘッダが効いているか)を見るため
-		if (
-			url.host === SERVER &&
-			/\/api\/v1\/timelines\//.test(url.pathname) &&
-			url.searchParams.has('max_id')
-		) {
-			report.paginated = true;
+		if (url.host === SERVER && url.searchParams.has('max_id')) {
+			if (/\/api\/v1\/timelines\//.test(url.pathname)) {
+				report.paginated = true;
+			}
+			const collection = url.pathname.match(/^\/api\/v1\/(favourites|bookmarks)$/)?.[1];
+			if (collection !== undefined) {
+				report.paginatedCollections[collection] = true;
+			}
 		}
 	});
 
@@ -426,16 +433,16 @@ const runClient = async (browser, name, context) => {
 		await page.screenshot({ path: path.join(dir, file) });
 		report.pages.push({ label, url, screenshot: path.join(name, file) });
 
-		if (label === 'home') {
+		if (['home', 'favourites', 'bookmarks'].includes(label)) {
 			// 2ページ目の読み込みを誘発する
 			for (let i = 0; i < 5; i++) {
 				await page.mouse.wheel(0, 5000);
 				await page.waitForTimeout(1000);
 			}
 			await settle(page);
-			const scrolled = `${String(index++).padStart(2, '0')}-home-scrolled.png`;
+			const scrolled = `${String(index++).padStart(2, '0')}-${label}-scrolled.png`;
 			await page.screenshot({ path: path.join(dir, scrolled) });
-			report.pages.push({ label: 'home-scrolled', url, screenshot: path.join(name, scrolled) });
+			report.pages.push({ label: `${label}-scrolled`, url, screenshot: path.join(name, scrolled) });
 		}
 	}
 
@@ -571,7 +578,7 @@ try {
 			(report.profile && !report.profile.found ? 1 : 0);
 		failed ||= problems > 0;
 		console.log(
-			`\n== ${name}: ${problems === 0 ? 'OK' : `${problems} problem(s)`} (paginated: ${report.paginated})`,
+			`\n== ${name}: ${problems === 0 ? 'OK' : `${problems} problem(s)`} (paginated: ${report.paginated}, favourites: ${report.paginatedCollections.favourites}, bookmarks: ${report.paginatedCollections.bookmarks})`,
 		);
 		for (const r of report.failedRequests) {
 			console.log(`  [${r.page}] ${r.method} ${r.status ?? r.failure} ${r.url}`);

@@ -25,11 +25,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 `following_count` / `statuses_count` は 0、`created_at` は `2021-01-01` 固定
 (→ [ADR-0075](adr/0075-recompute-follow-counts.md) の「未対応」)。
 
-### ブックマーク・お気に入り一覧が空
-
-`POST /api/v1/statuses/:id/bookmark` は `userInfos/{actor}/bookmarks` に保存するが、
-`GET /api/v1/bookmarks` / `GET /api/v1/favourites` は空配列のスタブのまま。
-
 ### ハッシュタグのリンク先が 404
 
 投稿本文のハッシュタグは `https://<Mastodon ドメイン>/tags/<名前>` にリンクするが、

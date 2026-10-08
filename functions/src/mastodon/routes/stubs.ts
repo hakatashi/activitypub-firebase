@@ -44,14 +44,6 @@ router.get('/v1/domain_blocks', authRequired, scopeRequired('read:blocks'), (req
 	res.json([]);
 });
 
-router.get('/v1/bookmarks', authRequired, scopeRequired('read:bookmarks'), (req, res) => {
-	res.json([]);
-});
-
-router.get('/v1/favourites', authRequired, scopeRequired('read:favourites'), (req, res) => {
-	res.json([]);
-});
-
 router.get('/v1/follow_requests', authRequired, scopeRequired('read:follows'), (req, res) => {
 	res.json([]);
 });
