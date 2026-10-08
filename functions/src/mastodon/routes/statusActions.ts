@@ -4,12 +4,15 @@ import firebase from 'firebase-admin';
 import { apex } from '../../apex.js';
 import { escapeFirestoreKey } from '../../firebase.js';
 import { UserInfos } from '../../schema.js';
-import { undoReactions } from '../../social/reactions.js';
+import type { APObject } from '../../apex/index.js';
+import { getOrAssignMastodonId } from '../../mastodonId.js';
+import { getReactionActivityIris, undoReactions } from '../../social/reactions.js';
 import { getAttributedTo, toIdArray } from '../../utils.js';
 import { authRequired, scopeRequired } from '../http/auth.js';
 import { UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
-import { getStatusByIri, getViewerRelationships } from '../presenters/status.js';
+import { userIdsToAccounts } from '../presenters/account.js';
+import { announceToStatus, getStatusByIri, getViewerRelationships } from '../presenters/status.js';
 import { noteToVisibility } from '../statusAttributes.js';
 
 const router = express.Router();
@@ -67,20 +70,45 @@ router.post(
 		}
 
 		const viewerRelations = await getViewerRelationships(actor, [note]);
-		if (!viewerRelations.reblogged.has(note.id)) {
+		let activity: APObject | undefined;
+		if (viewerRelations.reblogged.has(note.id)) {
+			const activityIris = await getReactionActivityIris(actor.id, 'reblogs', note.id);
+			const latestIri = activityIris[activityIris.length - 1];
+			if (latestIri !== undefined) {
+				activity = await apex.store.getActivity(latestIri);
+			}
+			if (activity === undefined) {
+				const followersIri = toIdArray(actor.followers)[0];
+				const cc = [followersIri, ...toIdArray(note.attributedTo)].filter(
+					(item): item is string => typeof item === 'string' && item.length > 0,
+				);
+				activity = await apex.buildActivity('Announce', actor.id, [apex.consts.publicAddress], {
+					cc,
+					object: note.id,
+				});
+				await apex.addToOutbox(actor, activity);
+			}
+		} else {
 			const followersIri = toIdArray(actor.followers)[0];
 			const cc = [followersIri, ...toIdArray(note.attributedTo)].filter(
 				(item): item is string => typeof item === 'string' && item.length > 0,
 			);
-			const activity = await apex.buildActivity('Announce', actor.id, [apex.consts.publicAddress], {
+			activity = await apex.buildActivity('Announce', actor.id, [apex.consts.publicAddress], {
 				cc,
 				object: note.id,
 			});
 			await apex.addToOutbox(actor, activity);
 		}
 
-		const status = await getStatusByIri(note.id, actor);
-		assert(status !== undefined, 'status is undefined');
+		assert(activity !== undefined, 'activity is undefined');
+		const originalStatus = await getStatusByIri(note.id, actor);
+		assert(originalStatus !== undefined, 'status is undefined');
+
+		const [actorAccount] = await userIdsToAccounts([actor.id]);
+		assert(actorAccount !== undefined, 'actorAccount is undefined');
+
+		const announceMastodonId = await getOrAssignMastodonId(activity.id, activity.published);
+		const status = announceToStatus(activity, actorAccount, announceMastodonId, originalStatus);
 		res.json(status);
 	},
 );

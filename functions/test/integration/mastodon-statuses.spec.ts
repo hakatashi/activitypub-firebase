@@ -652,6 +652,26 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			const reblogRes = await postStatusAction(publicId, 'reblog', 'me-statuses-token');
 			expect(reblogRes.status).toBe(200);
 			expect(reblogRes.body.reblogged).toBe(true);
+			expect(reblogRes.body.id).not.toBe(publicId);
+			expect(reblogRes.body.account.username).toBe('hakatashi');
+			expect(reblogRes.body.content).toBe('<p>Public post to reblog</p>');
+			expect(reblogRes.body.reblog).toBeDefined();
+			expect(reblogRes.body.reblog.id).toBe(publicId);
+			expect(reblogRes.body.reblog.account.username).toBe('alice');
+			expect(reblogRes.body.reblog.reblogged).toBe(true);
+
+			// ブーストの ID で GET /api/v1/statuses/:id が引ける
+			const announceGetRes = await getStatus(reblogRes.body.id, 'me-token');
+			expect(announceGetRes.status).toBe(200);
+			expect(announceGetRes.body.id).toBe(reblogRes.body.id);
+			expect(announceGetRes.body.account.username).toBe('hakatashi');
+			expect(announceGetRes.body.reblog.id).toBe(publicId);
+
+			// 既にブースト済みの状態で再度 POST /reblog しても同じブースト Status が返る (冪等性)
+			const reblogRepeatRes = await postStatusAction(publicId, 'reblog', 'me-statuses-token');
+			expect(reblogRepeatRes.status).toBe(200);
+			expect(reblogRepeatRes.body.id).toBe(reblogRes.body.id);
+			expect(reblogRepeatRes.body.reblog.id).toBe(publicId);
 
 			// Streams に Announce アクティビティが保存されている
 			const announceStreams = await Streams.where('type', '==', 'Announce')

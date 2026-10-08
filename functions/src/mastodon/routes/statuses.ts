@@ -23,6 +23,7 @@ import { getValidBody, validate } from '../http/validation.js';
 import { instanceV2 } from '../instanceInformation.js';
 import {
 	getStatusAncestors,
+	getStatusById,
 	getStatusByIri,
 	getStatusDescendants,
 	notesToStatuses,
@@ -246,9 +247,7 @@ router.get('/v1/statuses/:id/context', async (req, res) => {
 
 router.get('/v1/statuses/:id', async (req, res) => {
 	const viewer = await getOptionalViewer(req, res);
-	const { note } = await loadVisibleStatus(req.params.id, viewer);
-
-	const [status] = await notesToStatuses([note], viewer);
+	const status = await getStatusById(req.params.id, viewer);
 	if (status === undefined) {
 		throw new NotFoundError();
 	}

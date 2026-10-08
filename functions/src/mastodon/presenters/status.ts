@@ -4,6 +4,8 @@ import firebase from 'firebase-admin';
 import { chunk, uniq, zip } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
+import type { APObject } from '../../apex/index.js';
+import { getFollowing } from '../../social/follows.js';
 import { getReactedNoteIris } from '../../social/reactions.js';
 import { getThreadAncestors, getThreadDescendants } from '../../social/threads.js';
 import {
@@ -18,14 +20,15 @@ import {
 	toFirestoreKey,
 	unescapeFirestoreKey,
 } from '../../firebase.js';
-import { getMastodonIds } from '../../mastodonId.js';
+import { getIriByMastodonId, getMastodonIds } from '../../mastodonId.js';
 import { UserInfos } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
-import { getAttributedTo, isAPNote, toIdArray, toStringValue } from '../../utils.js';
+import { getAttributedTo, isAPAnnounce, isAPNote, toIdArray, toStringValue } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
 import {
 	getMentionIris,
+	isNoteVisibleTo,
 	noteToCounts,
 	noteToEditedAt,
 	noteToEmojis,
@@ -60,10 +63,11 @@ export interface StatusContext {
 // また preview_url は仕様上 nullable であり、DELETE レスポンスでは本文プレーンテキストの `text` が含まれる。
 export type StatusEntity = Omit<
 	CamelToSnake<mastodon.v1.Status>,
-	'application' | 'media_attachments'
+	'application' | 'media_attachments' | 'reblog'
 > & {
 	application: CamelToSnake<mastodon.v1.Status>['application'] | null;
 	media_attachments: MediaAttachmentEntity[];
+	reblog: StatusEntity | null;
 	text?: string | null;
 };
 
@@ -110,6 +114,59 @@ export const noteObjectToStatus = (
 		mentions: noteToMentions(note, context.mentionIds),
 		tags: noteToHashtags(note),
 		emojis: noteToEmojis(note),
+		card: null,
+		poll: null,
+	};
+};
+
+// Announce (ブースト) を Mastodon の Status エンティティへ変換する (→ ADR-0095)。
+// oxlint-disable-next-line max-params
+export const announceToStatus = (
+	activity: APObject,
+	account: CamelToSnake<mastodon.v1.Account>,
+	id: string,
+	reblog: StatusEntity,
+): StatusEntity => {
+	assert(activity.id !== undefined, 'activity.id is undefined');
+	assert(
+		activity.published !== undefined && activity.published !== null,
+		'activity.published is missing',
+	);
+	const activityId = activity.id;
+	const published = activity.published;
+	return {
+		id,
+		created_at: published instanceof Date ? published.toISOString() : published.toString(),
+		edited_at: null,
+		in_reply_to_id: null,
+		in_reply_to_account_id: null,
+		sensitive: false,
+		spoiler_text: '',
+		visibility: noteToVisibility(activity as unknown as APNote),
+		language: null,
+		uri: activityId,
+		url: toIdArray(activity.url)[0] ?? activityId,
+		replies_count: 0,
+		reblogs_count: 0,
+		favourites_count: 0,
+		favourited: false,
+		reblogged: true,
+		muted: false,
+		bookmarked: false,
+		pinned: false,
+		content: reblog.content,
+		reblog,
+		application: isLocalIri(activityId)
+			? {
+					name: 'activitypub-firebase',
+					website: `https://${domain}`,
+				}
+			: null,
+		account,
+		media_attachments: [],
+		mentions: [],
+		tags: [],
+		emojis: [],
 		card: null,
 		poll: null,
 	};
@@ -287,4 +344,79 @@ export const getStatusDescendants = async (
 ): Promise<StatusEntity[]> => {
 	const descendants = await getThreadDescendants(note, viewer, viewerFollowing);
 	return notesToStatuses(descendants, viewer);
+};
+
+// Mastodon ID から Status エンティティを引く。Note または Announce に対応する (→ ADR-0095)。
+export const getStatusById = async (
+	id: string,
+	viewer?: APActor | undefined,
+): Promise<StatusEntity | undefined> => {
+	const iri = await getIriByMastodonId(id);
+	if (iri === undefined) {
+		return undefined;
+	}
+
+	const object = await apex.store.getObject(iri);
+	if (isAPNote(object)) {
+		const visibility = noteToVisibility(object);
+		const author = toIdArray(object.attributedTo)[0];
+		const viewerFollowing = new Set(
+			visibility === 'private' && viewer !== undefined && author !== viewer.id
+				? await getFollowing(viewer)
+				: [],
+		);
+		if (!isNoteVisibleTo(object, viewer?.id, viewerFollowing)) {
+			return undefined;
+		}
+		const [status] = await notesToStatuses([object], viewer);
+		return status;
+	}
+
+	const activity = await apex.store.getActivity(iri);
+	if (isAPAnnounce(activity)) {
+		const author = toIdArray(activity.actor)[0];
+		const visibility = noteToVisibility(activity as unknown as APNote);
+		const viewerFollowing = new Set(
+			visibility === 'private' && viewer !== undefined && author !== viewer.id
+				? await getFollowing(viewer)
+				: [],
+		);
+		if (!isNoteVisibleTo(activity as unknown as APNote, viewer?.id, viewerFollowing)) {
+			return undefined;
+		}
+
+		const targetIri = toIdArray(activity.object)[0];
+		if (targetIri === undefined) {
+			return undefined;
+		}
+
+		const targetNote = await apex.store.getObject(targetIri);
+		if (!isAPNote(targetNote)) {
+			return undefined;
+		}
+
+		const targetVisibility = noteToVisibility(targetNote);
+		const targetAuthor = toIdArray(targetNote.attributedTo)[0];
+		const targetViewerFollowing = new Set(
+			targetVisibility === 'private' && viewer !== undefined && targetAuthor !== viewer.id
+				? await getFollowing(viewer)
+				: [],
+		);
+		if (!isNoteVisibleTo(targetNote, viewer?.id, targetViewerFollowing)) {
+			return undefined;
+		}
+
+		const [originalStatus] = await notesToStatuses([targetNote], viewer);
+		if (originalStatus === undefined) {
+			return undefined;
+		}
+
+		assert(author !== undefined, 'activity actor is undefined');
+		const [account] = await userIdsToAccounts([author]);
+		assert(account !== undefined, 'account is undefined');
+
+		return announceToStatus(activity, account, id, originalStatus);
+	}
+
+	return undefined;
 };

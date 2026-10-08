@@ -371,10 +371,6 @@ const runClient = async (browser, name, context) => {
 		if (text.includes('Requires a user gesture when availability is')) {
 			return;
 		}
-		// Elk でブーストした際の既知の問題(docs/known-issues.md)
-		if (text.includes("Cannot read properties of null (reading 'id')")) {
-			return;
-		}
 		errors.push({ page: current, type: 'pageerror', text: redact(text) });
 	});
 	page.on('console', (msg) => {

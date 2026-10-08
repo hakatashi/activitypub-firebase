@@ -110,7 +110,7 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
   ただし同じ原因で、**`language` が Elk の表示言語(既定は英語)と異なる投稿は、ヘッドレス Chromium では本文が描画されない**
   (`useTranslation` が `Translator.availability()` を待ったまま進まない)。スクリーンショットで本文が空の投稿があっても、
   API の `content` が正しく `language` が `ja` などなら dev の不具合ではない。
-- **お気に入り・ブースト(`--interact` / `--write`)**: Elk は `main` 内の `Favorite` / `Boost` ボタン、Phanpy は `.status-deck .actions` の `.favourite-button` / `.reblog-button`(メニューの `Boost` まで押す)を操作する。Elk のブーストで出る `Cannot read properties of null (reading 'id')` は既知(`docs/known-issues.md`「タイムラインにブーストが出ない」)のため、エラー集計から除外している。
+- **お気に入り・ブースト(`--interact` / `--write`)**: Elk は `main` 内の `Favorite` / `Boost` ボタン、Phanpy は `.status-deck .actions` の `.favourite-button` / `.reblog-button`(メニューの `Boost` まで押す)を操作する。
 - **メディア添付投稿(`--media` / `--write`)**: Elk では Chromium の File System Access API (`showOpenFilePicker`) が Playwright の `filechooser` イベントを発火させないため、`<input type="file">` フォールバックを利用する。Phanpy では代替テキスト未入力時の confirm ダイアログを自動承認している。
 - **投稿の削除(`--delete` / `--write`)**: `--post` で投稿したステータスとは別に削除専用のステータスを作成し、UI から削除操作を行って API で 404 になることを検証する。
 - **この仕組みは OAuth の認可画面(アプリ登録 → 認可 → トークン交換)を通らない。**
