@@ -39,12 +39,13 @@ describe('hashtags', () => {
 						{ type: 'Hashtag', name: '#Foo' },
 						{ type: ['Hashtag'], name: ['#foo'] },
 						{ type: 'Hashtag', name: '#bar' },
+						{ type: 'as:Hashtag', name: ['#Baz'] },
 						{ type: 'Mention', name: '@baz' },
 						{ type: 'Hashtag' },
 						'https://example.com/tags/qux',
 					],
 				}),
-			).toEqual(['foo', 'bar']);
+			).toEqual(['foo', 'bar', 'baz']);
 		});
 
 		test('accepts a single tag object', () => {

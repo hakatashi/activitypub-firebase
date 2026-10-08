@@ -15,6 +15,8 @@ Firestore からはタグ名で引けない。`timelines/tag/:hashtag`・`tags/:
    `Store#saveObject` / `updateObject` が `tag` の `Hashtag` の `name` から計算し直す(部分更新では `tag` を更新するときだけ)。
    正規化は Mastodon の `HashtagNormalizer` に寄せて **NFKC → 先頭の `#` を除く → 小文字化 → 使えない文字を除く**。
    ASCII folding(`é` → `e`)はしない(日本語のタグには効かず、実装の手間に見合わない)。タグが無ければキーを持たない。
+   `Hashtag` は AS2 のコンテキストに無いので、受信した Note では apex の JSON-LD の正規化で `as:Hashtag` になる。
+   apex 自身の `isHashtag` と同じく両方を Hashtag とみなす(Status の `tags` も同様。受信した投稿の `tags` が空だった)。
 2. **クエリは `type == 'Note'` + `_meta.hashtags array-contains-any` + `_meta.published` の並べ替え。**
    `any[]` は同じ1本のクエリの `array-contains-any` に足す(合わせて 30 件まで)。`all[]` / `none[]`・`local` / `remote`・
    `only_media` は取得後にアプリ側で絞り、可視性の判定と同じく `collectVisibleNotes` の読み足しで埋める。

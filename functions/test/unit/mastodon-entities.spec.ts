@@ -11,6 +11,7 @@ import type { StatusViewerContext } from '../../src/mastodon/statusAttributes.js
 import {
 	getMentionIris,
 	isNoteVisibleTo,
+	noteToHashtags,
 	noteToMediaAttachments,
 	noteToMentions,
 	noteToViewerAttributes,
@@ -451,6 +452,28 @@ describe('isNoteVisibleTo', () => {
 		expect(isNoteVisibleTo(n, viewer)).toBe(true);
 		expect(isNoteVisibleTo(n, 'https://example.com/other')).toBe(false);
 		expect(isNoteVisibleTo(note([], []), author)).toBe(true);
+	});
+});
+
+describe('noteToHashtags', () => {
+	// 受信した Note の Hashtag は apex の JSON-LD の正規化で `as:Hashtag` になる (→ ADR-0103)。
+	test('accepts Hashtag and as:Hashtag', () => {
+		const note = {
+			tag: [
+				{ type: 'Hashtag', href: 'https://example.com/tags/foo', name: '#foo' },
+				{
+					type: 'as:Hashtag',
+					href: ['https://remote.example/tags/bar'],
+					name: ['#bar'],
+				},
+				{ type: 'Mention', href: 'https://remote.example/users/bob', name: '@bob' },
+			],
+		} as unknown as APNote;
+
+		expect(noteToHashtags(note)).toEqual([
+			{ name: 'foo', url: 'https://example.com/tags/foo' },
+			{ name: 'bar', url: 'https://remote.example/tags/bar' },
+		]);
 	});
 });
 

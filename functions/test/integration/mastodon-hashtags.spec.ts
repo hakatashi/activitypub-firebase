@@ -40,9 +40,9 @@ describe('Mastodon hashtag API (Issue #228)', () => {
 			attributedTo,
 			content: `note ${n}`,
 			published: new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString(),
-			// 受信した Note と同じく、apex が配列に展開した形でも入れておく。
+			// 受信した Note と同じく、apex が JSON-LD を正規化した形 (`as:Hashtag`、配列) で入れておく。
 			tag: tags.map((name) => ({
-				type: 'Hashtag',
+				type: 'as:Hashtag',
 				name: [`#${name}`],
 				href: [`https://remote.example/tags/${name}`],
 			})),

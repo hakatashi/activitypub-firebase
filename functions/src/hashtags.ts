@@ -20,13 +20,20 @@ export const toHashtagDisplayName = (name: string): string | undefined => {
 	return displayName.length === 0 ? undefined : displayName;
 };
 
+// `Hashtag` は AS2 のコンテキストに無い (Mastodon の拡張) ため、受信したオブジェクトでは apex の JSON-LD の
+// 正規化を経て `as:Hashtag` になる。apex 自身の判定 (apex/values.ts の isHashtag) と同じく両方を受け付ける。
+const HASHTAG_TYPES = new Set(['Hashtag', 'as:Hashtag']);
+
+export const isHashtagType = (type: unknown): boolean =>
+	toTypeArray(type).some((entry) => HASHTAG_TYPES.has(entry));
+
 // object の `tag` にある `Hashtag` の正規化したタグ名 (重複なし)。
 export const getObjectHashtags = (object: { tag?: unknown }): string[] => {
 	const names = toArray<unknown>(object.tag).flatMap((tag) => {
 		if (typeof tag !== 'object' || tag === null || !('type' in tag) || !('name' in tag)) {
 			return [];
 		}
-		if (!toTypeArray(tag.type).includes('Hashtag')) {
+		if (!isHashtagType(tag.type)) {
 			return [];
 		}
 		const name = toStringValue(tag.name);
