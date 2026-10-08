@@ -32,6 +32,7 @@ export interface MediaStorageDriver {
 	uploadPreview(
 		params: UploadPreviewParams,
 	): Promise<{ previewUrl: string; previewStoragePath: string }>;
+	delete?(paths: string[]): Promise<void>;
 }
 
 export const getMediaStorageBucketName = () => `${projectId}.firebasestorage.app`;
@@ -89,6 +90,23 @@ export const defaultMediaStorageDriver: MediaStorageDriver = {
 			previewStoragePath,
 		};
 	},
+
+	async delete(paths: string[]) {
+		const bucketName = getMediaStorageBucketName();
+		const bucket = getStorage(app).bucket(bucketName);
+		await Promise.all(
+			paths.map(async (storagePath) => {
+				if (!storagePath) {
+					return;
+				}
+				try {
+					await bucket.file(storagePath).delete({ ignoreNotFound: true });
+				} catch {
+					// 削除時のエラーは握りつぶす
+				}
+			}),
+		);
+	},
 };
 
 let currentMediaStorageDriver: MediaStorageDriver = defaultMediaStorageDriver;
@@ -104,3 +122,5 @@ export const resetMediaStorageDriver = () => {
 export const uploadMedia = (params: UploadMediaParams) => currentMediaStorageDriver.upload(params);
 export const uploadPreview = (params: UploadPreviewParams) =>
 	currentMediaStorageDriver.uploadPreview(params);
+export const deleteMediaFiles = (paths: string[]) =>
+	currentMediaStorageDriver.delete ? currentMediaStorageDriver.delete(paths) : Promise.resolve();

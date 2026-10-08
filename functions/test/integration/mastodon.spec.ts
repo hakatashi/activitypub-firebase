@@ -93,7 +93,7 @@ describe('mastodon', () => {
 				expect(response.body.api_versions).toEqual({ mastodon: 1 });
 				expect(response.body.configuration.urls.streaming).toBe('');
 				expect(response.body.configuration.statuses.max_characters).toBe(500);
-				expect(response.body.configuration.statuses.max_media_attachments).toBe(0);
+				expect(response.body.configuration.statuses.max_media_attachments).toBe(4);
 				expect(response.body.configuration.media_attachments.supported_mime_types).toEqual([
 					'image/jpeg',
 					'image/png',

@@ -1,5 +1,6 @@
 import express from 'express';
 import firebase from 'firebase-admin';
+import { logger } from 'firebase-functions/v2';
 import sharp from 'sharp';
 import { escapeFirestoreKey } from '../../firebase.js';
 import { assignMediaMastodonId } from '../../mastodonId.js';
@@ -21,6 +22,14 @@ const handleUploadMedia = async (req: express.Request, res: express.Response) =>
 	if (!file) {
 		throw new UnprocessableError('Validation failed: File must be present');
 	}
+
+	logger.info({
+		type: 'media_upload_processing',
+		actorId,
+		filename: file.filename,
+		mimeType: file.mimeType,
+		size: file.buffer.length,
+	});
 
 	const processed = await processImage(file.buffer, files.thumbnail?.buffer, fields.focus);
 	const id = await assignMediaMastodonId();
@@ -56,6 +65,13 @@ const handleUploadMedia = async (req: express.Request, res: express.Response) =>
 	};
 
 	await MediaAttachments.doc(escapeFirestoreKey(id)).set(record);
+
+	logger.info({
+		type: 'media_upload_success',
+		actorId,
+		id,
+		mimeType: processed.mimeType,
+	});
 
 	res.status(200).json(toMediaAttachmentEntity(record));
 };

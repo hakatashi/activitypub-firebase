@@ -347,13 +347,16 @@ export const formatMention = (
 };
 
 // 改行と段落の整形。空行で <p> 分割、単一改行は <br />。
-export const textToParagraphs = (html: string): string =>
-	html
-		.replaceAll('\r\n', '\n')
-		.trim()
+export const textToParagraphs = (html: string): string => {
+	const trimmed = html.replaceAll('\r\n', '\n').trim();
+	if (trimmed === '') {
+		return '';
+	}
+	return trimmed
 		.split(/\n(?:[^\S\r\n]*\n)+/)
 		.map((paragraph) => `<p>${paragraph.replaceAll('\n', '<br />')}</p>`)
 		.join('');
+};
 
 export const formatPostContent = (
 	text: string,

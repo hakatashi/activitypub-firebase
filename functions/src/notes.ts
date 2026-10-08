@@ -8,6 +8,24 @@ import { toIdArray } from './utils.js';
 
 export type NoteVisibility = 'public' | 'unlisted' | 'private' | 'direct';
 
+export interface NoteAttachment {
+	type: string;
+	mediaType?: string | undefined;
+	url: string;
+	name?: string | null | undefined;
+	blurhash?: string | undefined;
+	width?: number | undefined;
+	height?: number | undefined;
+	focalPoint?: [number, number] | undefined;
+	icon?:
+		| {
+				type: string;
+				url: string;
+		  }
+		| undefined;
+	[key: string]: unknown;
+}
+
 export interface NewNote {
 	// 先に採番しておきたい場合 (Idempotency-Key の予約) に指定する。省略時はここで採番する。
 	id?: string;
@@ -22,6 +40,7 @@ export interface NewNote {
 	summary?: string | undefined;
 	sensitive?: boolean;
 	language?: string | undefined;
+	attachment?: NoteAttachment[] | undefined;
 }
 
 // Mastodon の `ActivityPub::TagManager#to` / `#cc` と同じ割り当て。
@@ -57,13 +76,16 @@ const escapeHtml = (text: string) =>
 
 // プレーンテキストを Mastodon と同じ形の HTML にする。空行で段落を分け、改行は `<br />` にする。
 // リンク・メンション・ハッシュタグの自動リンクは行わない (→ ADR-0063)。
-export const plainTextToHtml = (text: string) =>
-	text
-		.replaceAll('\r\n', '\n')
-		.trim()
+export const plainTextToHtml = (text: string) => {
+	const trimmed = text.replaceAll('\r\n', '\n').trim();
+	if (trimmed === '') {
+		return '';
+	}
+	return trimmed
 		.split(/\n(?:[^\S\r\n]*\n)+/)
 		.map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll('\n', '<br />')}</p>`)
 		.join('');
+};
 
 export const publishNote = async (actor: APObject, note: NewNote) => {
 	const followersIri = toIdArray(actor.followers)[0];
@@ -90,6 +112,9 @@ export const publishNote = async (actor: APObject, note: NewNote) => {
 		...(note.summary === undefined ? {} : { summary: note.summary }),
 		...(note.sensitive === undefined ? {} : { sensitive: note.sensitive }),
 		...(inReplyTo === undefined || inReplyTo.length === 0 ? {} : { inReplyTo }),
+		...(note.attachment === undefined || note.attachment.length === 0
+			? {}
+			: { attachment: note.attachment }),
 	};
 
 	await apex.store.saveObject(object);

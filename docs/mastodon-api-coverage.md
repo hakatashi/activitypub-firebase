@@ -49,7 +49,7 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids` / `poll` / `scheduled_at` は 422。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)) |
+| POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids`(最大4件、画像のみ)対応、Note の `attachment` として配送。`poll` / `scheduled_at` は 422。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 | GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404。favourited / reblogged / bookmarked / pinned を認証ユーザーから判定、media_attachments を Note から導出 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)) |
 | DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却 |
 | GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |

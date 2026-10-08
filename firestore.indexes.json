@@ -137,6 +137,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "mediaAttachments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "statusIri",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

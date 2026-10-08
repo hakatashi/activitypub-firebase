@@ -78,6 +78,22 @@
       ],
       "rewrites": [
         {
+          "source": "/api/v1/media",
+          "function": "mediaUploadApi"
+        },
+        {
+          "source": "/api/v1/media/**",
+          "function": "mediaUploadApi"
+        },
+        {
+          "source": "/api/v2/media",
+          "function": "mediaUploadApi"
+        },
+        {
+          "source": "/api/v2/media/**",
+          "function": "mediaUploadApi"
+        },
+        {
           "source": "/api/**",
           "function": "mastodonApi"
         },
