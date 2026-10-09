@@ -403,6 +403,40 @@ describe('Mastodon notifications API (Issue #222, ADR-0089)', () => {
 				.set('Authorization', `Bearer ${TOKEN_READ}`);
 			expect(resMin.body.map((n: { id: string }) => n.id)).toEqual([ids[3], ids[2]]);
 		});
+
+		test('Link header cursors do not skip notifications beyond the returned page (ADR-0108)', async () => {
+			const ids: string[] = [];
+			for (let i = 1; i <= 7; i++) {
+				const id = buildMastodonId(1_700_000_000_000 + i * 1000, i);
+				ids.push(id);
+				await saveNotification({
+					id,
+					type: 'follow',
+					activityIri: `https://remote.example/activities/follow/${i}`,
+					accountIri: REMOTE_ALICE,
+					statusIri: null,
+					timestampMs: 1_700_000_000_000 + i * 1000,
+				});
+			}
+
+			const seen: string[] = [];
+			let url: string | undefined = '/api/v1/notifications?limit=2';
+			for (let i = 0; i < 10 && url !== undefined; i++) {
+				const res: request.Response = await request(mastodon)
+					.get(url)
+					.set('Authorization', `Bearer ${TOKEN_READ}`);
+				expect(res.status).toBe(200);
+				if (res.body.length === 0) {
+					break;
+				}
+				seen.push(...res.body.map((n: { id: string }) => n.id));
+				const next: string | undefined = /<(?<url>[^>]+)>; rel="next"/.exec(res.headers.link ?? '')
+					?.groups?.url;
+				url = next === undefined ? undefined : new URL(next).pathname + new URL(next).search;
+			}
+
+			expect(seen).toEqual([...ids].reverse());
+		});
 	});
 
 	describe('GET /api/v1/notifications/:id', () => {

@@ -46,7 +46,7 @@
 | GET | `/api/v1/accounts/:id/following` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/relationships` | ✅ | フォロー・被フォロー・申請中の実データから Relationship を返却 |
 | POST | `/api/v1/accounts/:id/follow` / `unfollow` | ✅ | Follow / Undo(Follow) 配送、Relationship 返却 |
-| GET | `/api/v1/preferences` | ✅ | `posting:default:*` は `update_credentials` の `source` で保存した値 (→ [ADR-0105](adr/0105-account-source-defaults.md))。`reading:*` は固定値 |
+| GET | `/api/v1/preferences` | ✅ | `posting:default:*` は `update_credentials` の `source` で保存した値 (→ [ADR-0105](adr/0105-account-source-defaults.md))。`reading:*` は固定値(`reading:expand:media: show_all`、`reading:expand:spoilers: true`。Elk / Phanpy は CW を開き、センシティブな画像をぼかさずに表示する) |
 
 ## 投稿
 
@@ -82,7 +82,7 @@
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
-| GET | `/api/v1/notifications` | ✅ | ページネーション、`types[]` / `exclude_types[]` / `account_id` 絞り込み、読み足し、破損データ安全除外 (→ [ADR-0089](adr/0089-notifications-api.md)) |
+| GET | `/api/v1/notifications` | ✅ | ページネーション、`types[]` / `exclude_types[]` / `account_id` 絞り込み、読み足し、破損データ安全除外 (→ [ADR-0089](adr/0089-notifications-api.md)、[ADR-0108](adr/0108-notification-cursor-up-to-filled-page.md)) |
 | GET | `/api/v1/notifications/:id` | ✅ | 1件取得。なければ 404 (→ [ADR-0089](adr/0089-notifications-api.md)) |
 | POST | `/api/v1/notifications/clear` | ✅ | 全件削除 (→ [ADR-0089](adr/0089-notifications-api.md)) |
 | POST | `/api/v1/notifications/:id/dismiss` | ✅ | 1件削除 (→ [ADR-0089](adr/0089-notifications-api.md)) |
@@ -92,6 +92,7 @@
 | GET, POST | `/api/v1/markers` | ✅ | `home` / `notifications` の既読位置、`version` による楽観ロック (競合時は 409 Conflict) (→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | GET | `/api/v2/search` | ✅ | アカウントは `preferredUsername` の前方一致と acct、URL は IRI(Mastodon 形式の HTML 用 URL を含む)で手元から引き、`resolve=true`(認証必須)なら WebFinger / AP の取得で解決する。投稿の全文検索はしない。`hashtags` は `q` を正規化したタグの完全一致で、その公開 Note が手元にあるときだけ返す (→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)、[ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | GET | `/api/v1/push/subscription` | ✅ | 404 を返す(Web Push 非対応) |
+| GET | `/api/v1/accounts/familiar_followers` | ✅ | 問い合わせた `id` ごとに空の `accounts` を返すスタブ(Phanpy のプロフィールが叩く) |
 
 ## 空配列スタブで足りるもの
 

@@ -56,4 +56,15 @@ router.get('/v1/accounts/:id/featured_tags', (req, res) => {
 	res.json([]);
 });
 
+// 共通のフォロワーは数えない。問い合わせた id ごとに空の一覧を返す (Phanpy のプロフィールが叩く)
+router.get(
+	'/v1/accounts/familiar_followers',
+	authRequired,
+	scopeRequired('read:follows'),
+	(req, res) => {
+		const ids = [req.query.id].flat().filter((id): id is string => typeof id === 'string');
+		res.json(ids.map((id) => ({ id, accounts: [] })));
+	},
+);
+
 export default router;

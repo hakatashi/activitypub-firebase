@@ -195,6 +195,17 @@ describe('mastodon', () => {
 						expect(response.status).toBe(401);
 					});
 				}
+
+				test('/api/v1/accounts/familiar_followers returns an empty list for each id', async () => {
+					const response = await request(mastodon)
+						.get('/api/v1/accounts/familiar_followers?id[]=1&id[]=2')
+						.set('Authorization', 'Bearer test-token');
+					expect(response.status).toBe(200);
+					expect(response.body).toEqual([
+						{ id: '1', accounts: [] },
+						{ id: '2', accounts: [] },
+					]);
+				});
 			});
 		});
 
