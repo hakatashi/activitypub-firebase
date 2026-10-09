@@ -126,3 +126,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0097](0097-search-and-resolve-remote-resources.md) | `search` でアカウントを検索し、`resolve=true` でリモートのアカウント・投稿を解決する | Accepted |
 | [0098](0098-sign-outgoing-get-with-local-actor.md) | 外部への GET をローカル actor の鍵で署名する | Accepted |
 | [0099](0099-graceful-fallback-for-unresolved-actors-in-timelines.md) | タイムライン構築時に未解決アクターを安全にフォールバックする | Accepted |
+| [0100](0100-cursor-for-favourites-and-bookmarks.md) | お気に入り・ブックマーク一覧のカーソルを `cursorId` として持つ | Accepted |

@@ -6,6 +6,7 @@ import { escapeFirestoreKey } from '../../firebase.js';
 import { UserInfos } from '../../schema.js';
 import type { APObject } from '../../apex/index.js';
 import { getOrAssignMastodonId } from '../../mastodonId.js';
+import { addBookmark, removeBookmark } from '../../social/bookmarks.js';
 import { getReactionActivityIris, undoReactions } from '../../social/reactions.js';
 import { getAttributedTo, toIdArray } from '../../utils.js';
 import { authRequired, scopeRequired } from '../http/auth.js';
@@ -142,12 +143,7 @@ router.post(
 		const actor = await loadViewer(res);
 		const { id, note } = await loadVisibleStatus(req.params.id, actor);
 
-		const actorKey = escapeFirestoreKey(actor.id);
-		const noteKey = escapeFirestoreKey(note.id);
-		await UserInfos.doc(actorKey)
-			.collection('bookmarks')
-			.doc(noteKey)
-			.set({ noteIri: note.id, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+		await addBookmark(actor.id, note.id);
 
 		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
@@ -163,9 +159,7 @@ router.post(
 		const actor = await loadViewer(res);
 		const { id, note } = await loadVisibleStatus(req.params.id, actor);
 
-		const actorKey = escapeFirestoreKey(actor.id);
-		const noteKey = escapeFirestoreKey(note.id);
-		await UserInfos.doc(actorKey).collection('bookmarks').doc(noteKey).delete();
+		await removeBookmark(actor.id, note.id);
 
 		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');

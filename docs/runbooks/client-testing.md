@@ -56,7 +56,8 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 ```
 
 巡回する画面: ログイン直後、ホーム(スクロールして2ページ目を読む)、通知、自分のプロフィール、
-フォロー中・フォロワー(Elk のみ)、ホームの先頭の投稿の詳細、ローカルタイムライン。
+フォロー中・フォロワー(Elk のみ)、ホームの先頭の投稿の詳細、ローカルタイムライン、
+お気に入り・ブックマーク(どちらもスクロールして2ページ目を読む)。
 
 問題が1件でもあれば終了コード 1 で終わる。両クライアントで1分半ほどかかる。
 
@@ -65,7 +66,8 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 標準出力に、クライアントごとの問題の一覧が出る。詳細は `tools/client-e2e/out/<client>/` にある。
 
 - `report.json`: `failedRequests`(4xx/5xx と接続失敗)、`errors`(ページの例外とコンソールのエラー)、
-  `paginated`(スクロールで `max_id` 付きのタイムライン取得が走ったか)、`post`(`--post` / `--write` の結果)、
+  `paginated`(スクロールで `max_id` 付きのタイムライン取得が走ったか)、
+  `paginatedCollections`(お気に入り・ブックマークで同じく2ページ目の取得が走ったか)、`post`(`--post` / `--write` の結果)、
   `postMedia`(`--media` / `--write` の結果)、`delete`(`--delete` / `--write` の結果)、
   `interact`(`--interact` / `--write` の結果)、`profile`(`--profile` / `--write` の結果)
 - `NN-<画面>.png`: 各画面のスクリーンショット。**Read で開いて目で確認する。**
@@ -75,6 +77,8 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 - [ ] `failedRequests` に dev(`mastodon-dev.hakatashi.com`)への **501 / 500 がない**
 - [ ] `errors` に `pageerror` がない(dev の応答の形がクライアントの想定と違うと出る)
 - [ ] `paginated: true`(`Link` ヘッダが効いている)
+- [ ] `paginatedCollections` の `favourites` / `bookmarks` が `true`(1ページ 20 件を超えるお気に入り・ブックマークがあるときだけ確かめられる。
+  足りなければ API で `POST /api/v1/statuses/:id/favourite` / `bookmark` を足す)
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
   - `04-profile.png`: アバター画像・ヘッダー画像、表示名、プロフィール文が正しく描画されている
 - [ ] `--post` (または `--write`) で `post: found in account statuses`

@@ -4,7 +4,8 @@ import { isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { localActorId } from '../localActor.js';
-import { ReactionRelations, Streams } from '../schema.js';
+import { getMastodonIds } from '../mastodonId.js';
+import { MastodonIdsByIri, ReactionRelations, Streams } from '../schema.js';
 import type { ReactionKind, ReactionRelation } from '../schema.js';
 import { isAPUndo, toIdArray, toTypeArray } from '../utils.js';
 
@@ -42,24 +43,57 @@ const contributionKey = ({ kind, object }: ReactionContribution) => `${kind} ${o
 const serverTimestamp = () =>
 	firebase.firestore.FieldValue.serverTimestamp() as unknown as ReactionRelation['createdAt'];
 
+// 生きているアクティビティの一覧から射影を組み立てる。一覧が空なら undefined (射影を消す)。
+// cursorId は一覧の Mastodon ID の最大値 (= 最新のアクティビティ。→ ADR-0100)。
+// oxlint-disable-next-line max-params
 const buildReactionRelation = (
 	object: string,
 	activityIris: string[],
+	mastodonIds: ReadonlyMap<string, string>,
 	createdAt: ReactionRelation['createdAt'],
-): ReactionRelation | undefined =>
-	activityIris.length === 0 ? undefined : { object, activityIris, createdAt };
+): ReactionRelation | undefined => {
+	if (activityIris.length === 0) {
+		return undefined;
+	}
+	const ids = activityIris.flatMap((iri) => {
+		const id = mastodonIds.get(iri);
+		return id === undefined ? [] : [id];
+	});
+	const cursorId = ids.length === 0 ? null : ids.reduce((a, b) => (a > b ? a : b));
+	return { object, activityIris, cursorId, createdAt };
+};
 
 const reactionRef = (kind: ReactionKind, object: string) =>
 	ReactionRelations(escapeFirestoreKey(localActorId), kind).doc(escapeFirestoreKey(object));
 
+// トランザクション内で、アクティビティ IRI の Mastodon ID を `mastodonIdsByIri` から引く。
+const readMastodonIdsInTransaction = async (transaction: Transaction, iris: string[]) => {
+	const result = new Map<string, string>();
+	const uniqueIris = [...new Set(iris)];
+	if (uniqueIris.length === 0) {
+		return result;
+	}
+	const docs = await transaction.getAll(
+		...uniqueIris.map((iri) => MastodonIdsByIri.doc(escapeFirestoreKey(iri))),
+	);
+	uniqueIris.forEach((iri, index) => {
+		const mastodonId = docs[index]?.data()?.mastodonId;
+		if (mastodonId !== undefined) {
+			result.set(iri, mastodonId);
+		}
+	});
+	return result;
+};
+
 // トランザクション内で射影の更新を準備する。読み取りだけをここで済ませ、書き込みは戻り値の関数で行う
 // (→ ADR-0082 の prepareFollowProjectionUpdate と同じ形)。
+// 戻り値の関数には、呼び出し側がこの後に採番したアクティビティの Mastodon ID を渡せる。
 // 射影への寄与が書き換え前後で変わらなければ、読み取りもせず undefined を返す。
 export const prepareReactionProjectionUpdate = async (
 	transaction: Transaction,
 	before: APObject | undefined,
 	after: APObject | undefined,
-): Promise<(() => void) | undefined> => {
+): Promise<((mastodonId?: string) => void) | undefined> => {
 	const beforeKeys = new Set(reactionContributions(before).map(contributionKey));
 	const afterContributions = reactionContributions(after);
 	const afterKeys = new Set(afterContributions.map(contributionKey));
@@ -80,8 +114,18 @@ export const prepareReactionProjectionUpdate = async (
 		ref: reactionRef(target.kind, target.object),
 	}));
 	const docs = await Promise.all(refs.map(({ ref }) => transaction.get(ref)));
+	// cursorId を決めるため、射影に残る他のアクティビティと、このアクティビティの Mastodon ID を読む。
+	// 同じ Note へのアクティビティが 1 件だけなら、このアクティビティの分だけになる。
+	const knownMastodonIds = await readMastodonIdsInTransaction(transaction, [
+		activityIri,
+		...docs.flatMap((doc) => doc.data()?.activityIris ?? []),
+	]);
 
-	return () => {
+	return (mastodonId) => {
+		const mastodonIds = new Map(knownMastodonIds);
+		if (mastodonId !== undefined) {
+			mastodonIds.set(activityIri, mastodonId);
+		}
 		refs.forEach(({ kind, object, ref }, index) => {
 			const existing = docs[index]?.data();
 			const activityIris = (existing?.activityIris ?? []).filter((iri) => iri !== activityIri);
@@ -91,6 +135,7 @@ export const prepareReactionProjectionUpdate = async (
 			const relation = buildReactionRelation(
 				object,
 				activityIris,
+				mastodonIds,
 				existing?.createdAt ?? serverTimestamp(),
 			);
 			if (relation === undefined) {
@@ -116,9 +161,11 @@ export const forgetReactionActivity = async (
 		if (existing === undefined || !existing.activityIris.includes(activityIri)) {
 			return;
 		}
+		const activityIris = existing.activityIris.filter((iri) => iri !== activityIri);
 		const relation = buildReactionRelation(
 			object,
-			existing.activityIris.filter((iri) => iri !== activityIri),
+			activityIris,
+			await readMastodonIdsInTransaction(transaction, activityIris),
 			existing.createdAt,
 		);
 		if (relation === undefined) {
@@ -149,12 +196,14 @@ export const rebuildReactionProjection = async ({ dryRun = false } = {}) => {
 	);
 
 	const projection = new Map<string, { kind: ReactionKind; object: string; iris: string[] }>();
+	const liveActivities: APObject[] = [];
 	for (const snapshot of activityDocs) {
 		for (const doc of snapshot.docs) {
 			const activity = doc.data();
 			if (undoneIris.has(activity.id)) {
 				continue;
 			}
+			liveActivities.push(activity);
 			for (const contribution of reactionContributions(activity)) {
 				const key = contributionKey(contribution);
 				const entry = projection.get(key) ?? { ...contribution, iris: [] };
@@ -163,6 +212,21 @@ export const rebuildReactionProjection = async ({ dryRun = false } = {}) => {
 			}
 		}
 	}
+
+	// cursorId 用の Mastodon ID (→ ADR-0100)。未採番なら採番する (ADR-0058 と同じ規則)。
+	// dry-run では採番せず、採番済みのものだけを使う。
+	const mastodonIds = dryRun
+		? await db.runTransaction(
+				(transaction) =>
+					readMastodonIdsInTransaction(
+						transaction,
+						liveActivities.map((activity) => activity.id),
+					),
+				{ readOnly: true },
+			)
+		: await getMastodonIds(
+				liveActivities.map((activity) => ({ iri: activity.id, published: activity.published })),
+			);
 
 	const userInfoKey = escapeFirestoreKey(localActorId);
 	const stats = { written: 0, deleted: 0, favourites: 0, reblogs: 0, skippedUndone: 0 };
@@ -183,12 +247,14 @@ export const rebuildReactionProjection = async ({ dryRun = false } = {}) => {
 			const relation = buildReactionRelation(
 				object,
 				iris.toSorted(),
+				mastodonIds,
 				existingRelation?.createdAt ?? serverTimestamp(),
 			);
 			stats[kind]++;
 			const unchanged =
 				existingRelation !== undefined &&
-				isEqual(existingRelation.activityIris.toSorted(), iris.toSorted());
+				isEqual(existingRelation.activityIris.toSorted(), iris.toSorted()) &&
+				existingRelation.cursorId === relation?.cursorId;
 			if (relation !== undefined && !unchanged) {
 				stats.written++;
 				if (!dryRun) {
