@@ -205,30 +205,32 @@ export const resolveActorIriByAccountId = async (
 	return getIriByMastodonId(accountId);
 };
 
-export const userIdsToAccounts = async (
+export const userIdsToAccountsMap = async (
 	userIds: string[],
 	knownAccountIds?: Map<string, string>,
-): Promise<CamelToSnake<mastodon.v1.Account>[]> => {
-	if (userIds.length === 0) {
-		return [];
+): Promise<Map<string, CamelToSnake<mastodon.v1.Account>>> => {
+	const uniqUserIds = uniq(userIds).filter((id) => id.length > 0);
+	if (uniqUserIds.length === 0) {
+		return new Map();
 	}
 
 	const [actorObjects, userInfoDocsChunks, accountIds] = await Promise.all([
-		getObjects(userIds),
+		getObjects(uniqUserIds),
 		Promise.all(
-			chunk(userIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
+			chunk(uniqUserIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
 				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
 			),
 		),
-		knownAccountIds ?? resolveAccountIds(userIds),
+		knownAccountIds ?? resolveAccountIds(uniqUserIds),
 	]);
 
-	const actorMap = new Map<string, APActor>(
-		actorObjects.map((actor) => {
-			assertIsAPActor(actor);
-			return [actor.id, actor];
-		}),
-	);
+	const actorMap = new Map<string, APActor>();
+	for (const actor of actorObjects) {
+		if (isAPActor(actor)) {
+			actorMap.set(actor.id, actor);
+		}
+	}
+
 	const userInfoMap = new Map<string, UserInfo>(
 		userInfoDocsChunks.flatMap((userInfos) =>
 			userInfos.docs.map(
@@ -237,17 +239,34 @@ export const userIdsToAccounts = async (
 		),
 	);
 
-	return Promise.all(
-		userIds.map((userId) => {
+	const resultMap = new Map<string, CamelToSnake<mastodon.v1.Account>>();
+	await Promise.all(
+		uniqUserIds.map(async (userId) => {
 			const actor = actorMap.get(userId);
-			assert(actor !== undefined, 'actor is undefined');
+			if (actor === undefined) {
+				return;
+			}
 
 			const userInfo = userInfoMap.get(userId);
 			const accountId = accountIds.get(userId);
 
-			return actorObjectToAccount(actor, userInfo, accountId);
+			const account = await actorObjectToAccount(actor, userInfo, accountId);
+			resultMap.set(userId, account);
 		}),
 	);
+
+	return resultMap;
+};
+
+export const userIdsToAccounts = async (
+	userIds: string[],
+	knownAccountIds?: Map<string, string>,
+): Promise<CamelToSnake<mastodon.v1.Account>[]> => {
+	const accountsMap = await userIdsToAccountsMap(userIds, knownAccountIds);
+	return userIds.flatMap((userId) => {
+		const account = accountsMap.get(userId);
+		return account === undefined ? [] : [account];
+	});
 };
 
 export const FOLLOWERS_PAGE_LIMITS = { defaultLimit: 40, maxLimit: 80 };
@@ -259,9 +278,11 @@ export const getFollowersPage = async (
 	page: PageParams = { limit: FOLLOWERS_PAGE_LIMITS.defaultLimit },
 ) => {
 	const pageEntries = await getFollowersPageEntries(actor, page);
+	const accountsMap = await userIdsToAccountsMap(pageEntries.map((entry) => entry.actorIri));
+	const validEntries = pageEntries.filter((entry) => accountsMap.has(entry.actorIri));
 	return {
-		accounts: await userIdsToAccounts(pageEntries.map((entry) => entry.actorIri)),
-		cursorIds: pageEntries.map((entry) => entry.cursorId),
+		accounts: validEntries.map((entry) => accountsMap.get(entry.actorIri)!),
+		cursorIds: validEntries.map((entry) => entry.cursorId),
 	};
 };
 
@@ -275,9 +296,11 @@ export const getFollowingPage = async (
 	page: PageParams = { limit: FOLLOWERS_PAGE_LIMITS.defaultLimit },
 ) => {
 	const pageEntries = await getFollowingPageEntries(actor, page);
+	const accountsMap = await userIdsToAccountsMap(pageEntries.map((entry) => entry.actorIri));
+	const validEntries = pageEntries.filter((entry) => accountsMap.has(entry.actorIri));
 	return {
-		accounts: await userIdsToAccounts(pageEntries.map((entry) => entry.actorIri)),
-		cursorIds: pageEntries.map((entry) => entry.cursorId),
+		accounts: validEntries.map((entry) => accountsMap.get(entry.actorIri)!),
+		cursorIds: validEntries.map((entry) => entry.cursorId),
 	};
 };
 

@@ -8,7 +8,7 @@ import { getObjects } from '../../store/objects.js';
 import type { NotificationRecord, NotificationType } from '../../schema.js';
 import type { CamelToSnake } from '../../utils.js';
 import { getAttributedTo, isAPActor, isAPNote } from '../../utils.js';
-import { resolveAccountIds, userIdsToAccounts } from './account.js';
+import { resolveAccountIds, userIdsToAccountsMap } from './account.js';
 import type { StatusEntity } from './status.js';
 import { notesToStatuses } from './status.js';
 
@@ -45,8 +45,7 @@ export const recordsToNotifications = async (
 	const validActors = actorObjects.filter(isAPActor);
 	const validActorIris = validActors.map((a) => a.id);
 	const validAccountIds = await resolveAccountIds(validActorIris);
-	const accounts = await userIdsToAccounts(validActorIris, validAccountIds);
-	const accountsMap = new Map(zip(validActorIris, accounts));
+	const accountsMap = await userIdsToAccountsMap(validActorIris, validAccountIds);
 
 	// 2. Note かつ Tombstone ではなく attributedTo があるもの
 	const rawNotes = noteObjects.filter(
