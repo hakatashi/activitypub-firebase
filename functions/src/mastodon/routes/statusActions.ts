@@ -9,10 +9,16 @@ import { getOrAssignMastodonId } from '../../mastodonId.js';
 import { addBookmark, removeBookmark } from '../../social/bookmarks.js';
 import { getReactionActivityIris, undoReactions } from '../../social/reactions.js';
 import { getAttributedTo, toIdArray } from '../../utils.js';
-import { authRequired, scopeRequired } from '../http/auth.js';
+import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
-import { userIdsToAccounts } from '../presenters/account.js';
+import {
+	FOLLOWERS_PAGE_LIMITS,
+	getReactedByPage,
+	userIdsToAccounts,
+} from '../presenters/account.js';
+import { parsePageParams } from '../pagination.js';
+import { setLinkHeader } from '../http/responses.js';
 import {
 	announceToStatus,
 	getStatusById,
@@ -226,5 +232,23 @@ router.post(
 		res.json(status);
 	},
 );
+
+// お気に入り / ブーストしたアカウントの一覧 (→ ADR-0101)。認証は任意で、Status が見えなければ 404。
+for (const [path, kind] of [
+	['favourited_by', 'favourites'],
+	['reblogged_by', 'reblogs'],
+] as const) {
+	router.get(`/v1/statuses/:id/${path}`, async (req, res) => {
+		const viewer = await getOptionalViewer(req, res);
+		const { note } = await loadVisibleStatus(req.params.id, viewer);
+		const { accounts, cursorIds } = await getReactedByPage(
+			note.id,
+			kind,
+			parsePageParams(req.query, FOLLOWERS_PAGE_LIMITS),
+		);
+		setLinkHeader(req, res, cursorIds);
+		res.json(accounts);
+	});
+}
 
 export default router;

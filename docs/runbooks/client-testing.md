@@ -111,6 +111,16 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 mastodon.social など Authorized Fetch のサーバーは署名付き GET が必要(→ [ADR-0098](../adr/0098-sign-outgoing-get-with-local-actor.md))。
 相手が dev の actor の公開鍵を取りに来るため、dev がコールドスタートだと初回は 5 秒のタイムアウトで空になることがある。
 
+## お気に入り・ブーストしたユーザー一覧(`favourited_by` / `reblogged_by`)の確認
+
+`run.mjs` は巡回しない。変えたときは、Playwright で次を確かめる(2026-10-09 に実施)。
+
+- 自前の `admin@mastodon-test.hakatashi.com` から自分の投稿をお気に入り・ブーストしておく
+  (リモートからの Like / Announce が一覧に出ることを確かめるため)。
+- Elk で投稿の詳細を開き、「…」メニューの「Show who reacted」(日本語 UI では「反応したユーザーを表示」)を押すと
+  ダイアログが開く。「Favorited By」「Boosted By」の両タブにアカウントが並び、続きの `max_id` 付きの取得が 200 で
+  「End of the list」になる。Elk の投稿詳細のお気に入り数・ブースト数はリンクではなく、このメニューからしか開けない。
+
 ## ハマりどころ
 
 - 自宅 LAN の DNS(NAS)は `hakatashi.com` をヘアピン DNS として持っている。Firebase Hosting を指すホスト名
