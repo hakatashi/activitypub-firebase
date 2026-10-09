@@ -240,10 +240,6 @@ router.get(
 			lastDoc = snap.docs.at(-1);
 
 			const records = snap.docs.map((d) => d.data());
-			for (const r of records) {
-				scannedIds.push(r.id);
-			}
-
 			const filteredRecords = records.filter((r) => {
 				if (types.length > 0 && !types.includes(r.type)) {
 					return false;
@@ -256,9 +252,21 @@ router.get(
 				}
 				return true;
 			});
+			const entities = new Map(
+				(await recordsToNotifications(filteredRecords, viewer)).map((e) => [e.id, e]),
+			);
 
-			const entities = await recordsToNotifications(filteredRecords, viewer);
-			collectedEntities.push(...entities);
+			// limit 件に達したらそこで読むのをやめる。読んだ範囲だけをカーソルにするため (→ ADR-0108)
+			for (const r of records) {
+				if (collectedEntities.length >= page.limit) {
+					break;
+				}
+				scannedIds.push(r.id);
+				const entity = entities.get(r.id);
+				if (entity !== undefined) {
+					collectedEntities.push(entity);
+				}
+			}
 
 			if (snap.size < fetchSize) {
 				break;
@@ -267,7 +275,7 @@ router.get(
 
 		const resultEntities = takePage(collectedEntities, (e) => e.id, page);
 
-		// Link ヘッダのカーソルはスキャンした範囲の端を採用する (→ ADR-0089)
+		// Link ヘッダのカーソルは、応答に含めるところまで読んだ範囲の端を採用する (→ ADR-0089, ADR-0108)
 		if (scannedIds.length > 0) {
 			const sortedScannedIds = [...scannedIds].sort((a, b) => b.localeCompare(a));
 			const newestScannedId = sortedScannedIds[0];
