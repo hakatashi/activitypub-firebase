@@ -8,6 +8,7 @@ import { LOCAL_ADMIN_EMAIL, LOCAL_USERNAME, localActorId } from '../localActor.j
 import { UserInfos } from '../schema.js';
 import { pickSafeHeaders, redactSensitiveBody } from '../utils.js';
 import apiRouter from './api.js';
+import defaultImagesRouter from './defaultImages.js';
 import oauthRouter from './oauth.js';
 import publicPagesRouter from './publicPages.js';
 
@@ -43,6 +44,9 @@ app.get('/nodeinfo/:version', nodeinfoCors, apex, apex.net.nodeInfo.get);
 app.get('/tags/:name', (req, res) => {
 	res.redirect(`https://elk.zone/${mastodonDomain}/tags/${encodeURIComponent(req.params.name)}`);
 });
+
+// 画像のない Account の `avatar` / `header` に返す既定画像 (→ ADR-0109)。
+app.use(defaultImagesRouter);
 
 // リンクプレビュー用の最小限の HTML (→ ADR-0107)。
 app.use(publicPagesRouter);

@@ -16,7 +16,7 @@ import {
 	noteToMentions,
 	noteToViewerAttributes,
 } from '../../src/mastodon/statusAttributes.js';
-import { domain } from '../../src/firebase.js';
+import { domain, mastodonDomain } from '../../src/firebase.js';
 import type { UserInfo } from '../../src/schema.js';
 import type { CamelToSnake } from '../../src/utils.js';
 
@@ -76,8 +76,9 @@ describe('actorObjectToAccount', () => {
 	});
 
 	// mastodon.v1.Account の avatar/header/note/discoverable は non-optional なので、
-	// icon/image/summary/discoverable を持たない actor でも空文字列/false で埋める必要がある
-	test('fills icon/image/summary/discoverable fields with empty defaults when absent', async () => {
+	// icon/image/summary/discoverable を持たない actor でも既定値で埋める必要がある。
+	// avatar/header は空文字列だとクライアントが壊れた画像を出すので既定画像の URL にする (→ ADR-0109)。
+	test('fills icon/image/summary/discoverable fields with defaults when absent', async () => {
 		const actor = {
 			id: 'https://example.com/activitypub/u/noicon',
 			type: 'Person',
@@ -86,10 +87,10 @@ describe('actorObjectToAccount', () => {
 		const account = await actorObjectToAccount(actor, userInfo);
 
 		expect(account).toMatchObject({
-			avatar: '',
-			avatar_static: '',
-			header: '',
-			header_static: '',
+			avatar: `https://${mastodonDomain}/avatars/original/missing.png`,
+			avatar_static: `https://${mastodonDomain}/avatars/original/missing.png`,
+			header: `https://${mastodonDomain}/headers/original/missing.png`,
+			header_static: `https://${mastodonDomain}/headers/original/missing.png`,
 			note: '',
 			discoverable: false,
 		});

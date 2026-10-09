@@ -20,6 +20,7 @@ import {
 } from '../../firebase.js';
 import { getIriByMastodonId, getMastodonIds, getOrAssignMastodonId } from '../../mastodonId.js';
 import { htmlToPlainText } from '../../notes.js';
+import { defaultAvatarUrl, defaultHeaderUrl } from '../defaultImages.js';
 import { Objects, UserInfo, UserInfos } from '../../schema.js';
 import type { DefaultPrivacy, ReactionKind } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
@@ -81,6 +82,9 @@ const remoteUserInfo = (actorObject: ApexObject | APActor): UserInfo => {
 	};
 };
 
+const nonEmptyString = (value: unknown) =>
+	typeof value === 'string' && value !== '' ? value : undefined;
+
 export const actorObjectToAccount = async (
 	actorObject: APActor,
 	userInfo?: UserInfo,
@@ -102,6 +106,9 @@ export const actorObjectToAccount = async (
 	} else if (typeof actor.url === 'string') {
 		url = actor.url;
 	}
+	// 画像がなければ既定画像の URL を返す。空文字列だとクライアントが壊れた画像を出す (→ ADR-0109)。
+	const avatar = nonEmptyString(actor.icon?.url) ?? defaultAvatarUrl;
+	const header = nonEmptyString(actor.image?.url) ?? defaultHeaderUrl;
 	const accountId =
 		id ?? userInfo?.id ?? (await getOrAssignMastodonId(actor.id, actorObject.published));
 
@@ -112,10 +119,10 @@ export const actorObjectToAccount = async (
 		acct: isLocal ? username : `${username}@${actorDomain}`,
 		display_name: actor.name ?? '',
 		url,
-		avatar: actor.icon?.url ?? '',
-		avatar_static: actor.icon?.url ?? '',
-		header: actor.image?.url ?? '',
-		header_static: actor.image?.url ?? '',
+		avatar,
+		avatar_static: avatar,
+		header,
+		header_static: header,
 		note: actor.summary ?? '',
 		discoverable: actor.discoverable ?? false,
 	};
