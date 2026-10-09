@@ -9,10 +9,11 @@ import { getFollowing } from '../../social/follows.js';
 import { getReactedNoteIris } from '../../social/reactions.js';
 import { getThreadAncestors, getThreadDescendants } from '../../social/threads.js';
 import {
-	getAccountNotes,
-	getHomeTimelineNotes,
+	getAccountTimelineItems,
+	getHomeTimelineItems,
 	getPublicTimelineNotes,
 } from '../../social/timelines.js';
+import type { TimelineItem } from '../../social/timelines.js';
 import type { NoteObject } from '../../social/types.js';
 import {
 	domain,
@@ -142,17 +143,17 @@ export const announceToStatus = (
 		in_reply_to_account_id: null,
 		sensitive: false,
 		spoiler_text: '',
-		visibility: noteToVisibility(activity as unknown as APNote),
+		visibility: noteToVisibility(activity),
 		language: null,
 		uri: activityId,
 		url: toIdArray(activity.url)[0] ?? activityId,
 		replies_count: 0,
 		reblogs_count: 0,
 		favourites_count: 0,
-		favourited: false,
-		reblogged: true,
+		favourited: reblog.favourited ?? false,
+		reblogged: reblog.reblogged ?? false,
 		muted: false,
-		bookmarked: false,
+		bookmarked: reblog.bookmarked ?? false,
 		pinned: false,
 		content: reblog.content,
 		reblog,
@@ -246,6 +247,47 @@ export const getViewerRelationships = async (
 	return { favourited, reblogged, bookmarked, pinned };
 };
 
+interface NoteResolutionContext {
+	accountsMap: Map<string | undefined, CamelToSnake<mastodon.v1.Account> | undefined>;
+	replyTargetMap: Map<string, NoteObject>;
+	mastodonIds: Map<string, string>;
+	accountIds: Map<string, string>;
+	viewerRelations: ViewerRelationships;
+}
+
+const buildStatusFromNote = (
+	note: NoteObject,
+	mastodonId: string,
+	context: NoteResolutionContext,
+): StatusEntity | undefined => {
+	const attributedTo = getAttributedTo(note);
+	if (attributedTo === undefined) {
+		return undefined;
+	}
+	const account = context.accountsMap.get(attributedTo);
+	if (account === undefined) {
+		return undefined;
+	}
+
+	const replyTarget = context.replyTargetMap.get(toIdArray(note.inReplyTo)[0] ?? '');
+	const replyTargetAuthor = replyTarget && getAttributedTo(replyTarget);
+	const replyTargetId = replyTarget && context.mastodonIds.get(replyTarget.id);
+	const replyTargetAccount = replyTargetAuthor
+		? context.accountsMap.get(replyTargetAuthor)
+		: undefined;
+	const inReplyTo =
+		replyTargetId !== undefined && replyTargetAccount !== undefined
+			? { id: replyTargetId, accountId: replyTargetAccount.id }
+			: undefined;
+
+	return noteObjectToStatus(note, account, mastodonId, {
+		inReplyTo,
+		meta: note._meta,
+		mentionIds: context.accountIds,
+		viewer: context.viewerRelations,
+	});
+};
+
 export const notesToStatuses = async (notes: NoteObject[], viewer?: APActor | undefined) => {
 	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
 
@@ -272,32 +314,105 @@ export const notesToStatuses = async (notes: NoteObject[], viewer?: APActor | un
 	const accounts = await userIdsToAccounts(authorIris, accountIds);
 	const accountsMap = new Map(zip(authorIris, accounts));
 
-	return validNotes.map((note) => {
-		const attributedTo = getAttributedTo(note);
-		assert(attributedTo !== undefined, 'attributedTo is undefined');
+	const context: NoteResolutionContext = {
+		accountsMap,
+		replyTargetMap,
+		mastodonIds,
+		accountIds,
+		viewerRelations,
+	};
 
-		const account = accountsMap.get(attributedTo);
-		assert(account !== undefined, 'account is undefined');
-
+	return validNotes.flatMap((note) => {
 		const mastodonId = mastodonIds.get(note.id);
 		assert(mastodonId !== undefined, 'mastodonId is undefined');
-
-		const replyTarget = replyTargetMap.get(toIdArray(note.inReplyTo)[0] ?? '');
-		const replyTargetAuthor = replyTarget && getAttributedTo(replyTarget);
-		const replyTargetId = replyTarget && mastodonIds.get(replyTarget.id);
-		const replyTargetAccount = replyTargetAuthor ? accountsMap.get(replyTargetAuthor) : undefined;
-		const inReplyTo =
-			replyTargetId !== undefined && replyTargetAccount !== undefined
-				? { id: replyTargetId, accountId: replyTargetAccount.id }
-				: undefined;
-
-		return noteObjectToStatus(note, account, mastodonId, {
-			inReplyTo,
-			meta: note._meta,
-			mentionIds: accountIds,
-			viewer: viewerRelations,
-		});
+		const status = buildStatusFromNote(note, mastodonId, context);
+		return status === undefined ? [] : [status];
 	});
+};
+
+export const timelineItemsToStatuses = async (
+	items: TimelineItem[],
+	viewer?: APActor | undefined,
+): Promise<StatusEntity[]> => {
+	if (items.length === 0) {
+		return [];
+	}
+
+	const notes = items.map((item) => (item.type === 'note' ? item.note : item.targetNote));
+	const validNotes = notes.filter((note) => getAttributedTo(note) !== undefined);
+
+	// リプライ先は手元に保存済みのものだけ解決する (リモートへは取りに行かない → ADR-0059)。
+	const replyTargetIris = uniq(validNotes.flatMap((note) => toIdArray(note.inReplyTo).slice(0, 1)));
+	const replyTargets = (await getObjects(replyTargetIris)).filter(isAPNote);
+	const replyTargetMap = new Map(replyTargets.map((target) => [target.id, target]));
+
+	const authorIris = uniq([
+		...validNotes.map((note) => getAttributedTo(note)),
+		...replyTargets.map((target) => getAttributedTo(target)),
+		...items
+			.filter(
+				(
+					item,
+				): item is {
+					type: 'announce';
+					id: string;
+					activity: APObject;
+					targetNote: NoteObject;
+				} => item.type === 'announce',
+			)
+			.map((item) => toIdArray(item.activity.actor)[0]),
+	]).filter((iri): iri is string => iri !== undefined);
+
+	const mentionIris = uniq(validNotes.flatMap((note) => getMentionIris(note)));
+	const allAccountIris = uniq([...authorIris, ...mentionIris]);
+
+	const [accountIds, mastodonIds, viewerRelations] = await Promise.all([
+		resolveAccountIds(allAccountIris),
+		getMastodonIds(
+			[...validNotes, ...replyTargets].map((note) => ({ iri: note.id, published: note.published })),
+		),
+		getViewerRelationships(viewer, validNotes),
+	]);
+	const accounts = await userIdsToAccounts(authorIris, accountIds);
+	const accountsMap = new Map(zip(authorIris, accounts));
+
+	const context: NoteResolutionContext = {
+		accountsMap,
+		replyTargetMap,
+		mastodonIds,
+		accountIds,
+		viewerRelations,
+	};
+
+	const statuses: StatusEntity[] = [];
+	for (const item of items) {
+		if (item.type === 'note') {
+			const status = buildStatusFromNote(item.note, item.id, context);
+			if (status !== undefined) {
+				statuses.push(status);
+			}
+		} else {
+			const targetMastodonId = mastodonIds.get(item.targetNote.id);
+			if (targetMastodonId === undefined) {
+				continue;
+			}
+			const originalStatus = buildStatusFromNote(item.targetNote, targetMastodonId, context);
+			if (originalStatus === undefined) {
+				continue;
+			}
+			const announceActor = toIdArray(item.activity.actor)[0];
+			if (announceActor === undefined) {
+				continue;
+			}
+			const announceAccount = accountsMap.get(announceActor);
+			if (announceAccount === undefined) {
+				continue;
+			}
+			statuses.push(announceToStatus(item.activity, announceAccount, item.id, originalStatus));
+		}
+	}
+
+	return statuses;
 };
 
 export const STATUS_PAGE_LIMITS = { defaultLimit: 20, maxLimit: 40 };
@@ -308,16 +423,16 @@ export const getAccountStatuses = async (
 	actorId: string,
 	viewer: APActor | undefined,
 	page: PageParams,
-	options: { pinned?: boolean } = {},
-) => notesToStatuses(await getAccountNotes(actorId, viewer, page, options), viewer);
+	options: { pinned?: boolean; excludeReblogs?: boolean } = {},
+) => timelineItemsToStatuses(await getAccountTimelineItems(actorId, viewer, page, options), viewer);
 
 // 公開タイムライン。public な投稿のみ (unlisted / private / direct は載せない)。
 export const getPublicTimeline = async (page: PageParams, viewer?: APActor | undefined) =>
 	notesToStatuses(await getPublicTimelineNotes(page), viewer);
 
-// ホームタイムライン。自分の投稿 + フォロー中の相手の投稿のうち、閲覧権限のあるもの。
+// ホームタイムライン。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
 export const getHomeTimeline = async (viewer: APActor, page: PageParams) =>
-	notesToStatuses(await getHomeTimelineNotes(viewer, page), viewer);
+	timelineItemsToStatuses(await getHomeTimelineItems(viewer, page), viewer);
 
 // 作成・重複時の応答に使う。Note でなければ (まだ保存されていなければ) undefined。
 export const getStatusByIri = async (iri: string, viewer?: APActor | undefined) => {
@@ -356,15 +471,22 @@ export const getStatusById = async (
 		return undefined;
 	}
 
+	let cachedFollowing: Set<string> | undefined;
+	const getViewerFollowing = async (): Promise<Set<string>> => {
+		if (cachedFollowing === undefined) {
+			cachedFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+		}
+		return cachedFollowing;
+	};
+
 	const object = await apex.store.getObject(iri);
 	if (isAPNote(object)) {
 		const visibility = noteToVisibility(object);
 		const author = toIdArray(object.attributedTo)[0];
-		const viewerFollowing = new Set(
+		const viewerFollowing =
 			visibility === 'private' && viewer !== undefined && author !== viewer.id
-				? await getFollowing(viewer)
-				: [],
-		);
+				? await getViewerFollowing()
+				: new Set<string>();
 		if (!isNoteVisibleTo(object, viewer?.id, viewerFollowing)) {
 			return undefined;
 		}
@@ -375,13 +497,12 @@ export const getStatusById = async (
 	const activity = await apex.store.getActivity(iri);
 	if (isAPAnnounce(activity)) {
 		const author = toIdArray(activity.actor)[0];
-		const visibility = noteToVisibility(activity as unknown as APNote);
-		const viewerFollowing = new Set(
+		const visibility = noteToVisibility(activity);
+		const viewerFollowing =
 			visibility === 'private' && viewer !== undefined && author !== viewer.id
-				? await getFollowing(viewer)
-				: [],
-		);
-		if (!isNoteVisibleTo(activity as unknown as APNote, viewer?.id, viewerFollowing)) {
+				? await getViewerFollowing()
+				: new Set<string>();
+		if (!isNoteVisibleTo(activity, viewer?.id, viewerFollowing)) {
 			return undefined;
 		}
 
@@ -397,11 +518,10 @@ export const getStatusById = async (
 
 		const targetVisibility = noteToVisibility(targetNote);
 		const targetAuthor = toIdArray(targetNote.attributedTo)[0];
-		const targetViewerFollowing = new Set(
+		const targetViewerFollowing =
 			targetVisibility === 'private' && viewer !== undefined && targetAuthor !== viewer.id
-				? await getFollowing(viewer)
-				: [],
-		);
+				? await getViewerFollowing()
+				: new Set<string>();
 		if (!isNoteVisibleTo(targetNote, viewer?.id, targetViewerFollowing)) {
 			return undefined;
 		}

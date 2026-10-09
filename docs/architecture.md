@@ -130,7 +130,7 @@ apex の `IApexStore` インターフェースを Firestore で実装した `Sto
 | `updates.ts` | `Store` の更新系メソッドが共有する内部処理(`_meta` の引き継ぎ、`streams` の埋め込みコピーの差し替え) |
 | `objects.ts` | `objects` を IRI の一覧でまとめて引く `getObjects` |
 | `notes.ts` | タイムライン用の `getNotes`、スレッド用の `getReplies` |
-| `activities.ts` | `streams` に対する apex の契約外の操作(`markActivityPublic`) |
+| `activities.ts` | `streams` に対する apex の契約外の操作(`markActivityPublic`、タイムライン用の `getAnnounces`) |
 | `deliveries.ts` | Cloud Tasks への配送タスクの発行と、配送結果の記録・取得(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `limits.ts` | `FIRESTORE_IN_QUERY_LIMIT` などの Firestore の制約に関する定数 |
 
@@ -188,6 +188,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.likesCount` / `_meta.sharesCount` | `objects` | `number` | `Like` / `Announce` の受信カウント。apex 本体の likes/shares コレクション機構は activity (streams) 専用で Note のような object を対象にすると機能しないため使わず、`onStreamCreated` トリガーが対象オブジェクトへ直接インクリメント/デクリメントする (→ [ADR-0037](adr/0037-denormalize-like-announce-counts.md))。 |
 | `_meta.published` | `objects` | `string` | タイムラインの並べ替え・範囲指定用の `published`。ミリ秒つき ISO 8601 (UTC) で、Mastodon ID のタイムスタンプと同じ規則で決める(未来は現在時刻に丸める)。AP の `published` は apex の `fromJSONLD` が配列に展開する (`compactArrays: false`) ため Firestore のクエリには使えず、`Store#saveObject` / `updateObject` が非正規化して書く。既存データの再計算は `functions/bin/backfillPublishedMeta.ts` (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。 |
 | `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
+| `_meta.actor` / `_meta.published` | `streams` (Announce) | `string` | タイムライン検索用に、Announce アクティビティの actor と published を文字列に正規化した写し。`Store#saveActivity` で保存時に非正規化して書く。既存データは `functions/bin/backfillActivityQueryMeta.ts` (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
 
@@ -245,7 +246,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | ファイル | 役割 |
 |---|---|
 | `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、相手への代表の Follow `getFollowIri`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
-| `timelines.ts` | Note コレクションのカーソル走査(`collectVisibleNotes`)、アカウント投稿・公開・ホームタイムラインの Note 収集 |
+| `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ホームタイムラインの収集(重複ブースト排除・可視性判定を含む) |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
@@ -263,7 +264,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `api.ts` | `/api/**` のルーター。CORS、`routes/` の各ルーターの登録、404 フォールバックとエラーハンドラ |
 | `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `accounts` / `timelines` / `statuses` / `statusActions` / `apps`) |
 | `presenters/account.ts` | AP actor → Account / CredentialAccount / Relationship の変換と、アカウント ID の解決 |
-| `presenters/status.ts` | Note → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
+| `presenters/status.ts` | Note / Announce → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
 | `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `getOptionalViewer`)と有効なスコープの一覧 |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |
@@ -284,8 +285,8 @@ API で露出する Status などの ID は AP IRI とは別に採番した、�
 コレクション系エンドポイント(`timelines/public`・`timelines/home`・`accounts/:id/statuses`・`accounts/:id/followers`・`accounts/:id/following`)は
 `max_id` / `since_id` / `min_id` / `limit` でページングし、`Link` ヘッダ(`next` / `prev`)で次のページを示す
 (`Access-Control-Expose-Headers: Link` を付ける)。カーソルは Mastodon ID で、応答は常に新しい順。
-Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [_meta.attributedTo +] _meta.published` の昇順・降順の複合インデックス)、
-可視性の判定と ID の厳密な比較は取得後にアプリケーション側で行う。followers / following のカーソルは Follow アクティビティの Mastodon ID
+Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [_meta.attributedTo +] _meta.published` の昇順・降順、および Announce 用の `type + _meta.actor + _meta.published` 複合インデックス)、
+可視性の判定と ID の厳密な比較は取得後にアプリケーション側で行う。ホームタイムラインとアカウント投稿一覧では Note と Announce をそれぞれ独立カーソルで取得して Mastodon ID 順にマージし、同一 Note IRI の重複ブーストは最新優先で排除する(→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。followers / following のカーソルは Follow アクティビティの Mastodon ID
 (→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md))。
 
 投稿(`POST /api/v1/statuses`)と管理者用の `/activitypub/createPost` は、どちらも `functions/src/notes.ts` の
@@ -295,8 +296,8 @@ Mastodon と同じ規則で決め、リプライ先の投稿者を宛先に加�
 (→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md))。
 
 個別投稿の取得(`GET /api/v1/statuses/:id`)・削除(`DELETE /api/v1/statuses/:id`)・スレッド表示(`GET /api/v1/statuses/:id/context`)は
-Mastodon ID から Note を引いて処理する。削除時は Note を Tombstone 化して `Delete` を outbox に積み、
-`onStreamCreated` で `statuses_count` を減算する。context は手元に存在する Note のみ `inReplyTo` を祖先方向(最大40件)・
+Mastodon ID から Note または Announce を引いて処理する。Note 削除時は Tombstone 化して `Delete` を outbox に積み、
+`onStreamCreated` で `statuses_count` を減算する。自分のブースト (Announce) の ID が渡された場合はブーストを取り消す (unreblog、→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。context は手元に存在する Note のみ `inReplyTo` を祖先方向(最大40件)・
 子返信方向(DFS、深さ20・件数60上限、`type + _meta.inReplyTo + _meta.published` 複合インデックス)に探索し、
 循環参照を防ぎつつ可視性フィルタを通す(→ [ADR-0064](adr/0064-get-delete-statuses-and-context.md))。
 

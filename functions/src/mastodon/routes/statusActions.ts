@@ -12,7 +12,12 @@ import { authRequired, scopeRequired } from '../http/auth.js';
 import { UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
 import { userIdsToAccounts } from '../presenters/account.js';
-import { announceToStatus, getStatusByIri, getViewerRelationships } from '../presenters/status.js';
+import {
+	announceToStatus,
+	getStatusById,
+	getStatusByIri,
+	getViewerRelationships,
+} from '../presenters/status.js';
 import { noteToVisibility } from '../statusAttributes.js';
 
 const router = express.Router();
@@ -23,7 +28,7 @@ router.post(
 	scopeRequired('write:favourites'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id, actor);
+		const { id, note } = await loadVisibleStatus(req.params.id, actor);
 
 		const viewerRelations = await getViewerRelationships(actor, [note]);
 		if (!viewerRelations.favourited.has(note.id)) {
@@ -34,7 +39,7 @@ router.post(
 			await apex.addToOutbox(actor, activity);
 		}
 
-		const status = await getStatusByIri(note.id, actor);
+		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
 		res.json(status);
 	},
@@ -46,11 +51,11 @@ router.post(
 	scopeRequired('write:favourites'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id, actor);
+		const { id, note } = await loadVisibleStatus(req.params.id, actor);
 
 		await undoReactions(actor, note, 'favourites');
 
-		const status = await getStatusByIri(note.id, actor);
+		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
 		res.json(status);
 	},
@@ -135,7 +140,7 @@ router.post(
 	scopeRequired('write:bookmarks'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id, actor);
+		const { id, note } = await loadVisibleStatus(req.params.id, actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);
@@ -144,7 +149,7 @@ router.post(
 			.doc(noteKey)
 			.set({ noteIri: note.id, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
 
-		const status = await getStatusByIri(note.id, actor);
+		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
 		res.json(status);
 	},
@@ -156,13 +161,13 @@ router.post(
 	scopeRequired('write:bookmarks'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id, actor);
+		const { id, note } = await loadVisibleStatus(req.params.id, actor);
 
 		const actorKey = escapeFirestoreKey(actor.id);
 		const noteKey = escapeFirestoreKey(note.id);
 		await UserInfos.doc(actorKey).collection('bookmarks').doc(noteKey).delete();
 
-		const status = await getStatusByIri(note.id, actor);
+		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
 		res.json(status);
 	},
@@ -174,7 +179,11 @@ router.post(
 	scopeRequired('write:accounts'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id, actor);
+		const { id, note, isAnnounce } = await loadVisibleStatus(req.params.id, actor);
+
+		if (isAnnounce) {
+			throw new UnprocessableError('You cannot pin a reblog');
+		}
 
 		if (getAttributedTo(note) !== actor.id) {
 			throw new UnprocessableError('You can only pin your own posts');
@@ -198,7 +207,7 @@ router.post(
 			.doc(noteKey)
 			.set({ noteIri: note.id, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
 
-		const status = await getStatusByIri(note.id, actor);
+		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
 		res.json(status);
 	},
@@ -210,13 +219,15 @@ router.post(
 	scopeRequired('write:accounts'),
 	async (req, res) => {
 		const actor = await loadViewer(res);
-		const { note } = await loadVisibleStatus(req.params.id, actor);
+		const { id, note, isAnnounce } = await loadVisibleStatus(req.params.id, actor);
 
-		const actorKey = escapeFirestoreKey(actor.id);
-		const noteKey = escapeFirestoreKey(note.id);
-		await UserInfos.doc(actorKey).collection('pins').doc(noteKey).delete();
+		if (!isAnnounce) {
+			const actorKey = escapeFirestoreKey(actor.id);
+			const noteKey = escapeFirestoreKey(note.id);
+			await UserInfos.doc(actorKey).collection('pins').doc(noteKey).delete();
+		}
 
-		const status = await getStatusByIri(note.id, actor);
+		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
 		res.json(status);
 	},

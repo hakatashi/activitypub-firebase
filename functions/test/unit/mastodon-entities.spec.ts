@@ -972,7 +972,7 @@ describe('announceToStatus', () => {
 		expect(status.visibility).toBe('public');
 		expect(status.sensitive).toBe(false);
 		expect(status.spoiler_text).toBe('');
-		expect(status.reblogged).toBe(true);
+		expect(status.reblogged).toBe(false);
 		expect(status.favourited).toBe(false);
 		expect(status.bookmarked).toBe(false);
 		expect(status.pinned).toBe(false);
@@ -986,5 +986,21 @@ describe('announceToStatus', () => {
 			name: 'activitypub-firebase',
 			website: `https://${domain}`,
 		});
+
+		const rebloggedOriginalStatus = {
+			...originalStatus,
+			reblogged: true,
+			favourited: true,
+			bookmarked: true,
+		};
+		const rebloggedStatus = announceToStatus(
+			activity,
+			account,
+			'00100000000000000003',
+			rebloggedOriginalStatus,
+		);
+		expect(rebloggedStatus.reblogged).toBe(true);
+		expect(rebloggedStatus.favourited).toBe(true);
+		expect(rebloggedStatus.bookmarked).toBe(true);
 	});
 });

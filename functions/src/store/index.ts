@@ -7,10 +7,15 @@ import { logger } from 'firebase-functions/v2';
 import { isEmpty, omit } from 'lodash-es';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from '../mastodonId.js';
-import { OBJECT_QUERY_META_KEYS, buildObjectQueryMeta, metaIndexPath } from '../meta.js';
+import {
+	OBJECT_QUERY_META_KEYS,
+	buildActivityQueryMeta,
+	buildObjectQueryMeta,
+	metaIndexPath,
+} from '../meta.js';
 import { prepareProjectionUpdates } from '../projections/index.js';
 import { Contexts, Objects, Streams } from '../schema.js';
-import { toIdArray } from '../utils.js';
+import { isAPAnnounce, toIdArray } from '../utils.js';
 import { enqueueDeliveryTasks } from './deliveries.js';
 import { objectToUpdateDoc, replaceKeepingMeta, updateObjectCopies } from './updates.js';
 
@@ -311,7 +316,17 @@ export default class Store extends IApexStore implements ApexStore {
 
 	override saveActivity(activity: APObject): Promise<SaveActivityResult> {
 		const activityId = activity.id ?? this.generateId();
-		const activityWithId = activity.id ? activity : { ...activity, id: activityId };
+		const activityWithId = activity.id ? { ...activity } : { ...activity, id: activityId };
+		const isAnnounce = isAPAnnounce(activityWithId);
+		const publishedKey = isAnnounce ? toPublishedSortKey(activityWithId.published) : undefined;
+		const queryMeta = buildActivityQueryMeta(activityWithId);
+		if (publishedKey !== undefined || !isEmpty(queryMeta)) {
+			activityWithId._meta = {
+				...activityWithId._meta,
+				...(publishedKey === undefined ? {} : { published: publishedKey }),
+				...queryMeta,
+			};
+		}
 		logger.info({ type: 'saveActivity', activity: activityWithId });
 		const activityRef = Streams.doc(escapeFirestoreKey(activityId));
 		return this.db.runTransaction(async (transaction): Promise<SaveActivityResult> => {
@@ -337,19 +352,24 @@ export default class Store extends IApexStore implements ApexStore {
 
 				if (newCollections.length > 0) {
 					const updatedCollections = [...existingCollections, ...newCollections];
+					const updatedMeta = {
+						...existingData._meta,
+						collection: updatedCollections,
+						...(publishedKey === undefined ? {} : { published: publishedKey }),
+						...queryMeta,
+					};
 					result = {
 						isNew: 'new collection',
 						activity: {
 							...existingData,
-							_meta: {
-								...existingData._meta,
-								collection: updatedCollections,
-							},
+							_meta: updatedMeta,
 						},
 					};
 					write = () =>
 						transaction.update(activityRef, {
 							'_meta.collection': updatedCollections,
+							...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
+							...Object.fromEntries(Object.entries(queryMeta).map(([k, v]) => [`_meta.${k}`, v])),
 						});
 				} else {
 					result = { isNew: false, activity: existingData };

@@ -29,6 +29,42 @@
       ]
     },
     {
+      "collectionGroup": "streams",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "_meta.actor",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "_meta.published",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "streams",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "_meta.actor",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "_meta.published",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "objects",
       "queryScope": "COLLECTION",
       "fields": [

@@ -19,12 +19,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 `POST /oauth/revoke` による失効には対応しているが、期限切れのアクセストークン・
 リフレッシュトークン・認可コードを `functions/src/mastodon/oauth2Model.ts` の外から掃除する仕組みがない。
 
-### タイムラインにブーストが出ない
-
-タイムラインと `accounts/:id/statuses` は Note だけを集めており、自分やフォロー中のアカウントの
-`Announce` はタイムラインに現れない(ブーストの実行・解除と `reblogged` の判定、および `POST /api/v1/statuses/:id/reblog`
-の応答は動作する)。
-
 ### リモートアカウントのカウントと登録日が固定値
 
 リモートアカウントの Account は `externalUserInfo` を下敷きにしており、`followers_count` /

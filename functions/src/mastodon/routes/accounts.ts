@@ -253,11 +253,14 @@ router.get('/v1/accounts/:id/statuses', async (req, res) => {
 	// 認証は任意。トークンがあれば閲覧者として可視性を判定する。
 	const viewer = await getOptionalViewer(req, res);
 	const isPinned = typeof req.query.pinned === 'string' && toBoolean(req.query.pinned) === true;
+	const excludeReblogs =
+		typeof req.query.exclude_reblogs === 'string' && toBoolean(req.query.exclude_reblogs) === true;
 	respondWithStatuses(
 		req,
 		res,
 		await getAccountStatuses(actorId, viewer, parsePageParams(req.query, STATUS_PAGE_LIMITS), {
 			pinned: isPinned,
+			excludeReblogs,
 		}),
 	);
 });

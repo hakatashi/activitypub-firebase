@@ -5,7 +5,7 @@ import type { APObject as ApexObject } from '../../apex/index.js';
 import { getIriByMastodonId } from '../../mastodonId.js';
 import { getFollowing } from '../../social/follows.js';
 import type { NoteObject } from '../../social/types.js';
-import { isAPNote, toIdArray } from '../../utils.js';
+import { isAPAnnounce, isAPNote, toIdArray } from '../../utils.js';
 import { assertIsAPActor, resolveAccountActor } from '../presenters/account.js';
 import type { ResolvedAccountActor } from '../presenters/account.js';
 import { isNoteVisibleTo, noteToVisibility } from '../statusAttributes.js';
@@ -20,16 +20,31 @@ export const loadStatus = async (id: unknown): Promise<NoteObject> => {
 		throw new NotFoundError();
 	}
 	const iri = await getIriByMastodonId(parsed.data.id);
-	const note = iri === undefined ? undefined : await apex.store.getObject(iri);
-	if (!isAPNote(note)) {
+	if (iri === undefined) {
 		throw new NotFoundError();
 	}
-	return note;
+	const object = await apex.store.getObject(iri);
+	if (isAPNote(object)) {
+		return object;
+	}
+	const activity = await apex.store.getActivity(iri);
+	if (isAPAnnounce(activity)) {
+		const targetIri = toIdArray(activity.object)[0];
+		if (targetIri !== undefined) {
+			const targetNote = await apex.store.getObject(targetIri);
+			if (isAPNote(targetNote)) {
+				return targetNote;
+			}
+		}
+	}
+	throw new NotFoundError();
 };
 
 export interface VisibleStatusResult {
+	id: string;
 	note: NoteObject;
 	viewerFollowing: Set<string>;
+	isAnnounce: boolean;
 }
 
 export interface LoadVisibleStatusOptions {
@@ -41,17 +56,75 @@ export const loadVisibleStatus = async (
 	viewer?: (ApexObject & APActor) | APActor | undefined,
 	options?: LoadVisibleStatusOptions,
 ): Promise<VisibleStatusResult> => {
-	const note = await loadStatus(id);
-	const visibility = noteToVisibility(note);
-	const author = toIdArray(note.attributedTo)[0];
-	const needsFollowing =
-		options?.loadFollowing === true ||
-		(visibility === 'private' && viewer !== undefined && author !== viewer.id);
-	const viewerFollowing = new Set(needsFollowing && viewer ? await getFollowing(viewer) : []);
-	if (!isNoteVisibleTo(note, viewer?.id, viewerFollowing)) {
+	const parsed = idParamSchema.safeParse({ id });
+	if (!parsed.success) {
 		throw new NotFoundError();
 	}
-	return { note, viewerFollowing };
+	const statusId = parsed.data.id;
+	const iri = await getIriByMastodonId(statusId);
+	if (iri === undefined) {
+		throw new NotFoundError();
+	}
+	let cachedFollowing: Set<string> | undefined;
+	const getViewerFollowing = async (): Promise<Set<string>> => {
+		if (cachedFollowing === undefined) {
+			cachedFollowing = new Set(viewer ? await getFollowing(viewer) : []);
+		}
+		return cachedFollowing;
+	};
+
+	const object = await apex.store.getObject(iri);
+	if (isAPNote(object)) {
+		const visibility = noteToVisibility(object);
+		const author = toIdArray(object.attributedTo)[0];
+		const needsFollowing =
+			options?.loadFollowing === true ||
+			(visibility === 'private' && viewer !== undefined && author !== viewer.id);
+		const viewerFollowing = needsFollowing ? await getViewerFollowing() : new Set<string>();
+		if (!isNoteVisibleTo(object, viewer?.id, viewerFollowing)) {
+			throw new NotFoundError();
+		}
+		return { id: statusId, note: object, viewerFollowing, isAnnounce: false };
+	}
+	const activity = await apex.store.getActivity(iri);
+	if (isAPAnnounce(activity)) {
+		const boostAuthor = toIdArray(activity.actor)[0];
+		const boostVisibility = noteToVisibility(activity);
+		const needsFollowing =
+			options?.loadFollowing === true ||
+			(boostVisibility === 'private' && viewer !== undefined && boostAuthor !== viewer.id);
+		const boostViewerFollowing = needsFollowing ? await getViewerFollowing() : new Set<string>();
+		if (!isNoteVisibleTo(activity, viewer?.id, boostViewerFollowing)) {
+			throw new NotFoundError();
+		}
+
+		const targetIri = toIdArray(activity.object)[0];
+		if (targetIri === undefined) {
+			throw new NotFoundError();
+		}
+		const targetNote = await apex.store.getObject(targetIri);
+		if (!isAPNote(targetNote)) {
+			throw new NotFoundError();
+		}
+		const targetVisibility = noteToVisibility(targetNote);
+		const targetAuthor = toIdArray(targetNote.attributedTo)[0];
+		const targetNeedsFollowing =
+			options?.loadFollowing === true ||
+			(targetVisibility === 'private' && viewer !== undefined && targetAuthor !== viewer.id);
+		const targetViewerFollowing = targetNeedsFollowing
+			? await getViewerFollowing()
+			: new Set<string>();
+		if (!isNoteVisibleTo(targetNote, viewer?.id, targetViewerFollowing)) {
+			throw new NotFoundError();
+		}
+		return {
+			id: statusId,
+			note: targetNote,
+			viewerFollowing: targetViewerFollowing,
+			isAnnounce: true,
+		};
+	}
+	throw new NotFoundError();
 };
 
 export const loadAccount = async (id: unknown): Promise<ResolvedAccountActor> => {

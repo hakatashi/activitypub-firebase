@@ -211,6 +211,55 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			expect(res.status).toBe(200);
 			expect(apex.store.deliveryEnqueue).toHaveBeenCalled();
 		});
+
+		test('reverts boost when deleting own boost status ID, returning boost status', async () => {
+			const { object: note } = await publishNote(me, {
+				content: plainTextToHtml('Note to boost and delete'),
+				visibility: 'public',
+			});
+			const ids = await getMastodonIds([{ iri: note.id, published: note.published }]);
+			const noteMastodonId = ids.get(note.id)!;
+
+			const boostRes = await request(mastodon)
+				.post(`/api/v1/statuses/${noteMastodonId}/reblog`)
+				.set('Authorization', 'Bearer me-statuses-token');
+			expect(boostRes.status).toBe(200);
+			const boostId = boostRes.body.id;
+			expect(boostId).not.toBe(noteMastodonId);
+
+			// 自分のブーストの ID に対する DELETE
+			const deleteRes = await deleteStatus(boostId, 'me-statuses-token');
+			expect(deleteRes.status).toBe(200);
+			expect(deleteRes.body.id).toBe(boostId);
+			expect(deleteRes.body.reblog.id).toBe(noteMastodonId);
+
+			// ブーストの ID は 404 になる
+			const getBoostRes = await getStatus(boostId);
+			expect(getBoostRes.status).toBe(404);
+
+			// 元の Note の reblogged は false に戻る
+			const getNoteRes = await getStatus(noteMastodonId, 'me-statuses-token');
+			expect(getNoteRes.status).toBe(200);
+			expect(getNoteRes.body.reblogged).toBe(false);
+		});
+
+		test('returns 404 when trying to delete someone else boost', async () => {
+			const { object: note } = await publishNote(me, {
+				content: plainTextToHtml('Note to boost'),
+				visibility: 'public',
+			});
+			const ids = await getMastodonIds([{ iri: note.id, published: note.published }]);
+			const noteMastodonId = ids.get(note.id)!;
+
+			const boostRes = await request(mastodon)
+				.post(`/api/v1/statuses/${noteMastodonId}/reblog`)
+				.set('Authorization', 'Bearer me-statuses-token');
+			const boostId = boostRes.body.id;
+
+			// Alice tries to delete my boost
+			const deleteRes = await deleteStatus(boostId, 'alice-token');
+			expect(deleteRes.status).toBe(404);
+		});
 	});
 
 	describe('GET /api/v1/statuses/:id/context', () => {
@@ -225,6 +274,72 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			const res = await getContext(mastodonId);
 			expect(res.status).toBe(200);
 			expect(res.body).toEqual({ ancestors: [], descendants: [] });
+		});
+
+		test('returns empty ancestors and descendants for a boost ID', async () => {
+			const { object: note } = await publishNote(me, {
+				content: plainTextToHtml('Note to boost'),
+				visibility: 'public',
+			});
+			const ids = await getMastodonIds([{ iri: note.id, published: note.published }]);
+			const noteMastodonId = ids.get(note.id)!;
+
+			const boostRes = await request(mastodon)
+				.post(`/api/v1/statuses/${noteMastodonId}/reblog`)
+				.set('Authorization', 'Bearer me-statuses-token');
+			const boostId = boostRes.body.id;
+
+			const res = await getContext(boostId);
+			expect(res.status).toBe(200);
+			expect(res.body).toEqual({ ancestors: [], descendants: [] });
+		});
+
+		test('returns 404 for a boost ID when target note does not exist', async () => {
+			const boostId = `${REMOTE_BOB}/announces/ghost-boost`;
+			await apex.store.saveActivity({
+				id: boostId,
+				type: 'Announce',
+				actor: REMOTE_BOB,
+				object: 'https://remote.example/notes/ghost',
+				published: new Date().toISOString(),
+				to: ['https://www.w3.org/ns/activitystreams#Public'],
+				cc: [],
+			} as unknown as APObject);
+			const ids = await getMastodonIds([{ iri: boostId, published: new Date().toISOString() }]);
+			const mastodonId = ids.get(boostId)!;
+
+			const res = await getContext(mastodonId);
+			expect(res.status).toBe(404);
+		});
+
+		test('returns 404 for a boost ID when target note is private and viewer cannot view it', async () => {
+			const privNote = 'https://remote.example/notes/secret';
+			await apex.store.saveObject({
+				id: privNote,
+				type: 'Note',
+				attributedTo: REMOTE_BOB,
+				content: 'Secret note',
+				published: new Date().toISOString(),
+				to: [`${REMOTE_BOB}/followers`],
+				cc: [],
+			} as unknown as APObject);
+
+			const boostId = `${REMOTE_BOB}/announces/secret-boost`;
+			await apex.store.saveActivity({
+				id: boostId,
+				type: 'Announce',
+				actor: REMOTE_BOB,
+				object: privNote,
+				published: new Date().toISOString(),
+				to: ['https://www.w3.org/ns/activitystreams#Public'],
+				cc: [],
+			} as unknown as APObject);
+			const ids = await getMastodonIds([{ iri: boostId, published: new Date().toISOString() }]);
+			const mastodonId = ids.get(boostId)!;
+
+			// me does not follow REMOTE_BOB
+			const res = await getContext(mastodonId, 'me-token');
+			expect(res.status).toBe(404);
 		});
 
 		test('returns ancestors in chronological order (root to direct parent)', async () => {
@@ -699,6 +814,31 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			expect(meAfterGetRes.body.reblogged).toBe(false);
 		});
 
+		test('POST /api/v1/statuses/:id/favourite with a boost ID favourites the underlying note', async () => {
+			const { object: note } = await publishNote(alice, {
+				content: plainTextToHtml('Post to boost and favourite'),
+				visibility: 'public',
+			});
+			const ids = await getMastodonIds([{ iri: note.id, published: note.published }]);
+			const noteId = ids.get(note.id)!;
+
+			// Alice creates a reblog
+			const reblogRes = await postStatusAction(noteId, 'reblog', 'alice-token');
+			const boostId = reblogRes.body.id;
+
+			// Me favourites using the boost ID
+			const favRes = await postStatusAction(boostId, 'favourite', 'me-favourites-token');
+			expect(favRes.status).toBe(200);
+			expect(favRes.body.id).toBe(boostId);
+			expect(favRes.body.favourited).toBe(true);
+			expect(favRes.body.reblog.id).toBe(noteId);
+			expect(favRes.body.reblog.favourited).toBe(true);
+
+			// Original note is favourited
+			const getRes = await getStatus(noteId, 'me-token');
+			expect(getRes.body.favourited).toBe(true);
+		});
+
 		test('POST /api/v1/statuses/:id/bookmark and /unbookmark', async () => {
 			const { object: note } = await publishNote(alice, {
 				content: plainTextToHtml('Post to bookmark'),
@@ -792,6 +932,13 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 			const directPinRes = await postStatusAction(directStatusId, 'pin', 'me-accounts-token');
 			expect(directPinRes.status).toBe(422);
 			expect(directPinRes.body.error).toBe('You cannot pin direct posts');
+
+			// ブーストをピン留めしようとすると 422 (Mastodon 仕様: reblog は pin 不可)
+			const myBoostRes = await postStatusAction(myStatusId, 'reblog', 'me-statuses-token');
+			const myBoostId = myBoostRes.body.id;
+			const boostPinRes = await postStatusAction(myBoostId, 'pin', 'me-accounts-token');
+			expect(boostPinRes.status).toBe(422);
+			expect(boostPinRes.body.error).toBe('You cannot pin a reblog');
 
 			// 自分の公開投稿をピン留め
 			const pinRes = await postStatusAction(myStatusId, 'pin', 'me-accounts-token');
