@@ -116,6 +116,10 @@
         {
           "source": "/tags/**",
           "function": "mastodonApi"
+        },
+        {
+          "regex": "^/@[^/]+(?:/[0-9]+)?/?$",
+          "function": "mastodonApi"
         }
       ]
     }

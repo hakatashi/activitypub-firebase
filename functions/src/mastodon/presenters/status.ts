@@ -22,6 +22,7 @@ import {
 	toFirestoreKey,
 	unescapeFirestoreKey,
 } from '../../firebase.js';
+import { localStatusPageUrl } from '../../localActor.js';
 import { getIriByMastodonId, getMastodonIds } from '../../mastodonId.js';
 import { Bookmarks, UserInfos } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
@@ -97,8 +98,9 @@ export const noteObjectToStatus = (
 		language: noteToLanguage(note),
 		// Mastodon の `uri` は連合で使う ActivityPub の IRI。
 		uri: noteId,
-		// `url` は人間向けの URL。Note の `url` があればそれ、無ければ IRI。
-		url: toIdArray(note.url)[0] ?? noteId,
+		// `url` は人間向けの URL。ローカルの Note はリンクプレビュー用の HTML のページ (→ ADR-0107)。
+		// リモートは Note の `url` があればそれ、無ければ IRI。
+		url: isLocalIri(noteId) ? localStatusPageUrl(id) : (toIdArray(note.url)[0] ?? noteId),
 		...noteToCounts(note, context.meta),
 		...noteToViewerAttributes(note, context.viewer),
 		muted: false,

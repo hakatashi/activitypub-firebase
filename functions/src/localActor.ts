@@ -11,6 +11,10 @@ export const LOCAL_ADMIN_EMAIL = 'hakatasiloving@gmail.com';
 
 export const localAccountUrl = `https://elk.zone/${mastodonDomain}/@${LOCAL_USERNAME}@${domain}`;
 
+// リンクプレビュー用の HTML を返す、Mastodon と同じ形の URL (→ ADR-0107)。
+export const localProfilePageUrl = `https://${mastodonDomain}/@${LOCAL_USERNAME}`;
+export const localStatusPageUrl = (mastodonId: string) => `${localProfilePageUrl}/${mastodonId}`;
+
 export const localActorIri = (
 	username: string = LOCAL_USERNAME,
 	customDomain: string = domain,

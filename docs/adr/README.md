@@ -133,3 +133,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0104](0104-remote-actor-counts-via-background-refresh.md) | リモートアカウントの件数はプロフィール閲覧時に Cloud Tasks で取得して `_meta` に持つ | Accepted |
 | [0105](0105-account-source-defaults.md) | 既定の公開範囲などの投稿設定は `userInfos/{actor}.source` に保存する | Accepted |
 | [0106](0106-resolve-missing-remote-actors-in-background.md) | 手元にないリモート actor は見つけたときに Cloud Tasks で取得する | Accepted |
+| [0107](0107-minimal-html-status-page-for-link-previews.md) | リンクプレビュー用に、投稿とプロフィールの最小限の HTML を Mastodon ドメインで返す | Accepted |
