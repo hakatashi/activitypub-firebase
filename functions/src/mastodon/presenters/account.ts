@@ -31,6 +31,7 @@ import {
 	readRemoteActorStats,
 	requestRemoteActorRefreshIfStale,
 } from '../../social/remoteActorCounts.js';
+import { requestRemoteActorResolution } from '../../social/remoteActorResolution.js';
 
 export const assertIsAPActor: (
 	object: ApexObject | undefined,
@@ -283,9 +284,14 @@ export const userIdsToAccountsMap = async (
 		),
 	);
 
+	// `objects` に無かった actor は取得をタスクに頼み、今回は飛ばす (→ ADR-0099、ADR-0106)。
+	const fetchedIds = new Set(actorObjects.map((object) => String(object.id)));
+	const missingUserIds = uniqUserIds.filter((userId) => !fetchedIds.has(userId));
+
 	const resultMap = new Map<string, CamelToSnake<mastodon.v1.Account>>();
-	await Promise.all(
-		uniqUserIds.map(async (userId) => {
+	await Promise.all([
+		requestRemoteActorResolution(missingUserIds),
+		...uniqUserIds.map(async (userId) => {
 			const actor = actorMap.get(userId);
 			if (actor === undefined) {
 				return;
@@ -297,7 +303,7 @@ export const userIdsToAccountsMap = async (
 			const account = await actorObjectToAccount(actor, userInfo, accountId);
 			resultMap.set(userId, account);
 		}),
-	);
+	]);
 
 	return resultMap;
 };

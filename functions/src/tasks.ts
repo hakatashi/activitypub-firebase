@@ -6,6 +6,7 @@ import { apex } from './apex.js';
 import { toError } from './utils.js';
 import { recordDeliveryResult } from './store/deliveries.js';
 import { refreshRemoteActorCounts } from './social/remoteActorCounts.js';
+import { resolveMissingRemoteActor } from './social/remoteActorResolution.js';
 
 export const pingTaskPayloadSchema = z.object({
 	message: z.string(),
@@ -210,10 +211,11 @@ export const deliveryTask = onTaskDispatched<unknown>(
 
 export const remoteActorRefreshTaskPayloadSchema = z.object({
 	actorIri: z.string().min(1),
+	kind: z.enum(['counts', 'resolve']).default('counts'),
 });
 
-// リモート actor の件数を取り直す (→ ADR-0104)。取得の失敗は refreshRemoteActorCounts の中で吸収し、
-// 再試行は翌日の閲覧に任せるため、ここではリトライしない。
+// リモート actor の件数を取り直す (→ ADR-0104)、または手元にない actor を取得する (→ ADR-0106)。
+// 取得の失敗はそれぞれの中で吸収し、再試行は翌日の依頼に任せるため、ここではリトライしない。
 export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 	{
 		retryConfig: { maxAttempts: 1 },
@@ -231,6 +233,10 @@ export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 				error: parsed.error,
 				data: request.data,
 			});
+			return;
+		}
+		if (parsed.data.kind === 'resolve') {
+			await resolveMissingRemoteActor(parsed.data.actorIri);
 			return;
 		}
 		await refreshRemoteActorCounts(parsed.data.actorIri);
