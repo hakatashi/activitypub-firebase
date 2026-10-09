@@ -1,13 +1,22 @@
 import type { APActor } from 'activitypub-types';
-import { apex, ensureSystemUser } from '../apex.js';
+import { apex } from '../apex.js';
 import type { APObject } from '../apex/index.js';
-import { domain, mastodonDomain } from '../firebase.js';
+import { mastodonDomain } from '../firebase.js';
 import { normalizeHashtag, toHashtagDisplayName } from '../hashtags.js';
 import { getIriByMastodonId } from '../mastodonId.js';
 import { Objects } from '../schema.js';
 import { getAttributedTo, isAPActor, isAPNote } from '../utils.js';
 import { fetchWebfinger } from '../webfinger.js';
 import { getFollowing } from './follows.js';
+import {
+	fetchRemoteObject,
+	getObjectOrUndefined,
+	hostOf,
+	isLocalHost,
+	originOf,
+	parseUrl,
+	resolveRemoteActor,
+} from './remoteResolution.js';
 import { hasPublicHashtagNotes } from './timelines.js';
 import type { NoteObject } from './types.js';
 import { isNoteVisibleTo, noteToVisibility } from './visibility.js';
@@ -45,26 +54,7 @@ const ACCT_PATTERN = /^@?(?<username>[^@\s/]+)@(?<host>[^@\s/]+)$/u;
 const MASTODON_STATUS_PATH = /^\/@(?<username>[\w.-]+)\/(?:statuses\/)?(?<id>\w+)$/u;
 const MASTODON_ACCOUNT_PATH = /^\/@(?<username>[\w.-]+)$/u;
 
-const isLocalHost = (host: string) => {
-	const lowerHost = host.toLowerCase();
-	return lowerHost === domain.toLowerCase() || lowerHost === mastodonDomain.toLowerCase();
-};
-
 const emptyResult = (): SearchResult => ({ actorIris: [], notes: [], hashtags: [] });
-
-const parseUrl = (value: string) => {
-	try {
-		return new URL(value);
-	} catch {
-		return undefined;
-	}
-};
-
-const originOf = (iri: string) => parseUrl(iri)?.origin;
-
-const hostOf = (iri: string) => parseUrl(iri)?.host.toLowerCase();
-
-const getObjectOrUndefined = (iri: string) => apex.store.getObject(iri, true);
 
 // 手元の `objects` から URL に対応するオブジェクトを引く。外部へは取りに行かない。
 const findLocalObjectByUrl = async (url: URL): Promise<APObject | undefined> => {
@@ -95,52 +85,6 @@ const findLocalObjectByUrl = async (url: URL): Promise<APObject | undefined> => 
 		return getObjectOrUndefined(`${url.origin}/users/${accountMatch.username}`);
 	}
 	return undefined;
-};
-
-// 外部から AP オブジェクトを取得して `objects` に保存する。
-// 取得結果の `id` が要求した URL と別オリジンなら `id` で取り直し、`id` が一致するものだけを受け入れる
-// (Mastodon の FetchResourceService と同じ。→ ADR-0097)。失敗はすべて undefined にする。
-const fetchRemoteObject = async (url: string): Promise<APObject | undefined> => {
-	try {
-		await ensureSystemUser();
-		let object = await apex.requestObject(url);
-		const id = typeof object?.id === 'string' ? object.id : undefined;
-		const idHost = id === undefined ? undefined : hostOf(id);
-		if (object === undefined || id === undefined || idHost === undefined || isLocalHost(idHost)) {
-			return undefined;
-		}
-		if (originOf(id) !== originOf(url)) {
-			const cached = await getObjectOrUndefined(id);
-			if (cached !== undefined) {
-				return cached;
-			}
-			object = await apex.requestObject(id);
-			if (object?.id !== id) {
-				return undefined;
-			}
-		}
-		return await apex.resolveObject(object, false, true);
-	} catch (error) {
-		apex.logger.warn({
-			type: 'searchFetchRemoteObjectFailed',
-			url,
-			error: error instanceof Error ? error.message : String(error),
-		});
-		return undefined;
-	}
-};
-
-const resolveRemoteActor = async (iri: string): Promise<APObject | undefined> => {
-	const cached = await getObjectOrUndefined(iri);
-	if (cached !== undefined) {
-		return isAPActor(cached) ? cached : undefined;
-	}
-	const host = hostOf(iri);
-	if (host === undefined || isLocalHost(host)) {
-		return undefined;
-	}
-	const fetched = await fetchRemoteObject(iri);
-	return fetched !== undefined && isAPActor(fetched) && fetched.id === iri ? fetched : undefined;
 };
 
 // URL からアカウント (actor) か投稿 (Note) を引く。Note は投稿者の actor も手元に入れる。

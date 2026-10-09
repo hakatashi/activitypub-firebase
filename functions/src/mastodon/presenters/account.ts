@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import type { APObject as ApexObject, JsonLdActor } from '../../apex/index.js';
 import type { APActor } from 'activitypub-types';
 import firebase from 'firebase-admin';
-import { chunk, last, uniq } from 'lodash-es';
+import { chunk, last, omit, uniq } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
 import {
@@ -27,6 +27,10 @@ import type { CamelToSnake } from '../../utils.js';
 import { isAPActor } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
 import { getObjects } from '../../store/objects.js';
+import {
+	readRemoteActorStats,
+	requestRemoteActorRefreshIfStale,
+} from '../../social/remoteActorCounts.js';
 
 export const assertIsAPActor: (
 	object: ApexObject | undefined,
@@ -50,6 +54,32 @@ const externalUserInfo: UserInfo = {
 	uid: null,
 };
 
+// リモート actor の `published` を Mastodon と同じく UTC の 0 時に丸める (→ ADR-0104)。
+const toCreatedAt = (published: unknown) => {
+	const value = Array.isArray(published) ? published[0] : published;
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+	const time = Date.parse(value);
+	return Number.isNaN(time)
+		? undefined
+		: `${new Date(time).toISOString().slice(0, 10)}T00:00:00.000Z`;
+};
+
+// リモート actor の件数などは actor の `_meta` に保存したものを読むだけで、外部へは取りに行かない
+// (→ ADR-0104)。`actorObject` に `_meta` が付いていなければ 0 になる。
+const remoteUserInfo = (actorObject: ApexObject | APActor): UserInfo => {
+	const stats = readRemoteActorStats((actorObject as ApexObject)._meta);
+	return {
+		...externalUserInfo,
+		created_at: toCreatedAt(actorObject.published) ?? externalUserInfo.created_at,
+		followers_count: stats.followersCount ?? 0,
+		following_count: stats.followingCount ?? 0,
+		statuses_count: stats.statusesCount ?? 0,
+		last_status_at: stats.lastStatusAt ?? '',
+	};
+};
+
 export const actorObjectToAccount = async (
 	actorObject: APActor,
 	userInfo?: UserInfo,
@@ -58,12 +88,12 @@ export const actorObjectToAccount = async (
 	// activitypub-types の APActor は icon/image を IconField|ImageField の union として定義するなど
 	// ここでの緩いプロパティアクセスと厳密には一致しない。この不整合の解消は ADR-0022 の対象外
 	// (apex 自体の型付けのみが対象) なので、ここでは toJSONLD 呼び出し以前と同じ緩さを維持する。
-	const actor = await apex.toJSONLD<JsonLdActor>(actorObject);
+	const actor = await apex.toJSONLD<JsonLdActor>(omit(actorObject, '_meta') as APActor);
 	const username = actor.preferredUsername ?? last(actor.id.split('/')) ?? '';
 	const actorDomain = new URL(actor.id).host;
 	const isLocal = actorDomain === domain;
 
-	const baseUserInfo = userInfo ?? externalUserInfo;
+	const baseUserInfo = userInfo ?? remoteUserInfo(actorObject);
 	// ローカルは Elk のプロフィールへ誘導する (→ ADR-0004)。リモートは相手サーバーのプロフィール URL。
 	let url = actor.id;
 	if (isLocal) {
@@ -217,7 +247,8 @@ export const userIdsToAccountsMap = async (
 	}
 
 	const [actorObjects, userInfoDocsChunks, accountIds] = await Promise.all([
-		getObjects(uniqUserIds),
+		// リモート actor の件数を `_meta` から読むため (→ ADR-0104)。
+		getObjects(uniqUserIds, true),
 		Promise.all(
 			chunk(uniqUserIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
 				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
@@ -409,7 +440,8 @@ export const resolveAccountActor = async (
 
 	const iri = await getIriByMastodonId(id);
 	if (iri !== undefined) {
-		const object = await apex.store.getObject(iri);
+		// リモート actor の件数を `_meta` から読むため (→ ADR-0104)。
+		const object = await apex.store.getObject(iri, true);
 		if (object !== undefined && isAPActor(object)) {
 			assertIsAPActor(object);
 			return { actor: object };
@@ -435,6 +467,7 @@ const remoteActorToAccount = async (username: string, lookupDomain: string) => {
 		return undefined;
 	}
 	assertIsAPActor(actor);
+	await requestRemoteActorRefreshIfStale(actor);
 	return actorObjectToAccount(actor);
 };
 

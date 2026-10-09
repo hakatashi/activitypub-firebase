@@ -39,6 +39,7 @@ import {
 import type { RelationshipEntity } from '../presenters/account.js';
 import { STATUS_PAGE_LIMITS, getAccountStatuses } from '../presenters/status.js';
 import { markActivityPublic } from '../../store/activities.js';
+import { requestRemoteActorRefreshIfStale } from '../../social/remoteActorCounts.js';
 
 const router = express.Router();
 
@@ -456,6 +457,9 @@ router.post(
 
 router.get('/v1/accounts/:id', async (req, res) => {
 	const resolved = await loadAccount(req.params.id);
+	if (resolved.userInfo === undefined) {
+		await requestRemoteActorRefreshIfStale(resolved.actor);
+	}
 	const account = await actorObjectToAccount(
 		resolved.actor,
 		resolved.userInfo,

@@ -40,7 +40,7 @@
 | DELETE | `/api/v1/profile/header` | ✅ | ヘッダー削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | GET | `/api/v1/accounts/search` | ✅ | `/api/v2/search` のアカウント部分と同じ処理。認証必須 (→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | GET | `/api/v1/accounts/lookup` | ✅ | ローカル acct と、手元にキャッシュ済みのリモート actor を解決。WebFinger では取りに行かない (→ [ADR-0073](adr/0073-lookup-cached-remote-accounts.md)) |
-| GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示。リモートの `url` は相手サーバーのプロフィール URL |
+| GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示。リモートの `url` は相手サーバーのプロフィール URL。リモートの件数・登録日は相手のコレクションから非同期に取得した値 (→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ブーストの表示と `exclude_reblogs` 対応、ページネーション対応、`?pinned=true` 対応。リモートアカウントにも対応 (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)、[ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
 | GET | `/api/v1/accounts/:id/followers` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
 | GET | `/api/v1/accounts/:id/following` | ✅ | ページネーション対応(カーソルは Follow の Mastodon ID) |
