@@ -276,6 +276,105 @@ describe('Mastodon Accounts API (Issue #62)', () => {
 		});
 	});
 
+	describe('source (Issue #230)', () => {
+		const verify = () =>
+			request(mastodon)
+				.get('/api/v1/accounts/verify_credentials')
+				.set('Authorization', 'Bearer write-token');
+		const preferences = () =>
+			request(mastodon).get('/api/v1/preferences').set('Authorization', 'Bearer write-token');
+
+		beforeEach(async () => {
+			await addToken('write-token', 'read write');
+		});
+
+		test('returns the defaults when nothing is saved', async () => {
+			const res = await preferences();
+			expect(res.status).toBe(200);
+			expect(res.body).toMatchObject({
+				'posting:default:visibility': 'public',
+				'posting:default:sensitive': false,
+				'posting:default:language': 'ja',
+			});
+		});
+
+		test('saves source sent as JSON and reflects it in verify_credentials and preferences', async () => {
+			const res = await request(mastodon)
+				.patch('/api/v1/accounts/update_credentials')
+				.set('Authorization', 'Bearer write-token')
+				.send({ source: { privacy: 'unlisted', sensitive: true, language: 'en' } });
+
+			expect(res.status).toBe(200);
+			expect(res.body.source).toMatchObject({
+				privacy: 'unlisted',
+				sensitive: true,
+				language: 'en',
+			});
+			// 公開の Account には source が出ない
+			const account = await request(mastodon).get('/api/v1/accounts/1');
+			expect(account.body).not.toHaveProperty('source');
+
+			expect((await verify()).body.source).toMatchObject({
+				privacy: 'unlisted',
+				sensitive: true,
+				language: 'en',
+			});
+			expect((await preferences()).body).toMatchObject({
+				'posting:default:visibility': 'unlisted',
+				'posting:default:sensitive': true,
+				'posting:default:language': 'en',
+			});
+		});
+
+		test('saves source sent as a form and keeps fields that were not sent', async () => {
+			await request(mastodon)
+				.patch('/api/v1/accounts/update_credentials')
+				.set('Authorization', 'Bearer write-token')
+				.type('form')
+				.send('source[privacy]=private&source[sensitive]=true&source[language]=en')
+				.expect(200);
+
+			const res = await request(mastodon)
+				.patch('/api/v1/accounts/update_credentials')
+				.set('Authorization', 'Bearer write-token')
+				.type('form')
+				.send('source[sensitive]=false');
+			expect(res.status).toBe(200);
+			expect(res.body.source).toMatchObject({
+				privacy: 'private',
+				sensitive: false,
+				language: 'en',
+			});
+
+			// 空の言語は未設定に戻す
+			const cleared = await request(mastodon)
+				.patch('/api/v1/accounts/update_credentials')
+				.set('Authorization', 'Bearer write-token')
+				.type('form')
+				.send('source[language]=');
+			expect(cleared.body.source.language).toBe('ja');
+		});
+
+		test('rejects direct as the default privacy with 422', async () => {
+			const res = await request(mastodon)
+				.patch('/api/v1/accounts/update_credentials')
+				.set('Authorization', 'Bearer write-token')
+				.type('form')
+				.send('source[privacy]=direct');
+			expect(res.status).toBe(422);
+			expect((await verify()).body.source.privacy).toBe('public');
+		});
+
+		test('defaults to private for a locked account without a saved privacy', async () => {
+			await request(mastodon)
+				.patch('/api/v1/accounts/update_credentials')
+				.set('Authorization', 'Bearer write-token')
+				.send({ locked: true })
+				.expect(200);
+			expect((await preferences()).body['posting:default:visibility']).toBe('private');
+		});
+	});
+
 	describe('POST /api/v1/accounts/:id/follow and /unfollow', () => {
 		test('returns 422 when trying to follow self', async () => {
 			await addToken('follow-token', 'write:follows');

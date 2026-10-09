@@ -6,7 +6,8 @@ import { apex } from '../../src/apex.js';
 import { reserveIdempotencyKey } from '../../src/idempotency.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
-import { IdempotencyKeys, Objects, Streams } from '../../src/schema.js';
+import { escapeFirestoreKey } from '../../src/firebase.js';
+import { IdempotencyKeys, Objects, Streams, UserInfos } from '../../src/schema.js';
 import * as webfinger from '../../src/webfinger.js';
 import { addAccessToken, createLocalActor, resetFirestore } from '../helpers/index.js';
 import type { LocalActor } from '../helpers/index.js';
@@ -118,6 +119,38 @@ describe('POST /api/v1/statuses (Issue #60)', () => {
 		expect(plain.body.sensitive).toBe(false);
 		const sensitive = await post({ status: 'body', sensitive: true });
 		expect(sensitive.body.sensitive).toBe(true);
+	});
+
+	test('uses the account defaults when visibility / sensitive / language are omitted (Issue #230)', async () => {
+		await UserInfos.doc(escapeFirestoreKey(me.id)).update({
+			source: { privacy: 'unlisted', sensitive: true, language: 'en' },
+		});
+
+		const response = await post({ status: 'hello', visibility: null, language: null });
+		expect(response.status).toBe(200);
+		expect(response.body.visibility).toBe('unlisted');
+		expect(response.body.sensitive).toBe(true);
+		expect(response.body.language).toBe('en');
+
+		// 明示した値は既定値より優先される
+		const explicit = await post({
+			status: 'hello',
+			visibility: 'public',
+			sensitive: false,
+			language: 'ja',
+		});
+		expect(explicit.body.visibility).toBe('public');
+		expect(explicit.body.sensitive).toBe(false);
+		expect(explicit.body.language).toBe('ja');
+	});
+
+	test('defaults to private visibility for a locked account without a saved default (Issue #230)', async () => {
+		await UserInfos.doc(escapeFirestoreKey(me.id)).update({ locked: true });
+
+		const response = await post({ status: 'hello' });
+		expect(response.status).toBe(200);
+		expect(response.body.visibility).toBe('private');
+		expect(response.body.language).toBe('ja');
 	});
 
 	test('replies to a stored note and addresses its author', async () => {

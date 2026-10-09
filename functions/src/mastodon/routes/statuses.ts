@@ -16,14 +16,14 @@ import { MediaAttachments } from '../../schema.js';
 import type { MediaAttachmentRecord } from '../../schema.js';
 import * as webfinger from '../../webfinger.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toError, toIdArray } from '../../utils.js';
-import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
+import { authRequired, getAuthUserInfo, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
 import { isPresent, toBoolean } from '../http/params.js';
 import { isNoteVisibleTo } from '../statusAttributes.js';
 import { getValidBody, validate } from '../http/validation.js';
 import { instanceV2 } from '../instanceInformation.js';
-import { userIdsToAccounts } from '../presenters/account.js';
+import { resolveAccountSource, userIdsToAccounts } from '../presenters/account.js';
 import {
 	announceToStatus,
 	getStatusAncestors,
@@ -92,6 +92,8 @@ router.post(
 		}
 
 		const actor = await loadViewer(res);
+		// 省略された項目は利用者の既定値を使う (Mastodon の PostStatusService と同じ。→ ADR-0105)
+		const accountSource = resolveAccountSource(getAuthUserInfo(res));
 
 		const mediaRecords: MediaAttachmentRecord[] = [];
 		if (mediaIds.length > 0) {
@@ -196,13 +198,13 @@ router.post(
 			await publishNote(actor, {
 				id: noteIri,
 				content: formatted.html,
-				visibility: body.visibility ?? 'public',
+				visibility: body.visibility ?? accountSource.privacy,
 				inReplyTo: replyTarget?.id,
 				mentions: formatted.mentionedActorIris,
 				tag: formatted.tags,
 				summary: spoilerText === '' ? undefined : spoilerText,
-				sensitive: spoilerText !== '' || (toBoolean(body.sensitive) ?? false),
-				language: body.language ?? undefined,
+				sensitive: spoilerText !== '' || (toBoolean(body.sensitive) ?? accountSource.sensitive),
+				language: body.language || accountSource.language,
 				attachment: attachments.length > 0 ? attachments : undefined,
 			});
 

@@ -1,6 +1,7 @@
 import express from 'express';
-import { authRequired } from '../http/auth.js';
+import { authRequired, getAuthUserInfo } from '../http/auth.js';
 import { getInstanceV1, getInstanceV2 } from '../instanceInformation.js';
+import { resolveAccountSource } from '../presenters/account.js';
 
 const router = express.Router();
 
@@ -18,10 +19,11 @@ router.get('/v1/streaming{/*splat}', (req, res) => {
 });
 
 router.get('/v1/preferences', authRequired, (req, res) => {
+	const source = resolveAccountSource(getAuthUserInfo(res));
 	res.send({
-		'posting:default:visibility': 'public',
-		'posting:default:sensitive': false,
-		'posting:default:language': 'ja',
+		'posting:default:visibility': source.privacy,
+		'posting:default:sensitive': source.sensitive,
+		'posting:default:language': source.language,
 		'reading:expand:media': 'show_all',
 		'reading:expand:spoilers': true,
 	});

@@ -134,6 +134,17 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
 - 自前の `admin@mastodon-test.hakatashi.com` からタグ付きで投稿し、dev のタグのタイムラインに出ることも確かめる
   (受信した Note の `Hashtag` は `as:Hashtag` で保存される。→ [ADR-0103](../adr/0103-hashtag-timeline-and-search.md))。
 
+## 既定の公開範囲(`source` / `preferences`)の確認
+
+`run.mjs` は巡回しない。変えたときは、Playwright で次を確かめる(2026-10-09 に実施)。
+
+- **Elk には既定の公開範囲を変える設定画面がない**(`source.privacy` を読むだけ)。変更は Phanpy で行う。
+  Phanpy のナビメニュー(`.nav-menu-button`)→「Settings」の `#posting-privacy-field` を変えると
+  `update_credentials` が `source[privacy]` を送る。再読み込みして設定を開き直し、値が保たれていることを見る。
+- Elk で投稿欄に文字を打ち、公開範囲を触らずに投稿して、`POST /api/v1/statuses` の `visibility` が
+  設定した値になっていることを見る。
+- 確認後は既定の公開範囲を `public` に戻す。
+
 ## ハマりどころ
 
 - 自宅 LAN の DNS(NAS)は `hakatashi.com` をヘアピン DNS として持っている。Firebase Hosting を指すホスト名
