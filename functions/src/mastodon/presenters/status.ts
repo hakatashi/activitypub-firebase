@@ -52,8 +52,8 @@ export interface StatusContext {
 	followersIri?: string;
 	// リプライ先の Mastodon ID とその投稿者のアカウント ID。解決できなければ未指定。
 	inReplyTo?: { id: string; accountId: string } | undefined;
-	// `_meta` の非正規化カウンタ (→ ADR-0037)。
-	meta?: { likesCount?: number; sharesCount?: number } | undefined;
+	// `_meta` の非正規化カウンタ (→ ADR-0037、ADR-0102)。
+	meta?: { likesCount?: number; sharesCount?: number; repliesCount?: number } | undefined;
 	// メンション先の actor IRI とそのアカウント ID のマップ (→ ADR-0069)。
 	mentionIds?: Map<string, string> | Record<string, string> | undefined;
 	// 認証ユーザー (viewer) のインタラクション状態 (→ ADR-0070)。
@@ -434,7 +434,8 @@ export const getHomeTimeline = async (viewer: APActor, page: PageParams) =>
 
 // 作成・重複時の応答に使う。Note でなければ (まだ保存されていなければ) undefined。
 export const getStatusByIri = async (iri: string, viewer?: APActor | undefined) => {
-	const note = await apex.store.getObject(iri);
+	// `_meta` の非正規化カウンタを Status に出すため、`_meta` 付きで読む (→ ADR-0037、ADR-0102)。
+	const note = await apex.store.getObject(iri, true);
 	if (!isAPNote(note)) {
 		return undefined;
 	}
@@ -477,7 +478,8 @@ export const getStatusById = async (
 		return cachedFollowing;
 	};
 
-	const object = await apex.store.getObject(iri);
+	// `_meta` の非正規化カウンタを Status に出すため、`_meta` 付きで読む (→ ADR-0037、ADR-0102)。
+	const object = await apex.store.getObject(iri, true);
 	if (isAPNote(object)) {
 		const visibility = noteToVisibility(object);
 		const author = toIdArray(object.attributedTo)[0];
@@ -509,7 +511,7 @@ export const getStatusById = async (
 			return undefined;
 		}
 
-		const targetNote = await apex.store.getObject(targetIri);
+		const targetNote = await apex.store.getObject(targetIri, true);
 		if (!isAPNote(targetNote)) {
 			return undefined;
 		}

@@ -41,11 +41,12 @@ const toTotalItems = (collection: unknown): number | undefined => {
 
 // 受信した Like / Announce は `_meta` の非正規化カウンタが正 (→ ADR-0037)。
 // 無ければ Note 自身が公開しているコレクションの totalItems にフォールバックする。
+// 返信数は手元の返信の数 (`_meta.repliesCount`) と受信した totalItems の大きい方 (→ ADR-0102)。
 export const noteToCounts = (
 	note: APNote,
-	meta?: { likesCount?: number; sharesCount?: number },
+	meta?: { likesCount?: number; sharesCount?: number; repliesCount?: number },
 ) => ({
-	replies_count: toTotalItems(note.replies) ?? 0,
+	replies_count: Math.max(meta?.repliesCount ?? 0, toTotalItems(note.replies) ?? 0),
 	reblogs_count: meta?.sharesCount ?? toTotalItems(note.shares) ?? 0,
 	favourites_count: meta?.likesCount ?? toTotalItems(note.likes) ?? 0,
 });

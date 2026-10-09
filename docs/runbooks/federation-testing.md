@@ -291,6 +291,22 @@ fsquery '{"structuredQuery":{"from":[{"collectionId":"deliveries"}],"limit":10}}
 - [ ] その返信が dev のフォロワー宛に転送される(`deliveries` にフォロワーの inbox が残る)
 - [ ] 同じ返信を再配送しても転送が二重に走らない(条件1)
 
+### 返信数(`replies_count`)
+
+返信数は返信先 Note の `_meta.repliesCount` に非正規化される(→ [ADR-0102](../adr/0102-replies-count-as-denormalized-counter.md))。
+dev の投稿 (`PID` は dev 側の Mastodon ID) に相手から返信し、相手側で削除して増減を見る。
+
+```bash
+B=https://mastodon-dev.hakatashi.com
+curl -s "$B/api/v1/statuses/$PID" -H "Authorization: Bearer $MASTODON_DEV_TOKEN" | jq .replies_count
+# 相手側で返信を削除 → Delete(Tombstone) が届いて 1 減る
+mapi -X DELETE "$REMOTE/api/v1/statuses/$REPLY_ID"
+```
+
+- [ ] 相手からの返信の数だけ `replies_count` が増え、相手が削除すると減る
+- [ ] dev からの返信も数え、`direct` の返信は数えない。削除すると減る
+- [ ] Elk の投稿詳細で返信アイコンの横に数が出る
+
 ## 8. いいね・ブースト(Like / Announce)の受信
 
 Mastodon の `Like` / `Announce` は `object` に**投稿(Note)の IRI** を指す。

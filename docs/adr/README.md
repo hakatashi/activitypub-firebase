@@ -128,3 +128,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0099](0099-graceful-fallback-for-unresolved-actors-in-timelines.md) | タイムライン構築時に未解決アクターを安全にフォールバックする | Accepted |
 | [0100](0100-cursor-for-favourites-and-bookmarks.md) | お気に入り・ブックマーク一覧のカーソルを `cursorId` として持つ | Accepted |
 | [0101](0101-favourited-by-and-reblogged-by.md) | `favourited_by` / `reblogged_by` は streams を全件読んでアプリ側でページングする | Accepted |
+| [0102](0102-replies-count-as-denormalized-counter.md) | 返信数を返信先 Note の `_meta.repliesCount` に Store で非正規化する | Accepted |

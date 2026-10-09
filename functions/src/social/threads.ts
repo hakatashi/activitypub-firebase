@@ -24,7 +24,8 @@ export const getThreadAncestors = async (
 			break;
 		}
 		visited.add(currentReplyTo);
-		const parent = await apex.store.getObject(currentReplyTo);
+		// Status の件数に使う `_meta` 付きで読む (→ ADR-0102)。
+		const parent = await apex.store.getObject(currentReplyTo, true);
 		if (!isAPNote(parent)) {
 			// 手元に存在しないか Note でなければチェーン終了 (リモートへは取りに行かない → ADR-0059)
 			break;

@@ -4,7 +4,7 @@ import type { APObject, ApexStore, SaveActivityResult } from '../apex/index.js';
 import IApexStore from '../apex/store/interface.js';
 import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
-import { isEmpty, omit } from 'lodash-es';
+import { isEmpty, omit, omitBy } from 'lodash-es';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from '../mastodonId.js';
 import {
@@ -17,6 +17,7 @@ import { prepareProjectionUpdates } from '../projections/index.js';
 import { Contexts, Objects, Streams } from '../schema.js';
 import { isAPAnnounce, toIdArray } from '../utils.js';
 import { enqueueDeliveryTasks } from './deliveries.js';
+import { prepareRepliesCountUpdate } from './replies.js';
 import { objectToUpdateDoc, replaceKeepingMeta, updateObjectCopies } from './updates.js';
 
 // apex が Store に要求する契約 (IApexStore) の Firestore 実装。apex から呼ばれないアプリ独自の
@@ -103,10 +104,16 @@ export default class Store extends IApexStore implements ApexStore {
 			if (objectWithId._meta !== undefined || !isEmpty(queryMeta)) {
 				objectWithId._meta = { ...omit(objectWithId._meta, OBJECT_QUERY_META_KEYS), ...queryMeta };
 			}
+			// 返信先の返信数も同じトランザクションで更新する (→ ADR-0102)。
+			const replies = await prepareRepliesCountUpdate(transaction, doc.data(), objectWithId);
+			if (replies.meta !== undefined) {
+				objectWithId._meta = { ...objectWithId._meta, ...replies.meta };
+			}
 			// 新規・既存を問わず Mastodon ID のマッピングを保証する (→ ADR-0058)。
 			// 読み取りを伴うため、トランザクション内の書き込みより前に呼ぶ。
 			await getOrAssignMastodonIdInTransaction(transaction, objectId, objectWithId.published);
 			transaction.set(docRef, objectWithId);
+			replies.commit();
 		});
 		return true;
 	}
@@ -207,25 +214,40 @@ export default class Store extends IApexStore implements ApexStore {
 				...(publishedKey === undefined ? {} : { published: publishedKey }),
 				...queryMeta,
 			};
+			// Tombstone 化もここを通るので、置き換え前の返信先から返信数を減らす (→ ADR-0102)。
 			await replaceKeepingMeta(
 				objectDoc,
 				obj._meta === undefined && isEmpty(meta) ? obj : { ...obj, _meta: meta },
 				OBJECT_QUERY_META_KEYS,
+				prepareRepliesCountUpdate,
 			);
 			await updateObjectCopies(obj);
 			return obj;
 		}
-		await objectDoc.update({
-			...objectToUpdateDoc(obj),
-			// `_meta` はドット記法で更新し、既存のカウンタなどを消さない。
-			...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
-			// 更新するフィールドに対応する検索用の `_meta` だけを書き直す (→ ADR-0086)。
-			...Object.fromEntries(
-				OBJECT_QUERY_META_KEYS.filter((key) => key in obj).map((key) => [
-					`_meta.${key}`,
-					queryMeta[key] ?? firebase.firestore.FieldValue.delete(),
-				]),
-			),
+		await this.db.runTransaction(async (transaction) => {
+			const before = (await transaction.get(objectDoc)).data();
+			const after =
+				before === undefined
+					? undefined
+					: ({
+							...omitBy({ ...before, ...obj }, (value) => value === null),
+							id: obj.id,
+						} as APObject);
+			// 返信先や公開範囲の書き換えに合わせて返信数を増減する (→ ADR-0102)。
+			const replies = await prepareRepliesCountUpdate(transaction, before, after);
+			transaction.update(objectDoc, {
+				...objectToUpdateDoc(obj),
+				// `_meta` はドット記法で更新し、既存のカウンタなどを消さない。
+				...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
+				// 更新するフィールドに対応する検索用の `_meta` だけを書き直す (→ ADR-0086)。
+				...Object.fromEntries(
+					OBJECT_QUERY_META_KEYS.filter((key) => key in obj).map((key) => [
+						`_meta.${key}`,
+						queryMeta[key] ?? firebase.firestore.FieldValue.delete(),
+					]),
+				),
+			});
+			replies.commit();
 		});
 		await updateObjectCopies(obj);
 		return objectDoc.get().then((doc) => {

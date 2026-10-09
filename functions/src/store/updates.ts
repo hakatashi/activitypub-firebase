@@ -1,5 +1,5 @@
 // Store の更新系メソッド (updateObject / updateActivity) が共有する内部処理。
-import type { DocumentReference } from '@google-cloud/firestore';
+import type { DocumentReference, Transaction } from '@google-cloud/firestore';
 import type { APObject } from '../apex/index.js';
 import firebase from 'firebase-admin';
 import { isEqual, mapValues, omit } from 'lodash-es';
@@ -11,19 +11,34 @@ import { Streams } from '../schema.js';
 // _meta.collection 等) は引き継ぐ。外部から取得・受信した表現は _meta を持たないため、
 // そのまま set すると内部状態が失われる。saveObject と同じマージ規則を使う (→ ADR-0053、ADR-0059)。
 // `recomputedKeys` は object の内容から計算し直すキーで、既存の値を引き継がない (→ ADR-0086)。
+// `prepare` には置き換え前後の内容が渡され、同じトランザクションで他のドキュメントを更新できる
+// (返信数の非正規化 → ADR-0102)。戻り値の `meta` は置き換え後の `_meta` に足される。
+// oxlint-disable-next-line max-params
 export const replaceKeepingMeta = (
 	ref: DocumentReference<APObject>,
 	object: APObject,
 	recomputedKeys: readonly string[] = [],
+	prepare?: (
+		transaction: Transaction,
+		before: APObject | undefined,
+		after: APObject,
+	) => Promise<{ meta?: Record<string, unknown>; commit: () => void }>,
 ) =>
 	db.runTransaction(async (transaction) => {
-		const existingMeta = (await transaction.get(ref)).data()?._meta;
-		transaction.set(
-			ref,
+		const existing = (await transaction.get(ref)).data();
+		const existingMeta = existing?._meta;
+		const replaced =
 			existingMeta === undefined
 				? object
-				: { ...object, _meta: { ...omit(existingMeta, recomputedKeys), ...object._meta } },
+				: { ...object, _meta: { ...omit(existingMeta, recomputedKeys), ...object._meta } };
+		const prepared = await prepare?.(transaction, existing, replaced);
+		transaction.set(
+			ref,
+			prepared?.meta === undefined
+				? replaced
+				: { ...replaced, _meta: { ...replaced._meta, ...prepared.meta } },
 		);
+		prepared?.commit();
 	});
 
 export const objectToUpdateDoc = (object: APObject) =>

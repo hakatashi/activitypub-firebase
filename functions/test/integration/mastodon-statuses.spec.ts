@@ -561,6 +561,53 @@ describe('GET / DELETE /api/v1/statuses/:id and /context (Issue #61)', () => {
 		});
 	});
 
+	describe('replies_count (Issue #226, ADR-0102)', () => {
+		test('counts local and received replies and decrements when a reply is deleted', async () => {
+			const { object: parent } = await publishNote(me, {
+				content: plainTextToHtml('Parent'),
+				visibility: 'public',
+			});
+			const { object: localReply } = await publishNote(alice, {
+				content: plainTextToHtml('Local reply'),
+				visibility: 'public',
+				inReplyTo: parent.id,
+			});
+			// 受信した返信 (inReplyTo は配列で届く)
+			await apex.store.saveObject({
+				id: 'https://remote.example/notes/reply',
+				type: 'Note',
+				attributedTo: [REMOTE_BOB],
+				inReplyTo: [parent.id],
+				to: ['https://www.w3.org/ns/activitystreams#Public'],
+				published: new Date().toISOString(),
+				content: 'Remote reply',
+			} as unknown as APObject);
+			// direct の返信は数えない
+			await publishNote(alice, {
+				content: plainTextToHtml('Direct reply'),
+				visibility: 'direct',
+				inReplyTo: parent.id,
+				mentions: [me.id],
+			});
+
+			const ids = await getMastodonIds([
+				{ iri: parent.id, published: parent.published },
+				{ iri: localReply.id, published: localReply.published },
+			]);
+			const parentMastodonId = ids.get(parent.id)!;
+
+			const res = await getStatus(parentMastodonId, 'me-token');
+			expect(res.status).toBe(200);
+			expect(res.body.replies_count).toBe(2);
+
+			const deleteRes = await deleteStatus(ids.get(localReply.id)!, 'alice-token');
+			expect(deleteRes.status).toBe(200);
+
+			const afterDelete = await getStatus(parentMastodonId, 'me-token');
+			expect(afterDelete.body.replies_count).toBe(1);
+		});
+	});
+
 	describe('Status account ID and mentions resolution (Issue #154, ADR-0069)', () => {
 		test('assigns real Snowflake ID to remote account in status.account.id', async () => {
 			const published = '2026-03-01T12:00:00.000Z';
