@@ -248,6 +248,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、相手への代表の Follow `getFollowIri`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
 | `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ホームタイムラインの収集(重複ブースト排除・可視性判定を含む) |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
+| `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)と、URL・acct からのリモートの actor / Note の解決(WebFinger、オリジン検証付きの取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
@@ -262,10 +263,10 @@ Follow を書き換える Store の処理と同じトランザクションで差
 |---|---|
 | `index.ts` | express アプリ、`beforeUserCreate` |
 | `api.ts` | `/api/**` のルーター。CORS、`routes/` の各ルーターの登録、404 フォールバックとエラーハンドラ |
-| `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `accounts` / `timelines` / `statuses` / `statusActions` / `apps`) |
+| `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `search` / `accounts` / `timelines` / `statuses` / `statusActions` / `apps`) |
 | `presenters/account.ts` | AP actor → Account / CredentialAccount / Relationship の変換と、アカウント ID の解決 |
 | `presenters/status.ts` | Note / Announce → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
-| `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `getOptionalViewer`)と有効なスコープの一覧 |
+| `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `authIfPresent` / `getOptionalViewer`)と有効なスコープの一覧 |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |
 | `statusAttributes.ts` | Note から Status の属性(visibility・language・各種カウント・mentions・tags・media_attachments など)を導出する純粋関数(→ [ADR-0060](adr/0060-derive-status-attributes-from-note.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |

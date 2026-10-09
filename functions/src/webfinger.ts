@@ -1,5 +1,5 @@
 import { request } from 'undici';
-import { apex } from './apex.js';
+import { apex, ensureSystemUser } from './apex.js';
 import { assertSafeUrl, makePinnedAgent, maxRedirects, readBodyWithLimit } from './apex/index.js';
 import { domain, mastodonDomain } from './firebase.js';
 import { isSafeHttpUrl } from './mastodon/statusContent.js';
@@ -211,6 +211,7 @@ export const resolveActorByMention = async (
 			return undefined;
 		}
 
+		await ensureSystemUser();
 		const actor = await apex.resolveObject(actorIri);
 		if (actor !== undefined && isAPActor(actor)) {
 			const actorUrl = getSafeActorUrl(actor);

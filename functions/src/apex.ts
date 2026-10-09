@@ -3,6 +3,7 @@ import ActivitypubExpress, { onApexEvent } from './apex/index.js';
 import type { Express } from 'express';
 import { logger } from 'firebase-functions/v2';
 import { domain } from './firebase.js';
+import { localActorId } from './localActor.js';
 import { routes } from './routes.js';
 import Store from './store/index.js';
 
@@ -53,4 +54,17 @@ export const onApexInbox = (app: Express, listener: (message: ApexInboxMessage) 
 
 export const onApexOutbox = (app: Express, listener: (message: ApexOutboxMessage) => unknown) => {
 	onApexEvent(app, 'apex-outbox', listener);
+};
+
+// 外部への GET に HTTP Signatures で署名するための systemUser を、ローカル actor から遅延して読み込む。
+// Authorized Fetch のサーバー (mastodon.social など) は署名のない取得に 401 を返す (→ ADR-0098)。
+export const ensureSystemUser = async () => {
+	if (apex.systemUser !== undefined) {
+		return;
+	}
+	const actor = await apex.store.getObject(localActorId, true);
+	if (typeof actor?._meta?.privateKey === 'string') {
+		// eslint-disable-next-line require-atomic-updates
+		apex.systemUser = actor;
+	}
 };

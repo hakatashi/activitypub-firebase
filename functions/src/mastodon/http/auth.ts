@@ -150,6 +150,24 @@ export const scopeRequired =
 		next();
 	};
 
+// Mastodon の `authorize_if_got_token!` 相当。トークンがあれば `authRequired` と `scopeRequired` を課し、
+// 無ければ未認証のまま通す。無効なトークンは 401 になる。
+export const authIfPresent =
+	(required: string) =>
+	async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+		if (req.headers.authorization === undefined) {
+			next();
+			return;
+		}
+		await authRequired(req, res, (error?: unknown) => {
+			if (error !== undefined) {
+				next(error);
+				return;
+			}
+			scopeRequired(required)(req, res, next);
+		});
+	};
+
 export const getLocalActor = async (actorId: string): Promise<APActor> => {
 	const actor = await apex.store.getObject(actorId);
 	assert(actor !== undefined, 'actor is undefined');

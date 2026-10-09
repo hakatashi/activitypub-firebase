@@ -38,6 +38,7 @@
 | PATCH | `/api/v1/accounts/update_credentials` | ✅ | アバター・ヘッダー画像変更 (EXIF除去・リサイズ・Storage保存・古い画像削除)、表示名・bio・locked・discoverable・fields 更新、Update 配送 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | DELETE | `/api/v1/profile/avatar` | ✅ | アバター削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
 | DELETE | `/api/v1/profile/header` | ✅ | ヘッダー削除、古い Storage 画像削除、Update 配送、CredentialAccount 返却 (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md)) |
+| GET | `/api/v1/accounts/search` | ✅ | `/api/v2/search` のアカウント部分と同じ処理。認証必須 (→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | GET | `/api/v1/accounts/lookup` | ✅ | ローカル acct と、手元にキャッシュ済みのリモート actor を解決。WebFinger では取りに行かない (→ [ADR-0073](adr/0073-lookup-cached-remote-accounts.md)) |
 | GET | `/api/v1/accounts/:id` | ✅ | アカウント詳細表示。リモートの `url` は相手サーバーのプロフィール URL |
 | GET | `/api/v1/accounts/:id/statuses` | ✅ | actor 絞り込みと可視性判定、ブーストの表示と `exclude_reblogs` 対応、ページネーション対応、`?pinned=true` 対応。リモートアカウントにも対応 (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)、[ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
@@ -85,7 +86,7 @@
 | GET | `/api/v2/notifications/policy` | ✅ | 既定値ポリシーを返すスタブ (Phanpy 互換、→ [ADR-0089](adr/0089-notifications-api.md)) |
 | GET | `/api/v1/notifications/requests` | ✅ | 空配列を返すスタブ (Phanpy 互換、→ [ADR-0089](adr/0089-notifications-api.md)) |
 | GET, POST | `/api/v1/markers` | ✅ | `home` / `notifications` の既読位置、`version` による楽観ロック (競合時は 409 Conflict) (→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
-| GET | `/api/v2/search` | ⬜ | |
+| GET | `/api/v2/search` | ✅ | アカウントは `preferredUsername` の前方一致と acct、URL は IRI(Mastodon 形式の HTML 用 URL を含む)で手元から引き、`resolve=true`(認証必須)なら WebFinger / AP の取得で解決する。投稿の全文検索はせず、`hashtags` は常に空 (→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | GET | `/api/v1/push/subscription` | ✅ | 404 を返す(Web Push 非対応) |
 
 ## 空配列スタブで足りるもの
