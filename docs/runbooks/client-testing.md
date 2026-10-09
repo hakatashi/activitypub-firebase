@@ -205,3 +205,12 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
 - **投稿の削除(`--delete` / `--write`)**: `--post` で投稿したステータスとは別に削除専用のステータスを作成し、UI から削除操作を行って API で 404 になることを検証する。
 - **この仕組みは OAuth の認可画面(アプリ登録 → 認可 → トークン交換)を通らない。**
   ログインまわりの変更は、従来どおりブラウザで1回ログインして確かめる。
+
+## 画像のないアカウントの既定画像の確認
+
+`run.mjs` は他人のプロフィールを巡回しない。Account の `avatar` / `header` を変えたときは、Playwright で次を確かめる(2026-10-10 に実施)。
+
+- ヘッダーのない `admin@mastodon-test.hakatashi.com` のプロフィールを Elk(`/<dev>/@admin@mastodon-test.hakatashi.com`)と
+  Phanpy(`/#/<dev>/a/<Account ID>`)で開き、ヘッダーの位置に壊れた画像(alt テキスト "admin's profile header")が出ない。
+- `header` が `https://<dev>/headers/original/missing.png` で、その URL が `200 image/png` を返す
+  (→ [ADR-0109](../adr/0109-default-avatar-and-header-images.md))。

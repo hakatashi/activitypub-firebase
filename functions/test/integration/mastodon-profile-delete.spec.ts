@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
+import { defaultAvatarUrl, defaultHeaderUrl } from '../../src/mastodon/defaultImages.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import {
 	getMediaStorageBucketName,
@@ -80,8 +81,8 @@ describe('DELETE /api/v1/profile/avatar and header (Issue #220)', () => {
 				.set('Authorization', 'Bearer write-token');
 
 			expect(res.status).toBe(200);
-			expect(res.body.avatar).toBe('');
-			expect(res.body.avatar_static).toBe('');
+			expect(res.body.avatar).toBe(defaultAvatarUrl);
+			expect(res.body.avatar_static).toBe(defaultAvatarUrl);
 			expect(deletedPaths).toContain('accounts/avatars/old-avatar.png');
 			expect(apex.publishUpdate).toHaveBeenCalled();
 
@@ -101,7 +102,7 @@ describe('DELETE /api/v1/profile/avatar and header (Issue #220)', () => {
 				.set('Authorization', 'Bearer write-token');
 
 			expect(res.status).toBe(200);
-			expect(res.body.avatar).toBe('');
+			expect(res.body.avatar).toBe(defaultAvatarUrl);
 			expect(deletedPaths).toHaveLength(0);
 		});
 	});
@@ -138,8 +139,8 @@ describe('DELETE /api/v1/profile/avatar and header (Issue #220)', () => {
 				.set('Authorization', 'Bearer write-token');
 
 			expect(res.status).toBe(200);
-			expect(res.body.header).toBe('');
-			expect(res.body.header_static).toBe('');
+			expect(res.body.header).toBe(defaultHeaderUrl);
+			expect(res.body.header_static).toBe(defaultHeaderUrl);
 			expect(deletedPaths).toContain('accounts/headers/old-header.png');
 			expect(apex.publishUpdate).toHaveBeenCalled();
 
@@ -155,7 +156,7 @@ describe('DELETE /api/v1/profile/avatar and header (Issue #220)', () => {
 				.set('Authorization', 'Bearer write-token');
 
 			expect(res.status).toBe(200);
-			expect(res.body.header).toBe('');
+			expect(res.body.header).toBe(defaultHeaderUrl);
 			expect(deletedPaths).toHaveLength(0);
 		});
 	});

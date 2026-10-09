@@ -118,6 +118,14 @@
           "function": "mastodonApi"
         },
         {
+          "source": "/avatars/original/missing.png",
+          "function": "mastodonApi"
+        },
+        {
+          "source": "/headers/original/missing.png",
+          "function": "mastodonApi"
+        },
+        {
           "regex": "^/@[^/]+(?:/[0-9]+)?/?$",
           "function": "mastodonApi"
         }

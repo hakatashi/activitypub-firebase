@@ -21,11 +21,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 
 ## Mastodon API
 
-### 画像のない Account の `avatar` / `header` が空文字列
-
-`functions/src/mastodon/presenters/account.ts` は `icon` / `image` がない actor で空文字列を返す。
-Mastodon は `missing.png` の URL を返すので、Elk はヘッダーのないアカウントのプロフィールで壊れた画像を出す(#252)。
-
 ### 期限切れの OAuth トークンが残り続ける
 
 `POST /oauth/revoke` による失効には対応しているが、期限切れのアクセストークン・

@@ -29,7 +29,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | Function | 種別 | 役割 |
 |---|---|---|
 | `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ |
-| `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ。本文のハッシュタグのリンク先 `/tags/:name` は Elk のタグのページへリダイレクト。`/@:acct/:id`・`/@:acct` はリンクプレビュー用の最小限の HTML (→ [ADR-0107](adr/0107-minimal-html-status-page-for-link-previews.md)) (256MiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
+| `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ。本文のハッシュタグのリンク先 `/tags/:name` は Elk のタグのページへリダイレクト。`/@:acct/:id`・`/@:acct` はリンクプレビュー用の最小限の HTML (→ [ADR-0107](adr/0107-minimal-html-status-page-for-link-previews.md))。`/avatars/original/missing.png`・`/headers/original/missing.png` は画像のない Account の既定画像 (→ [ADR-0109](adr/0109-default-avatar-and-header-images.md)) (256MiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
 | `mediaUploadApi` | HTTP | メディアアップロード・取得・編集 API。Hosting rewrite でマップ (2GiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
@@ -290,6 +290,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `oauth2Model.ts` | `@node-oauth/oauth2-server` の Firestore バックエンド |
 | `instanceInformation.ts` | `/api/v1/instance` と `/api/v2/instance` のレスポンス |
 | `publicPages.ts` / `publicPageHtml.ts` | `/@:acct/:id`(投稿)・`/@:acct`(プロフィール)で、ローカル actor の `public` / `unlisted` の投稿とプロフィールの OGP 付きの最小限の HTML を返す。Elk はクローラーをこのパスへ 301 する。本文は許可リストでサニタイズし、CSP はインラインの style / script をハッシュで許可する。JS が動けば Elk の同じページへ移る(→ [ADR-0107](adr/0107-minimal-html-status-page-for-link-previews.md)) |
+| `defaultImages.ts` | 画像のない Account の `avatar` / `header` に返す既定画像の URL と、それを返す `/avatars/original/missing.png`・`/headers/original/missing.png`(1×1 の PNG を埋め込み。→ [ADR-0109](adr/0109-default-avatar-and-header-images.md)) |
 
 API で露出する Status などの ID は AP IRI とは別に採番した、時系列順の固定長(20 桁)数値文字列である
 (レイアウトは Mastodon と同じ `ミリ秒 << 16 | シーケンス`。→ [ADR-0006](adr/0006-mastodon-api-id-scheme.md)、
