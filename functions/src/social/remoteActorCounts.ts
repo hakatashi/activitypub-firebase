@@ -51,11 +51,25 @@ export const isRemoteActorStatsStale = (stats: RemoteActorStats, now = Date.now(
 	return Number.isNaN(fetchedAt) || now - fetchedAt >= REMOTE_ACTOR_COUNTS_TTL_MS;
 };
 
-// 同じ actor への依頼を 1 日 1 回にするためのタスク ID (Cloud Tasks の重複排除に使う)。
-export const remoteActorRefreshTaskId = (actorIri: string, now: Date) => {
+export type RemoteActorTaskKind = 'counts' | 'resolve';
+
+// 同じ actor への依頼を種類ごとに 1 日 1 回にするためのタスク ID (Cloud Tasks の重複排除に使う)。
+export const remoteActorRefreshTaskId = (
+	actorIri: string,
+	now: Date,
+	kind: RemoteActorTaskKind = 'counts',
+) => {
 	const hash = createHash('sha256').update(actorIri).digest('hex').slice(0, 32);
-	return `remote-actor-${hash}-${now.toISOString().slice(0, 10).replaceAll('-', '')}`;
+	const prefix = kind === 'counts' ? 'remote-actor' : `remote-actor-${kind}`;
+	return `${prefix}-${hash}-${now.toISOString().slice(0, 10).replaceAll('-', '')}`;
 };
+
+// 同じ ID のタスクがすでにある (今日すでに頼んでいる)。
+export const isTaskAlreadyExistsError = (error: unknown) =>
+	typeof error === 'object' &&
+	error !== null &&
+	'code' in error &&
+	error.code === 'functions/task-already-exists';
 
 // テストで差し替えられるよう、enqueue はオブジェクトのメソッドにしておく。
 export const remoteActorRefreshQueue = {
@@ -76,10 +90,7 @@ export const requestRemoteActorRefreshIfStale = async (actor: APObject) => {
 	try {
 		await remoteActorRefreshQueue.enqueue(actorIri);
 	} catch (error) {
-		const code =
-			typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
-		// 今日すでに頼んでいる。
-		if (code === 'functions/task-already-exists') {
+		if (isTaskAlreadyExistsError(error)) {
 			return;
 		}
 		logger.warn({

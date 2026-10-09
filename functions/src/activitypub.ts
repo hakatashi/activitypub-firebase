@@ -15,6 +15,7 @@ import {
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { removeSupersededFollows } from './social/follows.js';
+import { requestResolutionOfObjectActors } from './social/remoteActorResolution.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 import { markActivityPublic } from './store/activities.js';
@@ -274,6 +275,11 @@ onApexInbox(app, async (message) => {
 
 	if (message.activity.type === 'Create') {
 		logger.info(`New ${message.object?.type} from ${message.actor} to ${message.recipient}`);
+	}
+
+	// ブーストの元投稿の作者などが手元になければ取得させる (→ ADR-0106)。
+	if (message.activity.type === 'Create' || message.activity.type === 'Announce') {
+		await requestResolutionOfObjectActors(message.object);
 	}
 });
 

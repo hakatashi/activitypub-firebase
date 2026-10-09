@@ -35,7 +35,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
-| `remoteActorRefreshTask` | Cloud Tasks (`onTaskDispatched`) | リモート actor の `followers` / `following` / `outbox` の件数と最終投稿日を取り直して `_meta` に保存する(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
+| `remoteActorRefreshTask` | Cloud Tasks (`onTaskDispatched`) | リモート actor の `followers` / `following` / `outbox` の件数と最終投稿日を取り直して `_meta` に保存する(`kind: 'counts'`。→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md))か、手元にないリモート actor を取得して保存する(`kind: 'resolve'`。→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
 | `cleanupMediaTask` | Scheduled (`onSchedule`) | 未添付のまま24時間経過したメディアを Storage と Firestore から削除する (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 
@@ -261,6 +261,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)、ハッシュタグの完全一致検索と、URL・acct からのリモートの actor / Note の解決(WebFinger と `remoteResolution.ts` による取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | `remoteResolution.ts` | リモートの AP オブジェクト・actor の取得(SSRF セーフな `requestObject`、オリジン検証。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | `remoteActorCounts.ts` | リモート actor の件数・最終投稿日の取得と `_meta` への保存、古いときの取得依頼(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
+| `remoteActorResolution.ts` | 手元にないリモート actor の取得依頼(Account の組み立て・inbox での `Create` / `Announce` 受信時)とタスクでの取得(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
@@ -327,6 +328,10 @@ Status の `mentions[].id` もこれに揃える(→ [ADR-0069](adr/0069-mastodo
 `_meta` に保存した値を読み、`created_at` は actor の `published` から作る。`GET /api/v1/accounts/:id`・`/lookup` で
 保存した値が 24 時間より古ければ `remoteActorRefreshTask` に取り直しを頼み、レスポンスは待たずに返す
 (→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md))。
+Account をまとめて組み立てるとき(`userIdsToAccountsMap`)に `objects` に無かったリモート actor は、その場では飛ばし
+(→ [ADR-0099](adr/0099-graceful-fallback-for-unresolved-actors-in-timelines.md))、`remoteActorRefreshTask` に取得を頼む。
+inbox で受け取った `Create` / `Announce` のオブジェクトの作者と、手元にあるリプライ先 Note の作者も、手元になければ同じく取得を頼む
+(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md))。
 Status の `favourited` / `reblogged` / `bookmarked` / `pinned` は認証ユーザーの
 `userInfos/{actor}/favourites`・`reblogs`・`bookmarks`・`pins` から判定する
 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md))。
