@@ -9,6 +9,7 @@ import { UserInfos } from '../schema.js';
 import { pickSafeHeaders, redactSensitiveBody } from '../utils.js';
 import apiRouter from './api.js';
 import oauthRouter from './oauth.js';
+import publicPagesRouter from './publicPages.js';
 
 const app = express();
 // Express 5 の既定 (simple) では `id[]=1&id[]=2` 形式の配列クエリを解釈できない (→ ADR-0087)。
@@ -42,6 +43,9 @@ app.get('/nodeinfo/:version', nodeinfoCors, apex, apex.net.nodeInfo.get);
 app.get('/tags/:name', (req, res) => {
 	res.redirect(`https://elk.zone/${mastodonDomain}/tags/${encodeURIComponent(req.params.name)}`);
 });
+
+// リンクプレビュー用の最小限の HTML (→ ADR-0107)。
+app.use(publicPagesRouter);
 
 // メディアアップロード処理は mediaUploadApi (2GiB) に分離したため、mastodonApi は 256MiB で軽量稼働する (→ ADR-0093)。
 export const mastodonApi = https.onRequest({ memory: '256MiB' }, app);
