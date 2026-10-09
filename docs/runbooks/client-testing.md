@@ -87,16 +87,17 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 - [ ] `--interact` (または `--write`) で `interact: favourited and boosted via UI`
 - [ ] `--profile` (または `--write`) で `profile: updated successfully via UI` (テスト終了後に元のプロフィールへ自動復元される)
 
-## 既知の出力(2026-10-08 時点)
+## 既知の出力(2026-10-10 時点)
 
 dev の実装が追いつけば消える。消えたらこの節も更新する。
 
 | 出力 | 原因 |
 |---|---|
 | `GET 404 /api/v1/push/subscription`(Elk) | Web Push 未実装。購読がないときの 404 は Mastodon と同じ挙動 |
-| `net::ERR_BLOCKED_BY_ORB https://img.pawoo.net/...` | キャッシュしているリモート actor のアバター URL が古い |
-| Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...` | テスト用インスタンスのメディアの配信設定(CORS)。dev とは無関係 |
+| `net::ERR_BLOCKED_BY_ORB https://img.pawoo.net/...`(Elk)、`GET 404` / `net::ERR_FAILED https://img.pawoo.net/...`(Phanpy) | キャッシュしているリモート actor のアバター URL が古い(#253) |
+| Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...`、`https://s3-mstdn.maud.io/...` | リモートのメディアの配信設定(CORS)。Phanpy は `crossOrigin` 付きで画像を読む。dev とは無関係 |
 | Phanpy: `net::ERR_FAILED .../accounts/avatars/...` | GCS のエッジキャッシュ(最大1時間)に CORS 設定前の古いレスポンスが残っている場合。キャッシュ期限切れや新規画像アップロードで解消する |
+| Phanpy: `net::ERR_FILE_NOT_FOUND blob:http://127.0.0.1:5315/...`(`--media`) | 投稿後に Phanpy がプレビュー用の Object URL を破棄したもの。dev とは無関係 |
 
 ## 検索(`/api/v2/search`)の確認
 
@@ -145,6 +146,44 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
   設定した値になっていることを見る。
 - 確認後は既定の公開範囲を `public` に戻す。
 
+## Phase 4 の機能をまとめて確かめる(#231)
+
+`run.mjs` が巡回しない、機能をまたいだ流れ。Phase 4 の機能に手を入れたときや、フェーズの終わりに行う(2026-10-10 に実施)。
+相手は自前の `admin@mastodon-test.hakatashi.com` を使い、相手側の操作は `REMOTE_TOKEN` で Mastodon API を叩く
+([`federation-testing.md`](federation-testing.md))。UI の操作は Playwright で、ログイン状態の作り方は `run.mjs` と同じ。
+
+1. **検索とフォロー**: dev 側で一度アンフォローしてから、Elk の `/<dev>/search` / Phanpy の `/#/<dev>/search?q=` で
+   `@admin@mastodon-test.hakatashi.com` を検索し、プロフィールの件数・登録日が相手の `verify_credentials` と一致すること、
+   フォローして `relationships` が `following: true` になることを見る。相手がフォロー済みなら Elk のボタンは「Follow back」。
+2. **通知**: 相手からフォロー(アンフォロー → フォロー)・メンション・お気に入り・ブーストを送り、`/api/v1/notifications` に4種類が出て、
+   `unread_count` が増えることを見る。通知のページングは `limit` を小さくして `Link` の `next` を辿り、全件がちょうど1回ずつ出ることも見る。
+   - **Elk の未読バッジは出ない。** Elk はストリーミングの `notification` イベントで数え、ストリーミングがないと既読化(`markers` の POST)もしない
+     (`third_party/elk/app/composables/masto/notification.ts`。ストリーミングは実装しない。→ [ADR-0007](../adr/0007-no-streaming-api.md))。
+   - **Phanpy の未読バッジ(`.has-badge`)は、通知画面を一度開いた後に届いた通知にだけ出る。** 最新の通知を覚えて、20 秒ごとに
+     `since_id` でポーリングするため(`third_party/phanpy/src/components/background-service.jsx`)。通知画面を開く → ホームに戻る →
+     相手からメンションを送る → 1 分弱待つ、の順で見る。通知画面を開くと `markers` を POST してバッジが消え、`unread_count` が 0 になる。
+3. **メディア**: Elk の投稿欄で画像を2枚添付し、それぞれ「Edit」から代替テキストを入れ(`PUT /api/v1/media/:id`)、
+   「Add content warning」を押して投稿する。Mastodon の `sensitive` は投稿単位で、Elk では CW と一体。
+   相手の `/api/v2/search?resolve=true&q=<uri>` で `sensitive`・`media_attachments` の `description`・`blurhash` が届いていることを見る
+   (相手の Web UI は未ログインだと元のサーバーへ誘導されるので、API で確かめる)。相手から `POST /api/v2/media` → 画像付きで投稿し、
+   dev のホームに画像付きで出ることを見る。dev の `preferences` は `reading:expand:media: show_all` なので、dev 側のクライアントではぼかされない。
+4. **返信**: dev から投稿し、相手から返信して `replies_count` が 1 になり、`context` の `descendants` に出ることを見る。
+   相手の返信の詳細から Elk / Phanpy で返信し、相手の `context` に届くことを見る。
+5. **お気に入り・ブースト・ブックマーク**: 相手の投稿の詳細で3つを押し、`favourites` / `bookmarks` の先頭、ホームと自分の投稿一覧の先頭のブーストに
+   出ることを見る。取り消すと消える。Elk のボタンの `aria-label` は押した後に「Favorited」「Boosted」「Bookmarked」に変わる。
+   Phanpy のブックマークは `.bookmark-button`、「誰が反応したか」は「…」メニューの「Boosted/Liked by…」で開く。
+6. **ハッシュタグ**: 上の「ハッシュタグのタイムラインの確認」の手順。Elk のタグのページは `tags/:name` → `followed_tags` → `timelines/tag` を
+   直列に待つので、表示まで 5 秒ほどかかる。
+7. **プロフィール編集**: Phanpy の「Edit profile」でアバター・ヘッダーを、設定で既定の公開範囲を変える(上の「既定の公開範囲の確認」)。
+   Elk のプロフィールに反映され、Elk から公開範囲を触らずに投稿すると設定した値になり、相手の `GET /api/v1/accounts/:id` の `avatar` が
+   数十秒で変わることを見る。**事前に元の画像を保存しておき、確認後に `update_credentials` で戻す。**
+8. **リンクプレビュー**: クローラーの UA で Elk の投稿 URL を取得し、dev の `/@hakatashi/<ID>` に 301 されて OGP が返ることを見る。
+
+   ```bash
+   curl -sL -A 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)' \
+     "https://elk.zone/mastodon-dev.hakatashi.com/@hakatashi/<ID>" | grep -o '<meta [^>]*og:[^>]*>'
+   ```
+
 ## ハマりどころ
 
 - 自宅 LAN の DNS(NAS)は `hakatashi.com` をヘアピン DNS として持っている。Firebase Hosting を指すホスト名
@@ -156,7 +195,8 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
   画面遷移ではなく `verify_credentials` の応答を待つこと。
 - Elk の `/` はビルド時に事前描画されており、`NUXT_PUBLIC_DEFAULT_SERVER` が効かない(既定の `m.webtoo.ls` が出る)。
   `/` 以外から入る。
-- Elk が Chrome 内蔵の翻訳 API を呼んで出す `Requires a user gesture ...` は、サーバーと無関係なので除外している。
+- Elk が Chrome 内蔵の翻訳 API を呼んで出す `Requires a user gesture ...` と、投稿欄の言語検出(`LanguageDetector.create()`)が
+  モデルのないヘッドレス Chromium で出す `Model not available` は、サーバーと無関係なので除外している。
   ただし同じ原因で、**`language` が Elk の表示言語(既定は英語)と異なる投稿は、ヘッドレス Chromium では本文が描画されない**
   (`useTranslation` が `Translator.availability()` を待ったまま進まない)。スクリーンショットで本文が空の投稿があっても、
   API の `content` が正しく `language` が `ja` などなら dev の不具合ではない。

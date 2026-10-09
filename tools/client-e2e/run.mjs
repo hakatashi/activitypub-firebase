@@ -373,7 +373,11 @@ const runClient = async (browser, name, context) => {
 		// Error 以外が throw されると message も stack も空になるので、名前と文字列表現で補う
 		const text = error.stack || error.message || `${error.name}: ${String(error)}`;
 		// Elk が Chrome 内蔵の Translator / LanguageDetector API を呼んで出る例外。サーバーと無関係
-		if (text.includes('Requires a user gesture when availability is')) {
+		// (Model not available は投稿欄の LanguageDetector.create() がモデルのないヘッドレス Chromium で reject されるもの)
+		if (
+			text.includes('Requires a user gesture when availability is') ||
+			text.includes('Model not available')
+		) {
 			return;
 		}
 		errors.push({ page: current, type: 'pageerror', text: redact(text) });
