@@ -4,7 +4,7 @@ import type { Transaction } from '@google-cloud/firestore';
 import { noteToVisibility } from '../addressing.js';
 import type { APObject } from '../apex/index.js';
 import { escapeFirestoreKey } from '../firebase.js';
-import { toObjectQueryMetaValue } from '../meta.js';
+import { buildObjectQueryMeta } from '../meta.js';
 import { Objects } from '../schema.js';
 import { isAPNote } from '../utils.js';
 
@@ -18,7 +18,7 @@ export const getCountedReplyTarget = (object: APObject | undefined): string | un
 	if (object === undefined || !isAPNote(object)) {
 		return undefined;
 	}
-	const inReplyTo = toObjectQueryMetaValue('inReplyTo', object.inReplyTo);
+	const { inReplyTo } = buildObjectQueryMeta({ inReplyTo: object.inReplyTo });
 	if (inReplyTo === undefined || inReplyTo === object.id) {
 		return undefined;
 	}

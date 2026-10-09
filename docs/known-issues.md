@@ -24,8 +24,3 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 リモートアカウントの Account は `externalUserInfo` を下敷きにしており、`followers_count` /
 `following_count` / `statuses_count` は 0、`created_at` は `2021-01-01` 固定
 (→ [ADR-0075](adr/0075-recompute-follow-counts.md) の「未対応」)。
-
-### ハッシュタグのリンク先が 404
-
-投稿本文のハッシュタグは `https://<Mastodon ドメイン>/tags/<名前>` にリンクするが、
-そのページもハッシュタグタイムライン(`/api/v1/timelines/tag/:hashtag`)も未実装。

@@ -74,7 +74,8 @@
 |---|---|---|---|
 | GET | `/api/v1/timelines/public` | ✅ | public のみ。ページネーション対応 |
 | GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ブースト表示・重複ブースト排除対応。ページネーション対応。リモートの Note (`attributedTo` が配列) も含む (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)、[ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
-| GET | `/api/v1/timelines/tag/:hashtag` | ⬜ | |
+| GET | `/api/v1/timelines/tag/:hashtag` | ✅ | public のみ。大文字小文字・全角半角を区別しない。`any[]`(`array-contains-any` で同じクエリに足す)・`all[]` / `none[]`・`local` / `remote` / `only_media`(取得後に絞る)対応。ブーストは載せない。ページネーション対応 (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
+| GET | `/api/v1/tags/:name` | ✅ | 手元に Note が無くても Tag を返す(`history` は空、`following` は false)。名前が不正なら 404。`follow` / `unfollow` は未実装(404) (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | — | ページネーション + `Link` ヘッダ | ✅ | `max_id`/`since_id`/`min_id`/`limit`、`Access-Control-Expose-Headers: Link`(→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md)) |
 
 ## 通知・その他
@@ -89,7 +90,7 @@
 | GET | `/api/v2/notifications/policy` | ✅ | 既定値ポリシーを返すスタブ (Phanpy 互換、→ [ADR-0089](adr/0089-notifications-api.md)) |
 | GET | `/api/v1/notifications/requests` | ✅ | 空配列を返すスタブ (Phanpy 互換、→ [ADR-0089](adr/0089-notifications-api.md)) |
 | GET, POST | `/api/v1/markers` | ✅ | `home` / `notifications` の既読位置、`version` による楽観ロック (競合時は 409 Conflict) (→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
-| GET | `/api/v2/search` | ✅ | アカウントは `preferredUsername` の前方一致と acct、URL は IRI(Mastodon 形式の HTML 用 URL を含む)で手元から引き、`resolve=true`(認証必須)なら WebFinger / AP の取得で解決する。投稿の全文検索はせず、`hashtags` は常に空 (→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
+| GET | `/api/v2/search` | ✅ | アカウントは `preferredUsername` の前方一致と acct、URL は IRI(Mastodon 形式の HTML 用 URL を含む)で手元から引き、`resolve=true`(認証必須)なら WebFinger / AP の取得で解決する。投稿の全文検索はしない。`hashtags` は `q` を正規化したタグの完全一致で、その公開 Note が手元にあるときだけ返す (→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)、[ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | GET | `/api/v1/push/subscription` | ✅ | 404 を返す(Web Push 非対応) |
 
 ## 空配列スタブで足りるもの

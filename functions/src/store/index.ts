@@ -9,6 +9,7 @@ import { db, escapeFirestoreKey } from '../firebase.js';
 import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from '../mastodonId.js';
 import {
 	OBJECT_QUERY_META_KEYS,
+	OBJECT_QUERY_META_SOURCES,
 	buildActivityQueryMeta,
 	buildObjectQueryMeta,
 	metaIndexPath,
@@ -239,12 +240,11 @@ export default class Store extends IApexStore implements ApexStore {
 				...objectToUpdateDoc(obj),
 				// `_meta` はドット記法で更新し、既存のカウンタなどを消さない。
 				...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
-				// 更新するフィールドに対応する検索用の `_meta` だけを書き直す (→ ADR-0086)。
+				// 更新するフィールドに対応する検索用の `_meta` だけを書き直す (→ ADR-0086、ADR-0103)。
 				...Object.fromEntries(
-					OBJECT_QUERY_META_KEYS.filter((key) => key in obj).map((key) => [
-						`_meta.${key}`,
-						queryMeta[key] ?? firebase.firestore.FieldValue.delete(),
-					]),
+					OBJECT_QUERY_META_KEYS.filter((key) => OBJECT_QUERY_META_SOURCES[key] in obj).map(
+						(key) => [`_meta.${key}`, queryMeta[key] ?? firebase.firestore.FieldValue.delete()],
+					),
 				),
 			});
 			replies.commit();

@@ -2,11 +2,13 @@ import type { APActor } from 'activitypub-types';
 import { apex, ensureSystemUser } from '../apex.js';
 import type { APObject } from '../apex/index.js';
 import { domain, mastodonDomain } from '../firebase.js';
+import { normalizeHashtag, toHashtagDisplayName } from '../hashtags.js';
 import { getIriByMastodonId } from '../mastodonId.js';
 import { Objects } from '../schema.js';
 import { getAttributedTo, isAPActor, isAPNote } from '../utils.js';
 import { fetchWebfinger } from '../webfinger.js';
 import { getFollowing } from './follows.js';
+import { hasPublicHashtagNotes } from './timelines.js';
 import type { NoteObject } from './types.js';
 import { isNoteVisibleTo, noteToVisibility } from './visibility.js';
 
@@ -30,6 +32,8 @@ export interface SearchOptions {
 export interface SearchResult {
 	actorIris: string[];
 	notes: NoteObject[];
+	// Tag エンティティの name にする表示用のタグ名 (→ ADR-0103)。
+	hashtags: string[];
 }
 
 // 接頭辞検索の結果をドメインやフォロー関係で後から絞り込むときに読む actor の上限。
@@ -46,7 +50,7 @@ const isLocalHost = (host: string) => {
 	return lowerHost === domain.toLowerCase() || lowerHost === mastodonDomain.toLowerCase();
 };
 
-const emptyResult = (): SearchResult => ({ actorIris: [], notes: [] });
+const emptyResult = (): SearchResult => ({ actorIris: [], notes: [], hashtags: [] });
 
 const parseUrl = (value: string) => {
 	try {
@@ -235,7 +239,7 @@ const searchByUrl = async (query: string, options: SearchOptions): Promise<Searc
 		return emptyResult();
 	}
 	if (isAPActor(object) && isTypeIncluded(options.type, 'accounts')) {
-		return { actorIris: [String(object.id)], notes: [] };
+		return { actorIris: [String(object.id)], notes: [], hashtags: [] };
 	}
 	if (isAPNote(object) && isTypeIncluded(options.type, 'statuses')) {
 		const { viewer } = options;
@@ -245,27 +249,26 @@ const searchByUrl = async (query: string, options: SearchOptions): Promise<Searc
 			getAttributedTo(object) !== viewer.id;
 		const following = needsFollowing ? new Set(await getFollowing(viewer)) : new Set<string>();
 		if (isNoteVisibleTo(object, viewer?.id, following)) {
-			return { actorIris: [], notes: [object] };
+			return { actorIris: [], notes: [object], hashtags: [] };
 		}
 	}
 	return emptyResult();
 };
 
-export const search = async (query: string, options: SearchOptions): Promise<SearchResult> => {
-	const q = query.trim();
-	if (q.length === 0 || options.limit <= 0) {
-		return emptyResult();
+// タグは完全一致だけを探し、その名前の公開 Note が手元に1件でもあれば返す (→ ADR-0103)。
+const searchHashtags = async (query: string, options: SearchOptions): Promise<string[]> => {
+	if (options.offset > 0 || query.includes('@')) {
+		return [];
 	}
-
-	if (/^https?:\/\//iu.test(q)) {
-		return searchByUrl(q, options);
+	const displayName = toHashtagDisplayName(query);
+	const normalized = normalizeHashtag(query);
+	if (displayName === undefined || normalized === undefined) {
+		return [];
 	}
+	return (await hasPublicHashtagNotes(normalized)) ? [displayName] : [];
+};
 
-	// 投稿の全文検索は行わない (→ ADR-0097)。ハッシュタグは #228 で実装する。
-	if (!isTypeIncluded(options.type, 'accounts')) {
-		return emptyResult();
-	}
-
+const searchAccounts = async (q: string, options: SearchOptions): Promise<string[]> => {
 	const acctMatch = ACCT_PATTERN.exec(q)?.groups;
 	const filterFollowing = options.following && options.viewer !== undefined;
 	let actorIris =
@@ -283,8 +286,23 @@ export const search = async (query: string, options: SearchOptions): Promise<Sea
 		actorIris = actorIris.filter((iri) => following.has(iri));
 	}
 
-	return {
-		actorIris: actorIris.slice(options.offset, options.offset + options.limit),
-		notes: [],
-	};
+	return actorIris.slice(options.offset, options.offset + options.limit);
+};
+
+export const search = async (query: string, options: SearchOptions): Promise<SearchResult> => {
+	const q = query.trim();
+	if (q.length === 0 || options.limit <= 0) {
+		return emptyResult();
+	}
+
+	if (/^https?:\/\//iu.test(q)) {
+		return searchByUrl(q, options);
+	}
+
+	// 投稿の全文検索は行わない (→ ADR-0097)。
+	const [actorIris, hashtags] = await Promise.all([
+		isTypeIncluded(options.type, 'accounts') ? searchAccounts(q, options) : [],
+		isTypeIncluded(options.type, 'hashtags') ? searchHashtags(q, options) : [],
+	]);
+	return { actorIris, notes: [], hashtags };
 };

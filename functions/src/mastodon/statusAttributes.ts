@@ -7,6 +7,7 @@ import {
 	noteToVisibility,
 } from '../social/visibility.js';
 import { domain } from '../firebase.js';
+import { isHashtagType } from '../hashtags.js';
 import type { CamelToSnake } from '../utils.js';
 import { toArray, toStringValue } from '../utils.js';
 
@@ -92,7 +93,7 @@ export const noteToHashtags = (note: APNote): mastodon.v1.Tag[] =>
 	toTags(note).flatMap((tag) => {
 		const href = toStringValue(tag.href);
 		const name = toStringValue(tag.name);
-		if (!hasType(tag, 'Hashtag') || href === undefined || name === undefined) {
+		if (!isHashtagType(tag.type) || href === undefined || name === undefined) {
 			return [];
 		}
 		return [{ name: name.replace(/^#/, ''), url: href }];

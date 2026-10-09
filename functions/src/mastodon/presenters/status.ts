@@ -12,8 +12,9 @@ import {
 	getAccountTimelineItems,
 	getHomeTimelineItems,
 	getPublicTimelineNotes,
+	getHashtagTimelineNotes,
 } from '../../social/timelines.js';
-import type { TimelineItem } from '../../social/timelines.js';
+import type { HashtagTimelineOptions, TimelineItem } from '../../social/timelines.js';
 import type { NoteObject } from '../../social/types.js';
 import {
 	domain,
@@ -427,6 +428,13 @@ export const getAccountStatuses = async (
 // 公開タイムライン。public な投稿のみ (unlisted / private / direct は載せない)。
 export const getPublicTimeline = async (page: PageParams, viewer?: APActor | undefined) =>
 	notesToStatuses(await getPublicTimelineNotes(page), viewer);
+
+// ハッシュタグのタイムライン。公開の投稿のみ (→ ADR-0103)。
+export const getHashtagTimeline = async (
+	options: HashtagTimelineOptions,
+	page: PageParams,
+	viewer?: APActor | undefined,
+) => notesToStatuses(await getHashtagTimelineNotes(options, page), viewer);
 
 // ホームタイムライン。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
 export const getHomeTimeline = async (viewer: APActor, page: PageParams) =>

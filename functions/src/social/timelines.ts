@@ -2,12 +2,13 @@ import assert from 'node:assert';
 import { chunk, uniq } from 'lodash-es';
 import type { APActor } from 'activitypub-types';
 import type { APObject } from '../apex/index.js';
-import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../firebase.js';
+import { domain, escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../firebase.js';
+import { getObjectHashtags } from '../hashtags.js';
 import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
 import type { PageParams } from '../pagination.js';
 import { isAscending, isIdInRange, lowerBoundId, takePage } from '../pagination.js';
 import { UserInfos } from '../schema.js';
-import { getAttributedTo, isAPAnnounce, isAPNote, toIdArray } from '../utils.js';
+import { getAttributedTo, isAPAnnounce, isAPNote, toArray, toIdArray } from '../utils.js';
 import { getFollowing } from './follows.js';
 import type { NoteObject } from './types.js';
 import { isNotePublicTimelineEligible, isNoteVisibleTo, noteToVisibility } from './visibility.js';
@@ -38,10 +39,12 @@ export type TimelineItem =
 // 可視性の判定は Firestore のクエリでは表現できないため、足りなければカーソルを進めて読み足す。
 export const collectVisibleNotes = async ({
 	actors,
+	hashtags,
 	page,
 	isVisible,
 }: {
 	actors?: string[] | undefined;
+	hashtags?: string[] | undefined;
 	page: PageParams;
 	isVisible: (note: NoteObject) => boolean;
 }): Promise<PagedNote[]> => {
@@ -56,6 +59,7 @@ export const collectVisibleNotes = async ({
 	for (let round = 0; round < MAX_TIMELINE_FETCH_ROUNDS && collected.length < page.limit; round++) {
 		const rows = await getNotes({
 			actors,
+			hashtags,
 			limit: fetchSize,
 			order: ascending ? 'asc' : 'desc',
 			lower,
@@ -352,6 +356,62 @@ export const getPublicTimelineNotes = async (page: PageParams): Promise<NoteObje
 	const notes = await collectVisibleNotes({ page, isVisible: isNotePublicTimelineEligible });
 	return notes.map((entry) => entry.note);
 };
+
+export interface HashtagTimelineOptions {
+	// 正規化したタグ名 (→ ADR-0103)。
+	hashtag: string;
+	// いずれかを持てばよい追加のタグ (Mastodon の `any[]`)。`hashtag` と合わせて FIRESTORE_IN_QUERY_LIMIT 件まで。
+	any?: string[] | undefined;
+	// すべて持つ必要があるタグ (`all[]`)。
+	all?: string[] | undefined;
+	// 1つも持ってはいけないタグ (`none[]`)。
+	none?: string[] | undefined;
+	local?: boolean | undefined;
+	remote?: boolean | undefined;
+	onlyMedia?: boolean | undefined;
+}
+
+const isLocalNote = (note: NoteObject) =>
+	getAttributedTo(note)?.startsWith(`https://${domain}/`) === true;
+
+// ハッシュタグのタイムラインの Note。public な投稿のみ (→ ADR-0103)。
+// `any` は Firestore の `array-contains-any` に足し、`all` / `none`・`local` / `remote`・`onlyMedia` は取得後に絞る。
+export const getHashtagTimelineNotes = async (
+	options: HashtagTimelineOptions,
+	page: PageParams,
+): Promise<NoteObject[]> => {
+	const hashtags = uniq([options.hashtag, ...(options.any ?? [])]).slice(
+		0,
+		FIRESTORE_IN_QUERY_LIMIT,
+	);
+	const all = options.all ?? [];
+	const none = options.none ?? [];
+	const notes = await collectVisibleNotes({
+		hashtags,
+		page,
+		isVisible: (note) => {
+			if (!isNotePublicTimelineEligible(note)) {
+				return false;
+			}
+			const noteHashtags = new Set(note._meta?.hashtags ?? getObjectHashtags(note));
+			if (!all.every((tag) => noteHashtags.has(tag)) || none.some((tag) => noteHashtags.has(tag))) {
+				return false;
+			}
+			if (options.local === true && !isLocalNote(note)) {
+				return false;
+			}
+			if (options.remote === true && isLocalNote(note)) {
+				return false;
+			}
+			return options.onlyMedia !== true || toArray(note.attachment).length > 0;
+		},
+	});
+	return notes.map((entry) => entry.note);
+};
+
+// 手元にそのタグの公開 Note が1件でもあるか (→ ADR-0103)。
+export const hasPublicHashtagNotes = async (hashtag: string): Promise<boolean> =>
+	(await getHashtagTimelineNotes({ hashtag }, { limit: 1 })).length > 0;
 
 // ホームタイムラインのアイテム (Note + Announce)。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
 export const getHomeTimelineItems = async (

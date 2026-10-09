@@ -16,8 +16,9 @@ import { toBoolean } from '../http/params.js';
 import { getValidQuery, validate } from '../http/validation.js';
 import { resolveActorIriByAccountId, userIdsToAccounts } from '../presenters/account.js';
 import { notesToStatuses } from '../presenters/status.js';
+import { toTagEntity } from '../presenters/tag.js';
 
-// アカウント検索と、URL・acct からのリモートの解決 (→ ADR-0097)。
+// アカウント・ハッシュタグの検索と、URL・acct からのリモートの解決 (→ ADR-0097、ADR-0103)。
 const router = express.Router();
 
 const booleanParam = z
@@ -94,7 +95,7 @@ router.get(
 			userIdsToAccounts(result.actorIris),
 			notesToStatuses(notes, viewer),
 		]);
-		res.json({ accounts, statuses, hashtags: [] });
+		res.json({ accounts, statuses, hashtags: result.hashtags.map(toTagEntity) });
 	},
 );
 
