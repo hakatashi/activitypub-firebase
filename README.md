@@ -21,7 +21,7 @@ Firebase (Hosting + Cloud Functions + Firestore) 上に、ActivityPub と Mastod
 
 ## 状態
 
-**他の Mastodon インスタンスとの連合が双方向で動作し、Elk / Phanpy などのクライアントから投稿・閲覧・タイムラインのページングが一通り動作します。**
+**他の Mastodon インスタンスとの連合が双方向で動作し、Elk / Phanpy などのクライアントから投稿・閲覧に加えて、通知・画像付きの投稿・検索などの日常的な操作が一通り動作します。**
 
 - **配送(Phase 1 / [#6](https://github.com/hakatashi/activitypub-firebase/issues/6))**:
   配送は Cloud Tasks に載せ替えられ([ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md))、
@@ -47,9 +47,13 @@ Firebase (Hosting + Cloud Functions + Firestore) 上に、ActivityPub と Mastod
   フォロー関係・お気に入り・ブーストをアクティビティログから毎回再計算するのをやめて射影に切り替えました。
   テストは並列化と鍵の事前生成で約3分11秒から約35秒に短縮し、PR の CI で型チェックも行っています。
 
-次は **Phase 4(通知・メディア・検索など / [#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**
-に進みます。その後 Phase 5(引っ越し / [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))
-を行います([docs/roadmap.md](docs/roadmap.md))。
+- **通知・メディア・検索など(Phase 4 / [#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**:
+  通知、画像の添付(Cloud Storage)、お気に入り・ブックマークの一覧、タイムラインへのブーストの表示、
+  返信数、検索(リモートのアカウント・投稿の解決とハッシュタグ)、アバター・ヘッダー・既定の公開範囲の変更、
+  投稿ページの OGP を実装し、Elk / Phanpy と実在の Mastodon インスタンスの間で一通り確認済みです。
+
+次は **Phase 5(pawoo.net からの引っ越し / [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))**
+に進みます([docs/roadmap.md](docs/roadmap.md))。
 
 残っている課題や技術的負債は [docs/known-issues.md](docs/known-issues.md) を参照。
 
