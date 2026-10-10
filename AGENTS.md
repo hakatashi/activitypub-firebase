@@ -89,7 +89,7 @@ npm --prefix functions run test:changed # 変更に関係するテストのみ�
 ## 現在の最優先事項
 
 **Phase 1(配送)・Phase 2(受信と AP 準拠)・Phase 2.5(apex フォーク)・Phase 3(Mastodon API)・
-Phase 3.5(リファクタリング)は完了した。**
+Phase 3.5(リファクタリング)・Phase 4(通知・メディア・検索など)は完了した。**
 配送は Cloud Tasks 経由で動作し、dev 環境から実在の Mastodon インスタンスへ
 Follow / Accept / Create が届き、Like / Announce / Undo / Inbox Forwarding の受信も実地で確認済み
 (→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)、
@@ -102,9 +102,13 @@ apex は `functions/src/apex/` にフォークして TypeScript で保守して�
 
 Mastodon API は Elk / Phanpy から投稿・閲覧・タイムラインのページングが一通りでき、
 時系列順の Mastodon ID(→ [ADR-0006](docs/adr/0006-mastodon-api-id-scheme.md))で
-ページネーションしている。クライアントでの確認は
+ページネーションしている。Phase 4 で通知・メディア添付・お気に入り / ブックマーク一覧・
+タイムラインへのブーストの表示・検索(アカウントと URL の解決、ハッシュタグ)・アバター / ヘッダーの変更が揃い、
+Elk / Phanpy と実在インスタンスの間で一通り確認した。通知などのユーザー別のデータは、
+Store がアクティビティを書き換えるのと同じトランザクションで `userInfos/{actor}` のサブコレクションに射影する
+(→ [ADR-0082](docs/adr/0082-project-follow-relations-in-store.md)、[ADR-0088](docs/adr/0088-project-notifications-in-store.md))。クライアントでの確認は
 [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) の手順で行う。
 
-次は **Phase 4(通知・メディア・検索など、Epic
-[#9](https://github.com/hakatashi/activitypub-firebase/issues/9))**。
-その後 Phase 5(引っ越し)に進む(→ [`docs/roadmap.md`](docs/roadmap.md))。
+次は **Phase 5(pawoo.net からの引っ越し、Epic
+[#10](https://github.com/hakatashi/activitypub-firebase/issues/10))**(→ [`docs/roadmap.md`](docs/roadmap.md))。
+移行はやり直せないため、着手時に Epic の前提条件と完了条件を読み直すこと。

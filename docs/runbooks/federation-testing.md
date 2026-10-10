@@ -242,26 +242,34 @@ export NOTE_ID=$(mapi "$REMOTE/api/v1/timelines/home?limit=1" | jq -r '.[0].uri'
 
 ## 6. プロフィール更新の配信
 
-`PATCH /api/v1/accounts/update_credentials` は未実装なので、actor オブジェクトを
-Firestore で直接書き換えてから配信する。apex は `name` / `summary` を**配列**で持つことに注意。
+`PATCH /api/v1/accounts/update_credentials` で表示名などを変えると、
+同じリクエストの中で `Update(Person)` がフォロワーへ配送される
+(→ [ADR-0094](../adr/0094-avatar-header-update-and-credentials.md))。
 
 ```bash
-# Firestore のドキュメント ID は escapeFirestoreKey で % / . をエスケープしたもの
-docid() { node -e 'process.stdout.write(encodeURIComponent(process.argv[1].replaceAll(/%/g,"%25").replaceAll(/\//g,"%2F").replaceAll(/\./g,"%2E")))' "$1"; }
+B=https://mastodon-dev.hakatashi.com
+dapi() { curl -s -H "Authorization: Bearer $MASTODON_DEV_TOKEN" "$@"; }
 
-curl -s -X PATCH \
-  -H "Authorization: Bearer $GCP_TOKEN" -H 'Content-Type: application/json' \
-  "https://firestore.googleapis.com/v1/projects/activitypub-firebase-dev/databases/(default)/documents/objects/$(docid "$ACTOR")?updateMask.fieldPaths=name" \
-  -d '{"fields":{"name":{"arrayValue":{"values":[{"stringValue":"hakatashi (dev, updated)"}]}}}}' | jq '.fields.name'
+# 元の表示名を控えてから変える
+ORIG=$(dapi $B/api/v1/accounts/verify_credentials | jq -r .display_name)
+dapi -X PATCH $B/api/v1/accounts/update_credentials \
+  --data-urlencode "display_name=hakatashi (dev, updated)" | jq '{display_name}'
 
-curl -sH "X-Hakatashi-Token: $HAKATASHI_TOKEN" "$DEV/activitypub/publishProfileUpdate"
-
-# 相手側に反映されたか(Update が届けばキャッシュを待たずに変わる)
+# 相手側に反映されたか(Update が届けばキャッシュを待たずに変わる。2026-10-10 には約10秒で変わった)
 mapi "$REMOTE/api/v1/accounts/$REMOTE_ACCOUNT_ID" | jq '{display_name, note}'
+
+# 元に戻す
+dapi -X PATCH $B/api/v1/accounts/update_credentials --data-urlencode "display_name=$ORIG" | jq '{display_name}'
+```
+
+actor を Firestore で直接書き換えたときは、管理用エンドポイントで `Update` を配送し直せる。
+
+```bash
+curl -sH "X-Hakatashi-Token: $HAKATASHI_TOKEN" "$DEV/activitypub/publishProfileUpdate"
 ```
 
 - [ ] 相手側の表示名が更新される
-- [ ] 確認後、元の値に戻す(同じ PATCH で書き戻す)
+- [ ] 確認後、元の値に戻す
 
 ## 7. 返信とスレッドと Inbox Forwarding
 
