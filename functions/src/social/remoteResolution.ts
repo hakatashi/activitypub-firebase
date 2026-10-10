@@ -72,6 +72,44 @@ export const resolveRemoteActor = async (iri: string): Promise<APObject | undefi
 	return fetched !== undefined && isAPActor(fetched) && fetched.id === iri ? fetched : undefined;
 };
 
+// 外部からリモート actor を保存せずに取得し、オリジンとアクター型を検証する (→ ADR-0097、ADR-0110)。
+// 失敗または検証に反する場合は undefined を返す。
+export const requestRemoteActor = async (iri: string): Promise<APObject | undefined> => {
+	const host = hostOf(iri);
+	if (host === undefined || isLocalHost(host)) {
+		return undefined;
+	}
+	try {
+		await ensureSystemUser();
+		let object = await apex.requestObject(iri);
+		const id = typeof object?.id === 'string' ? object.id : undefined;
+		const idHost = id === undefined ? undefined : hostOf(id);
+		if (
+			object === undefined ||
+			id === undefined ||
+			idHost === undefined ||
+			isLocalHost(idHost) ||
+			!isAPActor(object)
+		) {
+			return undefined;
+		}
+		if (originOf(id) !== originOf(iri)) {
+			object = await apex.requestObject(id);
+			if (object?.id !== id || !isAPActor(object)) {
+				return undefined;
+			}
+		}
+		return object.id === iri ? object : undefined;
+	} catch (error) {
+		apex.logger.warn({
+			type: 'requestRemoteActorFailed',
+			iri,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return undefined;
+	}
+};
+
 // 外部のオブジェクトを保存せずに取得する。失敗は undefined にする。
 export const requestRemoteObject = async (url: string): Promise<APObject | undefined> => {
 	const host = hostOf(url);

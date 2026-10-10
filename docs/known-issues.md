@@ -13,11 +13,6 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 `Follow` は apex 側にケースがなく、`functions/src/activitypub.ts` の `apex-inbox` リスナーで
 自前実装している。`Move` は apex が完全に非対応。
 
-### キャッシュしたリモート actor が更新されない
-
-リモート actor は相手から `Update(Person)` が届いたときだけ上書きされる。`remoteActorRefreshTask`
-(ADR-0104)が取り直すのは件数だけで、actor 本体は取り直さない。相手がアバターを変えても `Update` を
-受け取れていなければ、古い(404 の)アバター URL を返し続ける(#253)。
 
 ## Mastodon API
 

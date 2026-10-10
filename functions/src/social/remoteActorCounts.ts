@@ -3,6 +3,7 @@ import { GrpcStatus } from 'firebase-admin/firestore';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
+import { apex } from '../apex.js';
 import type { APObject } from '../apex/index.js';
 import { escapeFirestoreKey } from '../firebase.js';
 import { Objects } from '../schema.js';
@@ -12,10 +13,11 @@ import {
 	getObjectOrUndefined,
 	hostOf,
 	isLocalHost,
+	requestRemoteActor,
 	requestRemoteObject,
 } from './remoteResolution.js';
 
-// リモート actor の件数・最終投稿日を Cloud Tasks で取得し、actor の `_meta` に保存する (→ ADR-0104)。
+// リモート actor 本体と件数・最終投稿日を Cloud Tasks で取得し保存する (→ ADR-0104、ADR-0110)。
 
 // 保存した件数をこれより古いとみなして取り直す間隔。
 export const REMOTE_ACTOR_COUNTS_TTL_MS = 24 * 60 * 60 * 1000;
@@ -128,32 +130,59 @@ const toDateString = (value: unknown) => {
 	return Number.isNaN(time) ? undefined : new Date(time).toISOString().slice(0, 10);
 };
 
-// actor のコレクションの件数と手元の最新の Note の日付を取り直して `_meta` に保存する。
-// 取れなかった件数は前回の値を残す (→ ADR-0104)。
-export const refreshRemoteActorCounts = async (actorIri: string, now = new Date()) => {
-	const actor = await getObjectOrUndefined(actorIri);
-	if (actor === undefined || !isAPActor(actor) || !isRemoteActor(actor)) {
+// リモート actor 本体を取り直してアバターなどを更新し、コレクションの件数と最新の Note の日付を
+// `_meta` に保存する (→ ADR-0104、ADR-0110)。
+// 取得できなかった actor 本体やコレクションの件数は前回の値を残す。
+export const refreshRemoteActor = async (actorIri: string, now = new Date()) => {
+	const cachedActor = await getObjectOrUndefined(actorIri);
+	if (cachedActor === undefined || !isAPActor(cachedActor) || !isRemoteActor(cachedActor)) {
 		logger.info({ type: 'remoteActorRefreshSkipped', actorIri });
 		return;
 	}
 
+	const fetchedActor = await requestRemoteActor(actorIri);
+	if (fetchedActor === undefined) {
+		// actor 本体の取得に失敗した場合は前回の内容を残し、再試行は翌日の閲覧に任せる (→ ADR-0104、ADR-0110)。
+		try {
+			await Objects.doc(escapeFirestoreKey(actorIri)).update({
+				'_meta.countsFetchedAt': now.toISOString(),
+			});
+		} catch (error) {
+			if ((error as { code?: unknown }).code === GrpcStatus.NOT_FOUND) {
+				return;
+			}
+			throw error;
+		}
+		logger.info({ type: 'remoteActorRefreshFailed', actorIri });
+		return;
+	}
+
 	const [followersCount, followingCount, statusesCount, latestNotes] = await Promise.all([
-		fetchCollectionTotalItems(toIdArray(actor.followers)[0]),
-		fetchCollectionTotalItems(toIdArray(actor.following)[0]),
-		fetchCollectionTotalItems(toIdArray(actor.outbox)[0]),
+		fetchCollectionTotalItems(toIdArray(fetchedActor.followers)[0]),
+		fetchCollectionTotalItems(toIdArray(fetchedActor.following)[0]),
+		fetchCollectionTotalItems(toIdArray(fetchedActor.outbox)[0]),
 		getNotes({ actors: [actorIri], limit: 1 }),
 	]);
 	const lastStatusAt = toDateString(latestNotes[0]?.published);
 
-	const updates: Record<string, unknown> = {
-		'_meta.countsFetchedAt': now.toISOString(),
-		...(followersCount === undefined ? {} : { '_meta.followersCount': followersCount }),
-		...(followingCount === undefined ? {} : { '_meta.followingCount': followingCount }),
-		...(statusesCount === undefined ? {} : { '_meta.statusesCount': statusesCount }),
-		...(lastStatusAt === undefined ? {} : { '_meta.lastStatusAt': lastStatusAt }),
+	const metaUpdates: Record<string, unknown> = {
+		countsFetchedAt: now.toISOString(),
+		...(followersCount === undefined ? {} : { followersCount }),
+		...(followingCount === undefined ? {} : { followingCount }),
+		...(statusesCount === undefined ? {} : { statusesCount }),
+		...(lastStatusAt === undefined ? {} : { lastStatusAt }),
 	};
+
+	const updatedActor: APObject = {
+		...fetchedActor,
+		_meta: {
+			...(fetchedActor._meta as Record<string, unknown> | undefined),
+			...metaUpdates,
+		},
+	};
+
 	try {
-		await Objects.doc(escapeFirestoreKey(actorIri)).update(updates);
+		await apex.store.updateObject(updatedActor, null, true);
 	} catch (error) {
 		// 取得中に actor が消えた。
 		if ((error as { code?: unknown }).code === GrpcStatus.NOT_FOUND) {
@@ -170,3 +199,5 @@ export const refreshRemoteActorCounts = async (actorIri: string, now = new Date(
 		lastStatusAt,
 	});
 };
+
+export const refreshRemoteActorCounts = refreshRemoteActor;

@@ -136,3 +136,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0107](0107-minimal-html-status-page-for-link-previews.md) | リンクプレビュー用に、投稿とプロフィールの最小限の HTML を Mastodon ドメインで返す | Accepted |
 | [0108](0108-notification-cursor-up-to-filled-page.md) | 通知の Link ヘッダのカーソルは、ページが埋まったところまでに読んだ範囲の端にする | Accepted |
 | [0109](0109-default-avatar-and-header-images.md) | 画像のない Account の `avatar` / `header` に、Mastodon ドメインから配信する既定画像の URL を返す | Accepted |
+| [0110](0110-refresh-remote-actor-and-counts.md) | リモート actor 本体を取り直し、アバターなどの変更を反映する | Accepted |
+

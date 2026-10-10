@@ -46,9 +46,27 @@ describe('remote actor counts (Issue #229)', () => {
 		...(totalItems === undefined ? {} : { totalItems }),
 	});
 
-	// 既定ではコレクションの件数を返す。handler で個別に差し替えられる。
+	const carolObject = (extra: Record<string, unknown> = {}) => ({
+		'@context': AS_CONTEXT,
+		id: carolIri,
+		type: 'Person',
+		preferredUsername: 'carol',
+		name: 'Carol',
+		published: '2020-05-06T12:34:56Z',
+		inbox: `${carolIri}/inbox`,
+		outbox: `${carolIri}/outbox`,
+		followers: `${carolIri}/followers`,
+		following: `${carolIri}/following`,
+		...extra,
+	});
+
+	// 既定では actor 本体とコレクションの件数を返す。handler で個別に差し替えられる。
 	const defaultHandler = (req: IncomingMessage, res: ServerResponse) => {
 		const path = new URL(req.url ?? '/', origin).pathname;
+		if (path === '/users/carol') {
+			json(res, carolObject());
+			return;
+		}
 		const counts: Record<string, number> = {
 			'/users/carol/followers': 12,
 			'/users/carol/following': 34,
@@ -200,6 +218,79 @@ describe('remote actor counts (Issue #229)', () => {
 
 			expect(await getCarolMeta()).toMatchObject({ followersCount: 12, statusesCount: 56 });
 		});
+
+		test('updates actor properties (icon, image, name) while preserving _meta', async () => {
+			handler = (req, res) => {
+				const path = new URL(req.url ?? '/', origin).pathname;
+				if (path === '/users/carol') {
+					json(
+						res,
+						carolObject({
+							name: 'Carol Danvers',
+							summary: 'Higher, further, faster',
+							icon: {
+								type: 'Image',
+								url: 'https://example.com/carol-new-avatar.png',
+							},
+							image: {
+								type: 'Image',
+								url: 'https://example.com/carol-new-header.png',
+							},
+						}),
+					);
+					return true;
+				}
+				return false;
+			};
+
+			const now = new Date('2026-10-10T12:00:00.000Z');
+			await refreshRemoteActorCounts(carolIri, now);
+
+			const carol = await apex.store.getObject(carolIri, true);
+			expect(carol).toMatchObject({
+				name: ['Carol Danvers'],
+				summary: ['Higher, further, faster'],
+				icon: [
+					{
+						type: 'Image',
+						url: ['https://example.com/carol-new-avatar.png'],
+					},
+				],
+				image: [
+					{
+						type: 'Image',
+						url: ['https://example.com/carol-new-header.png'],
+					},
+				],
+			});
+			expect(carol?._meta).toMatchObject({
+				followersCount: 12,
+				followingCount: 34,
+				statusesCount: 56,
+				countsFetchedAt: now.toISOString(),
+			});
+		});
+
+		test('preserves existing actor when remote actor endpoint returns an error', async () => {
+			handler = (req, res) => {
+				const path = new URL(req.url ?? '/', origin).pathname;
+				if (path === '/users/carol') {
+					res.writeHead(500);
+					res.end();
+					return true;
+				}
+				return false;
+			};
+
+			const now = new Date('2026-10-10T12:00:00.000Z');
+			await refreshRemoteActorCounts(carolIri, now);
+
+			const carol = await apex.store.getObject(carolIri, true);
+			expect(carol?.name).toBe('Carol');
+			expect(carol?._meta).toMatchObject({
+				countsFetchedAt: now.toISOString(),
+			});
+		});
 	});
 
 	describe('remoteActorRefreshTask', () => {
@@ -284,6 +375,33 @@ describe('remote actor counts (Issue #229)', () => {
 			const accounts = await userIdsToAccountsMap([carolIri]);
 			expect(accounts.get(carolIri)).toMatchObject({ followers_count: 12, statuses_count: 56 });
 			expect(enqueueSpy).not.toHaveBeenCalled();
+		});
+
+		test('reflects updated avatar and display_name in Account response', async () => {
+			handler = (req, res) => {
+				const path = new URL(req.url ?? '/', origin).pathname;
+				if (path === '/users/carol') {
+					json(
+						res,
+						carolObject({
+							name: 'Carol Danvers',
+							icon: {
+								type: 'Image',
+								url: 'https://example.com/carol-new-avatar.png',
+							},
+						}),
+					);
+					return true;
+				}
+				return false;
+			};
+
+			await refreshRemoteActorCounts(carolIri);
+
+			const res = await getCarolAccount();
+			expect(res.status).toBe(200);
+			expect(res.body.display_name).toBe('Carol Danvers');
+			expect(res.body.avatar).toBe('https://example.com/carol-new-avatar.png');
 		});
 	});
 
