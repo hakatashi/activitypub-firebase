@@ -3,7 +3,6 @@ import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { app } from '../../src/activitypub.js';
-import { apex } from '../../src/apex.js';
 import { runPostWorkBeforeSend } from '../../src/postWork.js';
 import * as follows from '../../src/social/follows.js';
 
