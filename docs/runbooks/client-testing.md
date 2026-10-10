@@ -94,9 +94,9 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 | 出力 | 原因 |
 |---|---|
 | `GET 404 /api/v1/push/subscription`(Elk) | Web Push 未実装。購読がないときの 404 は Mastodon と同じ挙動 |
-| `net::ERR_BLOCKED_BY_ORB https://img.pawoo.net/...`(Elk)、`GET 404` / `net::ERR_FAILED https://img.pawoo.net/...`(Phanpy) | キャッシュしているリモート actor のアバター URL が古い(#253) |
-| Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...`、`https://s3-mstdn.maud.io/...` | リモートのメディアの配信設定(CORS)。Phanpy は `crossOrigin` 付きで画像を読む。dev とは無関係 |
+| Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...`、`https://s3-mstdn.maud.io/...`、`https://img.pawoo.net/...` | リモートのメディアの配信設定(CORS)。Phanpy は `crossOrigin` 付きで画像を読む。dev とは無関係 |
 | Phanpy: `net::ERR_FAILED .../accounts/avatars/...` | GCS のエッジキャッシュ(最大1時間)に CORS 設定前の古いレスポンスが残っている場合。キャッシュ期限切れや新規画像アップロードで解消する |
+
 | Phanpy: `net::ERR_FILE_NOT_FOUND blob:http://127.0.0.1:5315/...`(`--media`) | 投稿後に Phanpy がプレビュー用の Object URL を破棄したもの。dev とは無関係 |
 
 ## 検索(`/api/v2/search`)の確認

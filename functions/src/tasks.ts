@@ -214,7 +214,7 @@ export const remoteActorRefreshTaskPayloadSchema = z.object({
 	kind: z.enum(['counts', 'resolve']).default('counts'),
 });
 
-// リモート actor の件数を取り直す (→ ADR-0104)、または手元にない actor を取得する (→ ADR-0106)。
+// リモート actor 本体と件数を取り直す (→ ADR-0104、ADR-0110)、または手元にない actor を取得する (→ ADR-0106)。
 // 取得の失敗はそれぞれの中で吸収し、再試行は翌日の依頼に任せるため、ここではリトライしない。
 export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 	{
