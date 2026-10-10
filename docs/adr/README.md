@@ -137,4 +137,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0108](0108-notification-cursor-up-to-filled-page.md) | 通知の Link ヘッダのカーソルは、ページが埋まったところまでに読んだ範囲の端にする | Accepted |
 | [0109](0109-default-avatar-and-header-images.md) | 画像のない Account の `avatar` / `header` に、Mastodon ドメインから配信する既定画像の URL を返す | Accepted |
 | [0110](0110-refresh-remote-actor-and-counts.md) | リモート actor 本体を取り直し、アバターなどの変更を反映する | Accepted |
+| [0111](0111-retry-unaccepted-follow-and-500-on-sync-failure.md) | 未承認 Follow の再送を受理し、同期処理の失敗時は 500 を返す | Accepted |
 

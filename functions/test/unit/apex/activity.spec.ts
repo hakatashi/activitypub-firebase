@@ -249,3 +249,151 @@ describe('apex activity save (ADR-0048)', () => {
 		expect(res.locals.apex.isNewActivity).toBe(false);
 	});
 });
+
+describe('apex activity inboxSideEffects (ADR-0111)', () => {
+	const ACTOR_ID = 'https://remote.example/u/alice';
+	const RECIPIENT_ID = 'https://example.com/u/bob';
+	const FOLLOW_ID = 'https://remote.example/s/follow-1';
+	const FOLLOWERS_ID = `${RECIPIENT_ID}/followers`;
+
+	const actor = {
+		id: ACTOR_ID,
+		type: 'Person',
+	};
+
+	const recipient = {
+		id: RECIPIENT_ID,
+		type: 'Person',
+		inbox: [`${RECIPIENT_ID}/inbox`],
+		outbox: [`${RECIPIENT_ID}/outbox`],
+		followers: [FOLLOWERS_ID],
+	};
+
+	const apex = ActivitypubExpress({
+		name: 'test-apex',
+		version: '1.0.0',
+		domain: 'example.com',
+		actorParam: 'actor',
+		objectParam: 'id',
+		activityParam: 'id',
+		routes: {
+			actor: '/u/:actor',
+			object: '/o/:id',
+			activity: '/s/:id',
+			inbox: '/u/:actor/inbox',
+			outbox: '/u/:actor/outbox',
+			followers: '/u/:actor/followers',
+			following: '/u/:actor/following',
+			liked: '/u/:actor/liked',
+			collections: '/u/:actor/c/:id',
+			blocked: '/u/:actor/blocked',
+			rejections: '/u/:actor/rejections',
+			rejected: '/u/:actor/rejected',
+			shares: '/s/:id/shares',
+			likes: '/s/:id/likes',
+		},
+		logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+		store: {} as IApexStore,
+		offlineMode: true,
+	});
+
+	const createMockReqRes = (
+		body: Record<string, unknown>,
+		localsApex: Record<string, unknown> = {},
+	) => {
+		const req = {
+			app: { locals: { apex } },
+			body,
+			params: { actor: 'bob' },
+		} as unknown as Request;
+		const res = {
+			locals: {
+				apex: {
+					...localsApex,
+				},
+			},
+		} as unknown as Response;
+		return { req, res };
+	};
+
+	const runMiddleware = (middleware: RequestHandler, req: Request, res: Response) => {
+		return new Promise<void>((resolve, reject) => {
+			middleware(req, res, ((err?: unknown) => {
+				if (err) {
+					reject(err);
+				} else {
+					resolve();
+				}
+			}) as NextFunction);
+		});
+	};
+
+	test('fires apex-inbox event for unaccepted Follow even when isNewActivity is false (ADR-0111)', async () => {
+		const unacceptedFollow = {
+			id: FOLLOW_ID,
+			type: 'Follow',
+			actor: [ACTOR_ID],
+			object: [RECIPIENT_ID],
+			_meta: { collection: [`${RECIPIENT_ID}/inbox`] },
+		};
+
+		const { req, res } = createMockReqRes(unacceptedFollow, {
+			activity: true,
+			actor,
+			target: recipient,
+			isNewActivity: false,
+		});
+
+		await runMiddleware(apex.net.activity.inboxSideEffects, req, res);
+
+		expect(res.locals.apex.eventName).toBe('apex-inbox');
+		expect(res.locals.apex.eventMessage).toEqual({
+			actor,
+			activity: unacceptedFollow,
+			recipient,
+			object: undefined,
+		});
+	});
+
+	test('ignores duplicate delivery for already accepted Follow (isNewActivity is false)', async () => {
+		const acceptedFollow = {
+			id: FOLLOW_ID,
+			type: 'Follow',
+			actor: [ACTOR_ID],
+			object: [RECIPIENT_ID],
+			_meta: { collection: [`${RECIPIENT_ID}/inbox`, FOLLOWERS_ID] },
+		};
+
+		const { req, res } = createMockReqRes(acceptedFollow, {
+			activity: true,
+			actor,
+			target: recipient,
+			isNewActivity: false,
+		});
+
+		await runMiddleware(apex.net.activity.inboxSideEffects, req, res);
+
+		expect(res.locals.apex.eventName).toBeUndefined();
+	});
+
+	test('ignores duplicate delivery for non-Follow activity (isNewActivity is false)', async () => {
+		const createActivity = {
+			id: 'https://remote.example/s/create-1',
+			type: 'Create',
+			actor: [ACTOR_ID],
+			object: ['https://remote.example/o/note-1'],
+			_meta: { collection: [`${RECIPIENT_ID}/inbox`] },
+		};
+
+		const { req, res } = createMockReqRes(createActivity, {
+			activity: true,
+			actor,
+			target: recipient,
+			isNewActivity: false,
+		});
+
+		await runMiddleware(apex.net.activity.inboxSideEffects, req, res);
+
+		expect(res.locals.apex.eventName).toBeUndefined();
+	});
+});
