@@ -5,16 +5,14 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { app } from '../../src/activitypub.js';
 import { apex } from '../../src/apex.js';
 import { runPostWorkBeforeSend } from '../../src/postWork.js';
-import { markActivityPublic } from '../../src/store/activities.js';
-
-vi.mock('../../src/store/activities.js', () => ({ markActivityPublic: vi.fn() }));
+import * as follows from '../../src/social/follows.js';
 
 describe('apex-inbox event: Follow auto-accept', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	test('accepts an incoming Follow and publishes the updated followers collection', async () => {
+	test('accepts an incoming Follow via acceptAndPublishFollow', async () => {
 		const recipient = {
 			id: 'https://example.com/activitypub/u/hakatashi',
 			followers: ['https://example.com/activitypub/u/hakatashi/followers'],
@@ -27,39 +25,23 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			object: recipient.id,
 			_meta: { collection: ['https://example.com/activitypub/u/hakatashi/inbox'] },
 		};
-		const acceptActivity = { id: 'https://example.com/activitypub/s/accept-1', type: 'Accept' };
-		const postTask = vi.fn().mockResolvedValue(undefined);
 
-		const buildActivitySpy = vi.spyOn(apex, 'buildActivity').mockResolvedValue(acceptActivity);
-		const acceptFollowSpy = vi
-			.spyOn(apex, 'acceptFollow')
-			.mockResolvedValue({ postTask, updated: { id: activity.id, type: 'Follow' } });
-		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
-		const markActivityPublicSpy = vi.mocked(markActivityPublic).mockResolvedValue(undefined);
+		const acceptAndPublishFollowSpy = vi
+			.spyOn(follows, 'acceptAndPublishFollow')
+			.mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
 
 		await listeners[0]?.({ activity, actor, recipient });
 
-		expect(buildActivitySpy).toHaveBeenCalledWith('Accept', recipient.id, actor.id, {
-			object: { id: activity.id, type: 'Follow', actor: actor.id, object: recipient.id },
-		});
-		expect(acceptFollowSpy).toHaveBeenCalledWith(recipient, activity);
-		expect(markActivityPublicSpy).toHaveBeenCalledWith(activity);
-		expect(addToOutboxSpy).toHaveBeenCalledWith(recipient, acceptActivity);
-		expect(postTask).toHaveBeenCalledTimes(1);
+		expect(acceptAndPublishFollowSpy).toHaveBeenCalledWith(recipient, activity);
 	});
 
 	test('does not treat non-Follow activities as follow requests', async () => {
-		const buildActivitySpy = vi
-			.spyOn(apex, 'buildActivity')
-			.mockResolvedValue({ id: 'https://example.com/activitypub/s/unused', type: 'Accept' });
-		const acceptFollowSpy = vi.spyOn(apex, 'acceptFollow').mockResolvedValue({
-			postTask: vi.fn(),
-			updated: { id: 'https://remote.example/activities/other-1', type: 'Follow' },
-		});
-		const addToOutboxSpy = vi.spyOn(apex, 'addToOutbox').mockResolvedValue(undefined);
+		const acceptAndPublishFollowSpy = vi
+			.spyOn(follows, 'acceptAndPublishFollow')
+			.mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
@@ -71,9 +53,7 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			object: { type: 'Note' },
 		});
 
-		expect(buildActivitySpy).not.toHaveBeenCalled();
-		expect(acceptFollowSpy).not.toHaveBeenCalled();
-		expect(addToOutboxSpy).not.toHaveBeenCalled();
+		expect(acceptAndPublishFollowSpy).not.toHaveBeenCalled();
 	});
 });
 
@@ -157,7 +137,7 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 		expect(apexLocal?.eventName).toBeNull();
 	});
 
-	test('still sends the response even if a postWork task throws', async () => {
+	test('responds with 500 Internal Server Error if a postWork task throws (ADR-0111)', async () => {
 		const testApp = express();
 		testApp.use(runPostWorkBeforeSend);
 		testApp.get('/test', (req, res) => {
@@ -173,8 +153,29 @@ describe('runPostWorkBeforeSend middleware (apex postWork / event dispatch)', ()
 
 		const response = await request(testApp).get('/test');
 
-		expect(response.status).toBe(200);
-		expect(response.text).toBe('ok despite error');
+		expect(response.status).toBe(500);
+		expect(response.text).toBe('Internal Server Error');
+	});
+
+	test('responds with 500 Internal Server Error if an event listener throws (ADR-0111)', async () => {
+		const testApp = express();
+		testApp.use(runPostWorkBeforeSend);
+		(testApp as EventEmitter).on('error-event', () => {
+			throw new Error('listener failure');
+		});
+		testApp.get('/test', (req, res) => {
+			res.locals.apex = {
+				postWork: [],
+				eventName: 'error-event',
+				eventMessage: { foo: 'bar' },
+			};
+			res.status(200).send('ok');
+		});
+
+		const response = await request(testApp).get('/test');
+
+		expect(response.status).toBe(500);
+		expect(response.text).toBe('Internal Server Error');
 	});
 
 	test('sends normally when res.locals.apex is not set', async () => {

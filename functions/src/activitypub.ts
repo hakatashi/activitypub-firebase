@@ -14,11 +14,10 @@ import {
 } from './localActor.js';
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
-import { removeSupersededFollows } from './social/follows.js';
+import { acceptAndPublishFollow } from './social/follows.js';
 import { requestResolutionOfObjectActors } from './social/remoteActorResolution.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
-import { markActivityPublic } from './store/activities.js';
 import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
@@ -236,40 +235,7 @@ onApexInbox(app, async (message) => {
 
 	// Auto-accept follow
 	if (message.activity.type === 'Follow') {
-		logger.info(`New follow request from ${message.actor.id}`);
-
-		// 同じ相手からの再 Follow は古い Follow を置き換える (→ ADR-0075)。
-		const superseded = await removeSupersededFollows(
-			message.actor.id,
-			message.recipient.id,
-			message.activity.id,
-		);
-		if (superseded > 0) {
-			logger.info(`Removed ${superseded} superseded follow(s) from ${message.actor.id}`);
-		}
-
-		const object = { ...message.activity };
-		delete object._meta;
-
-		const accept = await apex.buildActivity('Accept', message.recipient.id, message.actor.id, {
-			object,
-		});
-		const { postTask: publishUpdatedFollowers } = await apex.acceptFollow(
-			message.recipient,
-			message.activity,
-		);
-		// Follow は to/cc を持たないため、明示的に isPublic を立てないと匿名の
-		// followers コレクションから除外されてしまう (→ ADR-0035)。
-		await markActivityPublic(message.activity);
-
-		logger.info(`Accepting follow request from ${message.actor.id}`);
-		await apex.addToOutbox(message.recipient, accept);
-
-		logger.info('Publishing updated followers');
-		await publishUpdatedFollowers();
-
-		logger.info(`Follow request from ${message.actor.id} accepted`);
-
+		await acceptAndPublishFollow(message.recipient, message.activity);
 		return;
 	}
 
