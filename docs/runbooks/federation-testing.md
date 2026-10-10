@@ -86,7 +86,8 @@ REMOTE_TOKEN=xxxxxxxx
 `/api/v1/timelines/home` など認証が必要な Mastodon API を dev に対して叩くときの Bearer。
 `HAKATASHI_TOKEN` とは別物なので、`.env` にも別の名前で記録する。
 
-Elk 経由のログインは未対応 (#62) のため、OAuth フローを手で踏んで発行する。
+Elk / Phanpy からは Google アカウントによる OAuth フローで普通にログインできる(prod / dev とも確認済み)が、
+そのトークンはブラウザの中にしかないため、CLI から使うトークンは OAuth フローを手で踏んで発行する。
 
 ```bash
 B=https://mastodon-dev.hakatashi.com
