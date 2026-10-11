@@ -10,7 +10,7 @@ import {
 	localFollowingId,
 	localRejectionsId,
 } from '../localActor.js';
-import { getMastodonIds } from '../mastodonId.js';
+import { findMastodonIds, getMastodonIds } from '../mastodonId.js';
 import { FollowRelations, MastodonIdsByIri, Streams, UserInfos } from '../schema.js';
 import type {
 	FollowRelation,
@@ -211,9 +211,12 @@ export const rebuildFollowProjection = async ({ dryRun = false } = {}) => {
 	const follows = followDocs.docs
 		.map((doc) => doc.data())
 		.filter((follow) => followContributions(follow).length > 0);
-	const mastodonIds = await getMastodonIds(
-		follows.map((follow) => ({ iri: follow.id, published: follow.published })),
-	);
+	// dry-run では採番せず、採番済みのものだけを使う (未採番なら差分として数えられる)。
+	const mastodonIds = dryRun
+		? await findMastodonIds(follows.map((follow) => follow.id))
+		: await getMastodonIds(
+				follows.map((follow) => ({ iri: follow.id, published: follow.published })),
+			);
 	const projection = buildFollowProjection(follows, mastodonIds);
 
 	const userInfoKey = escapeFirestoreKey(localActorId);

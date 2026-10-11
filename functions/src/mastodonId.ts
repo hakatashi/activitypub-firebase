@@ -104,30 +104,32 @@ export const getOrAssignMastodonId = (iri: string, published: unknown) =>
 		getOrAssignMastodonIdInTransaction(transaction, iri, published),
 	);
 
-// IRI → Mastodon ID をまとめて引く。未採番の IRI があればその場で採番する (→ ADR-0058)。
-export const getMastodonIds = async (entries: { iri: string; published: unknown }[]) => {
+// IRI → Mastodon ID をまとめて引く。採番はしない (未採番の IRI は結果に含まれない)。
+// バックフィルの `--dry-run` など、書き込んではならない場面で使う。
+export const findMastodonIds = async (iris: string[]) => {
 	const result = new Map<string, string>();
-	if (entries.length === 0) {
+	if (iris.length === 0) {
 		return result;
 	}
 
-	const docs = await db.getAll(
-		...entries.map(({ iri }) => MastodonIdsByIri.doc(escapeFirestoreKey(iri))),
-	);
-	const missing: { iri: string; published: unknown }[] = [];
-	entries.forEach((entry, index) => {
+	const docs = await db.getAll(...iris.map((iri) => MastodonIdsByIri.doc(escapeFirestoreKey(iri))));
+	iris.forEach((iri, index) => {
 		const mastodonId = docs[index]?.get('mastodonId');
 		if (typeof mastodonId === 'string') {
-			result.set(entry.iri, mastodonId);
-		} else {
-			missing.push(entry);
+			result.set(iri, mastodonId);
 		}
 	});
+	return result;
+};
 
-	for (const { iri, published } of missing) {
-		result.set(iri, await getOrAssignMastodonId(iri, published));
+// IRI → Mastodon ID をまとめて引く。未採番の IRI があればその場で採番する (→ ADR-0058)。
+export const getMastodonIds = async (entries: { iri: string; published: unknown }[]) => {
+	const result = await findMastodonIds(entries.map(({ iri }) => iri));
+	for (const { iri, published } of entries) {
+		if (!result.has(iri)) {
+			result.set(iri, await getOrAssignMastodonId(iri, published));
+		}
 	}
-
 	return result;
 };
 

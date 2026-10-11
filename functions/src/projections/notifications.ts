@@ -10,7 +10,7 @@ import { isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
 import { escapeFirestoreKey } from '../firebase.js';
 import { localActorId } from '../localActor.js';
-import { getMastodonIds } from '../mastodonId.js';
+import { findMastodonIds, getMastodonIds } from '../mastodonId.js';
 import { MastodonIdsByIri, Notifications, Objects, Streams } from '../schema.js';
 import type { NotificationRecord, NotificationType } from '../schema.js';
 import {
@@ -253,12 +253,15 @@ export const rebuildNotificationProjection = async ({ dryRun = false } = {}) => 
 	);
 	const candidates = candidateResults.filter((c): c is NotificationCandidate => c !== undefined);
 
-	const mastodonIds = await getMastodonIds(
-		candidates.map((c) => ({
-			iri: c.activityIri,
-			published: c.published as string | number | undefined,
-		})),
-	);
+	// dry-run では採番せず、採番済みのものだけを使う (未採番のものは unassigned として数える)。
+	const mastodonIds = dryRun
+		? await findMastodonIds(candidates.map((c) => c.activityIri))
+		: await getMastodonIds(
+				candidates.map((c) => ({
+					iri: c.activityIri,
+					published: c.published as string | number | undefined,
+				})),
+			);
 
 	const userInfoKey = escapeFirestoreKey(localActorId);
 	const collection = Notifications(userInfoKey);
@@ -272,6 +275,7 @@ export const rebuildNotificationProjection = async ({ dryRun = false } = {}) => 
 		favourite: 0,
 		reblog: 0,
 		follow: 0,
+		unassigned: 0,
 	};
 
 	for (const candidate of candidates) {
@@ -279,7 +283,13 @@ export const rebuildNotificationProjection = async ({ dryRun = false } = {}) => 
 		const existingDoc = existing.get(key);
 		existing.delete(key);
 		const existingRecord = existingDoc?.data();
+		stats[candidate.type]++;
 		const mastodonId = mastodonIds.get(candidate.activityIri);
+		if (mastodonId === undefined && dryRun) {
+			stats.unassigned++;
+			stats.written++;
+			continue;
+		}
 		assert(mastodonId !== undefined, `mastodonId not found for ${candidate.activityIri}`);
 
 		let createdAt = existingRecord?.createdAt;
@@ -304,7 +314,6 @@ export const rebuildNotificationProjection = async ({ dryRun = false } = {}) => 
 			createdAt,
 		};
 
-		stats[candidate.type]++;
 		if (!isEqual(record, existingRecord)) {
 			stats.written++;
 			if (!dryRun) {
