@@ -112,15 +112,23 @@ curl -s -X POST $B/oauth/token -d grant_type=authorization_code \
 ```bash
 # .env(追記)
 MASTODON_DEV_TOKEN=xxxxxxxx
+MISSKEY_REMOTE=https://misskey-test.hakatashi.com
+MISSKEY_REMOTE_TOKEN=xxxxxxxx
 ```
+
+Misskey テストインスタンスは自前ホストの `misskey-test.hakatashi.com` を使う(→ [ADR-0122](../adr/0122-self-hosted-misskey-federation-test-instance.md))。
+構築手順と現在の状態は `~/docs/misskey-test-instance.md`(HakataMatrix 側)を参照。
 
 ```bash
 set -a && source .env && set +a
 mapi() { curl -s -H "Authorization: Bearer $REMOTE_TOKEN" "$@"; }
+misapi() { curl -s -X POST -H "Content-Type: application/json" -d "{\"i\": \"$MISSKEY_REMOTE_TOKEN\", $1}" "$MISSKEY_REMOTE/api/$2"; }
 
 # テスト用インスタンス側の操作(自宅サーバー上で実行する)
 export MT=/opt/mastodon-test
 mt() { (cd "$MT" && docker compose exec -T web "$@"); }
+export MIS=/opt/misskey-test
+mis() { (cd "$MIS" && docker compose "$@"); }
 ```
 
 ## 1. actor が正しく公開されているか
@@ -564,6 +572,122 @@ curl -s -X DELETE -H "X-Hakatashi-Token: $HAKATASHI_TOKEN" -H "Content-Type: app
 - [ ] `ResolveAccountService` の取得結果に旧アカウント URI が含まれる
 - [ ] `AccountMigration.valid?` が真になる (エラーが `missing_also_known_as` でない)
 - [ ] 確認後、検証用の別名を削除できる
+
+## 15. Misskey との連合
+
+自前ホストの Misskey テストインスタンス (`misskey-test.hakatashi.com`、→ [ADR-0122](../adr/0122-self-hosted-misskey-federation-test-instance.md))
+との間で、WebFinger、Follow / Accept、投稿・リアクション・Renote・リプライ、フォロー解除 (Undo Follow)、
+および逆方向のフォローが正常に機能することを確認する。
+
+### 1. Misskey から dev アカウントを検索・解決する
+
+```bash
+# dev アカウントの WebFinger と actor を Misskey 側に解決させる
+misapi '"username": "hakatashi", "host": "activitypub-dev.hakatashi.com"' users/show | jq '{id, name, username, host, uri}'
+```
+
+- [ ] Misskey の `users/show` で dev のユーザー情報 (`name`, `uri`) が返ること
+
+### 2. Misskey から dev をフォローと自動 Accept
+
+```bash
+# 解決した dev アカウントの Misskey 内 ID を指定してフォロー
+DEV_USER_ID=$(misapi '"username": "hakatashi", "host": "activitypub-dev.hakatashi.com"' users/show | jq -r .id)
+misapi "\"userId\": \"$DEV_USER_ID\"" following/create | jq '{id, username}'
+
+# 数秒待って関係を確認
+misapi "\"userId\": [\"$DEV_USER_ID\"]" users/relation | jq '.[0] | {isFollowing, hasPendingFollowRequestFromYou}'
+```
+
+- [ ] `isFollowing: true` (`hasPendingFollowRequestFromYou: false`) になる (Accept が届いている)
+- [ ] dev の `$ACTOR/followers` に Misskey のユーザーが含まれる
+- [ ] dev の Mastodon API (`/api/v1/notifications`) に follow 通知が届く
+
+### 3. 投稿の配信と Misskey からのリアクション・Renote・リプライ
+
+```bash
+# dev から新規投稿を作成
+curl -X POST "$DEV/activitypub/createPost" \
+  -H 'Content-Type: application/json' \
+  -H "X-Hakatashi-Token: $HAKATASHI_TOKEN" \
+  -d '{"text": "misskey federation test '"$(date +%s)"'"}'
+
+# Misskey のタイムラインに出るか確認し、Misskey 側の noteId を取得
+NOTE_ID=$(misapi '"limit": 5' notes/timeline | jq -r '.[0].id')
+NOTE_URI=$(misapi '"limit": 5' notes/timeline | jq -r '.[0].uri')
+
+# A. Misskey からリアクション (Like) を送信
+misapi "\"noteId\": \"$NOTE_ID\", \"reaction\": \"👍\"" notes/reactions/create
+
+# B. Misskey から Renote (Announce) を送信
+misapi "\"renoteId\": \"$NOTE_ID\"" notes/create | jq .createdNote.id
+
+# C. Misskey からリプライを送信
+misapi "\"replyId\": \"$NOTE_ID\", \"text\": \"hello from misskey!\"" notes/create | jq .createdNote.id
+
+# dev 側で通知とカウントを確認
+curl -s -H "Authorization: Bearer $MASTODON_DEV_TOKEN" "$B/api/v1/notifications?limit=3" | jq '.[0] | {type, account: .account.acct}'
+curl -s -H "Authorization: Bearer $MASTODON_DEV_TOKEN" "$B/api/v1/statuses/$PID" | jq '{favourites_count, reblogs_count, replies_count}'
+```
+
+- [ ] dev の投稿が Misskey のタイムラインに届く
+- [ ] リアクションで dev に `favourite` 通知が届き、`favourites_count` が増える
+- [ ] Renote で dev に `reblog` 通知が届き、`reblogs_count` が増える
+- [ ] リプライで dev に `mention` 通知が届き、`replies_count` が増える
+
+### 4. Misskey からのフォロー解除 (Undo Follow)
+
+Misskey は Follow 解除時にインライン `Follow` の ID を合成 IRI (`.../follows/follower/followee`) として送るが、
+dev の inbox は受信者の `followers` コレクションと送信者の `actorId` から元の Follow を解決して削除する
+(→ [ADR-0123](../adr/0123-resolve-undo-follow-by-actor-and-collection.md))。
+
+```bash
+# Misskey からフォロー解除
+misapi "\"userId\": \"$DEV_USER_ID\"" following/delete | jq '{id, username}'
+
+# 数秒待って関係と dev の followers コレクションを確認
+misapi "\"userId\": [\"$DEV_USER_ID\"]" users/relation | jq '.[0] | {isFollowing}'
+curl -sH 'Accept: application/activity+json' "$ACTOR/followers?page=true" \
+  | jq "{containsAdmin: (.orderedItems | contains([\"$MISSKEY_REMOTE/users/admin\"]))}"
+```
+
+- [ ] Misskey 側で `isFollowing: false` になる
+- [ ] dev の `followers` コレクションから消え、`totalItems` が 1 減る
+
+### 5. dev から Misskey のユーザーをフォロー
+
+```bash
+# dev 側で Misskey アカウントを検索
+ADMIN_ID=$(curl -s -H "Authorization: Bearer $MASTODON_DEV_TOKEN" \
+  "$B/api/v2/search?type=accounts&resolve=true&q=admin@misskey-test.hakatashi.com" | jq -r '.accounts[0].id')
+
+# dev からフォロー
+curl -s -X POST -H "Authorization: Bearer $MASTODON_DEV_TOKEN" \
+  "$B/api/v1/accounts/$ADMIN_ID/follow" | jq '{following, requested}'
+
+# Misskey 側でフォロワーとして登録されたか確認
+misapi '"userId": "'$ADMIN_ID'"' users/followers | jq '.[0].follower | {id, username, host}'
+```
+
+- [ ] dev の `following` が真になる
+- [ ] Misskey 側のフォロワー一覧に dev アカウントが反映される
+
+### 6. Misskey テストインスタンス側の操作
+
+```bash
+# コンテナログの確認
+(cd $MIS && docker compose logs -f web)
+
+# リモート actor キャッシュの即時更新
+misapi "\"userId\": \"$DEV_USER_ID\"" federation/update-remote-user
+
+# DB と Redis の完全リセット (「初対面」からやり直したいとき)
+cd $MIS
+docker compose down -v
+docker compose run --rm web pnpm run init
+docker compose up -d
+# その後 admin アカウント作成とトークン発行を行う (詳細は ~/docs/misskey-test-instance.md)
+```
 
 ## Firestore を直接読む
 
