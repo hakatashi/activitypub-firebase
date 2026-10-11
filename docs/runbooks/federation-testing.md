@@ -444,6 +444,55 @@ curl -s -X DELETE -H "Authorization: Bearer $GCP_TOKEN" \
   "https://firestore.googleapis.com/v1/projects/activitypub-firebase-dev/databases/(default)/documents/deliveries/$(docid "$ACTIVITY_ID $INBOX")"
 ```
 
+## 13. 大量 Follow 殺到の負荷試験 (Follow Rush)
+
+アカウント引っ越し直後に起きる「大量の Follow の殺到」を dev で再現し、すべての Follow に Accept を返せるかを検証する (→ Issue #271)。
+自前 Mastodon テストインスタンス (`mastodon-test.hakatashi.com`) に多数のテストアカウントを一括作成し、Sidekiq 経由で短時間に一斉 Follow させる。
+
+### 前提条件
+
+- `activitypub` Function に最小インスタンス数 `minInstances: 1` が設定されていること (→ [ADR-0113](../adr/0113-temporary-min-instances-during-migration.md))。
+  ```bash
+  gcloud run services update activitypub --region=us-central1 --project=activitypub-firebase-dev --min-instances=1
+  ```
+- 自宅サーバー上のテストインスタンス `/opt/mastodon-test` が稼働中であること。
+
+### 実行スクリプト (`functions/bin/loadTestFollowRush.sh`)
+
+試験用のヘルパースクリプトが `functions/bin/loadTestFollowRush.sh` に用意されている。引数にアカウント数 (例: 500) を渡して段階的に実行できる。
+
+```bash
+# 1. テストアカウント 500 件を mastodon-test 側に一括作成
+functions/bin/loadTestFollowRush.sh create 500
+
+# 2. 500 件の Follow を一斉送信 (Sidekiq push キューに一気に積まれる)
+functions/bin/loadTestFollowRush.sh follow 500
+
+# 3. 処理状況・承認状態の確認 (数分待って実行)
+functions/bin/loadTestFollowRush.sh status 500
+
+# 4. 500 人フォロワーがいる状態での新規投稿とファンアウト配送の確認
+functions/bin/loadTestFollowRush.sh post
+
+# 5. 全 500 アカウントからのフォロー解除 (Undo)
+functions/bin/loadTestFollowRush.sh unfollow 500
+
+# 6. テストアカウントの削除 (クリーンアップ)
+functions/bin/loadTestFollowRush.sh cleanup 500
+
+# 7. Cloud Logging からメトリクス集計 (HTTP ステータス分布、レイテンシ、ABORTED 等)
+functions/bin/loadTestFollowRush.sh metrics [開始UTC時刻]
+```
+
+### 確認項目と期待値
+
+- [ ] **全件承認:** Mastodon 側で全アカウントの `relationship.following` が真 (`requested: 0`) になる。
+- [ ] **射影の完全一致:** dev の `followers` コレクションの `totalItems` と `userInfos` の `followers_count` が初期値 + 500 件と完全に一致する。
+- [ ] **HTTP 応答ステータス:** inbox の応答で 4xx が 0 件であること。
+- [ ] **トランザクション競合:** Firestore トランザクションの `ABORTED` (Contention) がないこと。
+- [ ] **投稿ファンアウト:** sharedInbox 重複排除により、ドメイン単位の inbox に集約配送されること。
+- [ ] **フォロー解除の完全性:** Undo(Follow) 処理後、`followers_count` と `followers` コレクションが初期値に戻ること。
+
 ## Firestore を直接読む
 
 クライアントからの直接アクセスは禁止されているが、`gcloud` の認証情報を使えば
