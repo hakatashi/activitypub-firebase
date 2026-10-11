@@ -98,8 +98,15 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   DNS rebinding を防ぐため、検証済みの IP に固定した undici の `Agent` で接続する。
   レスポンスサイズ(5MB)・リダイレクト回数(5回)・タイムアウトにも上限を設ける。
   外部 `@context` の取得(`jsonldContextLoader`)と配送(`apex.deliver`)も同じ検証と IP 固定を通る。
-  `@context` の取得失敗・JSON-LD 展開エラーは 400 で拒否し、送信側の再送を止める
-  (→ [ADR-0054](adr/0054-ssrf-safe-jsonld-context-loader.md))。配送のレスポンス本文は読まずに破棄する。
+  配送のレスポンス本文は読まずに破棄する。
+- **inbox は送信側の不正が確定したときだけ 4xx を返し、一時的な失敗では 5xx を返す**
+  (→ [ADR-0115](adr/0115-inbox-4xx-only-for-sender-faults.md))。リモート取得のネットワークエラー・
+  タイムアウト・DNS 解決の失敗・相手の 5xx / 408 / 429 は `TransientFetchError`
+  (`functions/src/apex/pub/fetchErrors.ts`)になり、`@context` の取得がこれで失敗したら 503、
+  それ以外の `@context` の取得失敗・JSON-LD 展開エラーは 400 を返す
+  (→ [ADR-0054](adr/0054-ssrf-safe-jsonld-context-loader.md))。署名検証では、キャッシュ済みの
+  署名者に公開鍵がなければ取り直してから判定する。inbox の処理中の例外は末尾のエラーハンドラ
+  (`responders.serverError`)が常に 500 にする。
 - 受信時の参照解決(`resolveReferences`)は訪問済み IRI で循環を検出し、解決総数(既定 10 件)・
   並行度(既定 2)・再帰深さ(既定 5)に上限を設ける。`Hashtag` は解決しない
   (→ [ADR-0055](adr/0055-resolve-references-limits-and-cycle-detection.md))。

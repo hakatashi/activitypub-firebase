@@ -5,6 +5,7 @@ import ipaddr from 'ipaddr.js';
 import { Agent } from 'undici';
 import type { Dispatcher } from 'undici';
 import type { ApexLogger } from '../types.js';
+import { TransientFetchError } from './fetchErrors.js';
 
 // リモートが指定した任意の URL への到達 (SSRF) を防ぐための検証。
 // 「どのアドレスを内部とみなすか」は運用環境ごとに変わりうるため policy として注入できる。
@@ -76,7 +77,10 @@ export const assertSafeUrl = async (
 	const addresses = await resolveAddresses(url.hostname);
 	if (addresses.length === 0) {
 		logger.warn({ type: 'ssrfBlockedUnresolvable', url: urlString });
-		throw new UnsafeUrlError(`Could not resolve hostname: ${url.hostname}`);
+		// DNS の解決失敗は一時的な障害でも起きるため、一時的な失敗として扱えるようにする (→ ADR-0115)
+		throw new UnsafeUrlError(`Could not resolve hostname: ${url.hostname}`, {
+			cause: new TransientFetchError(`DNS resolution failed: ${url.hostname}`),
+		});
 	}
 
 	const allowed = new Set(allowedRanges);
@@ -131,14 +135,24 @@ export const readBodyWithLimit = async (
 	}
 	const chunks: Buffer[] = [];
 	let total = 0;
-	// ループ内で throw すると for await...of が body を破棄する
-	for await (const chunk of body) {
-		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-		total += buffer.byteLength;
-		if (total > limit) {
-			throw new Error(`Response exceeded ${limit} bytes`);
+	let exceeded = false;
+	try {
+		// ループを抜けると for await...of が body を破棄する
+		for await (const chunk of body) {
+			const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+			total += buffer.byteLength;
+			if (total > limit) {
+				exceeded = true;
+				break;
+			}
+			chunks.push(buffer);
 		}
-		chunks.push(buffer);
+	} catch (err) {
+		// 読み取り中の切断やタイムアウトは一時的な失敗 (→ ADR-0115)
+		throw new TransientFetchError('Failed to read response body', { cause: err });
+	}
+	if (exceeded) {
+		throw new Error(`Response exceeded ${limit} bytes`);
 	}
 	return Buffer.concat(chunks).toString('utf-8');
 };
