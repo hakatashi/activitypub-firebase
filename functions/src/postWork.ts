@@ -93,6 +93,11 @@ export const runPostWorkBeforeSend: express.RequestHandler = (req, res, next) =>
 					const error = toError(err);
 					logger.error('post-response error:', error.message);
 					logger.error(error);
+					if (!res.headersSent) {
+						res.status(500);
+						originalSend('Internal Server Error');
+						return;
+					}
 				}
 			}
 

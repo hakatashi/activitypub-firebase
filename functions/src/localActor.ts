@@ -49,4 +49,6 @@ export const localRejectionsIri = (
 export const localActorId = localActorIri();
 export const localFollowersId = localFollowersIri();
 export const localFollowingId = localFollowingIri();
+export const localInboxId = localInboxIri();
+export const localOutboxId = localOutboxIri();
 export const localRejectionsId = localRejectionsIri();

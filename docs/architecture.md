@@ -72,9 +72,10 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `runPostWorkBeforeSend` ミドルウェアがリクエストごとに `res.send` を差し替え、
   送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを await している
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
-  `postWorkCompleted` ログに出る。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
+  `postWorkCompleted` ログに出る。`runPostWork` が例外で失敗した場合は 500 を返し、送信元に再送を促す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
 - inbox への配送処理は `apex.net.inbox.post` をそのまま利用している。
   重複配送の検出と `isNewActivity` の設定は `Store#saveActivity` の戻り値契約に基づいて apex 内部で完結して行われ(→ [ADR-0049](adr/0049-save-activity-return-contract-and-inbox-dedup.md))、
+  重複配送(`isNewActivity === false`)であっても受信者の `followers` コレクションに入っていない未承認の Follow は重複無視せず `apex-inbox` イベントを発火して承認をやり直す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。
   スレッド解決(`resolveThread`)を経て自分の投稿への外部リプライがフォロワーへ転送される(Inbox Forwarding, W3C AP 7.1.2)。
   (なお、Like/Announce の通常オブジェクト解決は apex フォークの validators で行われ [ADR-0047](adr/0047-resolve-like-announce-object-in-apex.md)、
   Undo の object 非正規化は apex フォークの `activity.save` で行われ [ADR-0048](adr/0048-denormalize-undo-object-in-apex.md)、
@@ -231,6 +232,7 @@ Follow を書き換えるとき、同じトランザクションで射影と `fo
 (→ [ADR-0083](adr/0083-read-follow-relations-from-projection.md))。
 射影はローカル actor の分しかない。既存データからの組み立て直し(カウンタを含む)には
 `functions/bin/backfillFollowProjection.ts` を使う。
+また、承認漏れした Follow の救済や再承認には `functions/bin/reconcilePendingFollows.ts` を使う (→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。
 
 お気に入り・ブーストも同じ形で `userInfos/{actor}/favourites`・`reblogs` に射影している
 (`functions/src/projections/reactions.ts`)。ローカル actor 発の Like / Announce が streams に存在する間だけ、

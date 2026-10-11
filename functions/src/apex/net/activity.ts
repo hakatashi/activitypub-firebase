@@ -99,7 +99,13 @@ export const inboxSideEffects = (req: Request, res: Response, next: NextFunction
 		'new collection' - known activity, new inbox
 		true - first time seeing this activity
 	*/
-	if (resLocal.isNewActivity === false) {
+	const followersCollection = first(recipient.followers);
+	const isUnacceptedFollow =
+		activity.type.toLowerCase() === 'follow' &&
+		followersCollection !== undefined &&
+		!apex.hasMeta(activity, 'collection', followersCollection);
+
+	if (resLocal.isNewActivity === false && !isUnacceptedFollow) {
 		// ignore redundant deliveries to same inbox
 		next();
 		return;
