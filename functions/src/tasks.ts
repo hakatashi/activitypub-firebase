@@ -47,6 +47,10 @@ export const activityBodySchema = z.object({
 // 恒久失敗として破棄すべきか(正常終了する)を判定する。ネットワークエラー/タイムアウトは
 // apex.deliver 自体が reject するため、結果を記録してからそのまま
 // Cloud Tasks の再試行に委ねる(ADR-0012)。
+// Mastodon の挙動に合わせ、401/408/429 および 5xx は一時的なエラーとして再試行し、それ以外の 4xx は恒久失敗とする (→ ADR-0114)。
+export const isRetriableDeliveryStatusCode = (statusCode: number): boolean =>
+	statusCode === 401 || statusCode === 408 || statusCode === 429 || statusCode >= 500;
+
 export const deliveryTask = onTaskDispatched<unknown>(
 	{
 		retryConfig: {
@@ -176,7 +180,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			return;
 		}
 
-		if (result.statusCode < 500) {
+		if (!isRetriableDeliveryStatusCode(result.statusCode)) {
 			logger.warn({
 				type: 'deliveryTaskPermanentFailure',
 				actorId,
@@ -193,6 +197,15 @@ export const deliveryTask = onTaskDispatched<unknown>(
 				statusCode: result.statusCode,
 			});
 			return;
+		}
+
+		if (result.statusCode === 429 && result.headers?.['retry-after'] !== undefined) {
+			logger.info({
+				type: 'deliveryTaskRateLimited',
+				actorId,
+				address,
+				retryAfter: result.headers['retry-after'],
+			});
 		}
 
 		await recordDeliveryResult({

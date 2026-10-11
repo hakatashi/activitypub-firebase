@@ -140,4 +140,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0111](0111-retry-unaccepted-follow-and-500-on-sync-failure.md) | 未承認 Follow の再送を受理し、同期処理の失敗時は 500 を返す | Accepted |
 | [0112](0112-do-not-deliver-collection-updates.md) | コレクションの変更時に Update を配送しない | Accepted |
 | [0113](0113-temporary-min-instances-during-migration.md) | アカウント移行時の一時的な最小インスタンス数設定 | Accepted |
+| [0114](0114-retry-transient-delivery-failures.md) | 配送時の 401 / 408 / 429 を一時エラーとして再試行する | Accepted |
 
