@@ -397,3 +397,155 @@ describe('apex activity inboxSideEffects (ADR-0111)', () => {
 		expect(res.locals.apex.eventName).toBeUndefined();
 	});
 });
+
+describe('apex collection update suppression (ADR-0112)', () => {
+	const createMockApex = (publishCollectionUpdates: boolean) => {
+		const mockStore: IApexStore = {
+			getObject: vi.fn().mockResolvedValue(undefined),
+			saveObject: vi.fn().mockResolvedValue(true),
+			updateObject: vi.fn().mockResolvedValue(true),
+			getActivity: vi.fn().mockResolvedValue(undefined),
+			saveActivity: vi.fn().mockResolvedValue({ isNew: true, activity: {} }),
+			updateActivity: vi.fn().mockResolvedValue(true),
+			updateActivityMeta: vi.fn().mockImplementation((act) => Promise.resolve(act)),
+			removeActivity: vi.fn().mockResolvedValue(undefined),
+			generateId: vi.fn().mockReturnValue('generated-id'),
+			getContext: vi.fn().mockResolvedValue(undefined),
+			saveContext: vi.fn().mockResolvedValue(undefined),
+			setup: vi.fn().mockResolvedValue(undefined),
+			getStream: vi.fn().mockResolvedValue(undefined),
+			getStreamCount: vi.fn().mockResolvedValue(0),
+			deliveryEnqueue: vi.fn().mockResolvedValue(true),
+			deliveryRequeue: vi.fn().mockResolvedValue(true),
+			deliveryDequeue: vi.fn().mockResolvedValue(null),
+			getUserCount: vi.fn().mockResolvedValue(0),
+			findActivityByCollectionAndObjectId: vi.fn().mockResolvedValue(undefined),
+			findActivityByCollectionAndActorId: vi.fn().mockResolvedValue(undefined),
+		};
+
+		return ActivitypubExpress({
+			name: 'test-apex',
+			version: '1.0.0',
+			domain: 'example.com',
+			actorParam: 'actor',
+			objectParam: 'id',
+			activityParam: 'id',
+			routes: {
+				actor: '/u/:actor',
+				object: '/o/:id',
+				activity: '/s/:id',
+				inbox: '/u/:actor/inbox',
+				outbox: '/u/:actor/outbox',
+				followers: '/u/:actor/followers',
+				following: '/u/:actor/following',
+				liked: '/u/:actor/liked',
+				collections: '/u/:actor/c/:id',
+				blocked: '/u/:actor/blocked',
+				rejections: '/u/:actor/rejections',
+				rejected: '/u/:actor/rejected',
+				shares: '/s/:id/shares',
+				likes: '/s/:id/likes',
+			},
+			logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+			store: mockStore,
+			offlineMode: true,
+			publishCollectionUpdates,
+		});
+	};
+
+	test('acceptFollow postTask is a no-op when publishCollectionUpdates is false', async () => {
+		const apex = createMockApex(false);
+		const publishUpdateSpy = vi.spyOn(apex, 'publishUpdate').mockResolvedValue(undefined);
+		const actor = {
+			id: 'https://example.com/u/bob',
+			type: 'Person',
+			followers: ['https://example.com/u/bob/followers'],
+		};
+		const follow = { id: 'https://remote.example/s/follow-1', type: 'Follow' };
+
+		const { postTask } = await apex.acceptFollow(actor, follow);
+		await postTask();
+
+		expect(publishUpdateSpy).not.toHaveBeenCalled();
+	});
+
+	test('acceptFollow postTask publishes update when publishCollectionUpdates is true', async () => {
+		const apex = createMockApex(true);
+		const publishUpdateSpy = vi.spyOn(apex, 'publishUpdate').mockResolvedValue(undefined);
+		vi.spyOn(apex, 'getFollowers').mockResolvedValue({
+			id: 'https://example.com/u/bob/followers',
+		} as never);
+		const actor = {
+			id: 'https://example.com/u/bob',
+			type: 'Person',
+			followers: ['https://example.com/u/bob/followers'],
+		};
+		const follow = { id: 'https://remote.example/s/follow-1', type: 'Follow' };
+
+		const { postTask } = await apex.acceptFollow(actor, follow);
+		await postTask();
+
+		expect(publishUpdateSpy).toHaveBeenCalledWith(actor, expect.anything());
+	});
+
+	test('publishUndoUpdate returns undefined and does not publish when publishCollectionUpdates is false', async () => {
+		const apex = createMockApex(false);
+		const publishUpdateSpy = vi.spyOn(apex, 'publishUpdate').mockResolvedValue(undefined);
+		const actor = { id: 'https://example.com/u/bob', type: 'Person' };
+
+		const result = await apex.publishUndoUpdate('https://example.com/u/bob/followers', actor, []);
+		expect(result).toBeUndefined();
+		expect(publishUpdateSpy).not.toHaveBeenCalled();
+	});
+
+	test('inboxSideEffects does not push postWork for Undo when publishCollectionUpdates is false', async () => {
+		const apex = createMockApex(false);
+		const actor = { id: 'https://remote.example/u/alice', type: 'Person' };
+		const recipient = {
+			id: 'https://example.com/u/bob',
+			type: 'Person',
+			inbox: ['https://example.com/u/bob/inbox'],
+		};
+		const undone = {
+			id: 'https://remote.example/s/follow-1',
+			type: 'Follow',
+			actor: ['https://remote.example/u/alice'],
+			_meta: { collection: ['https://example.com/u/bob/followers'] },
+		};
+		const undoActivity = {
+			id: 'https://remote.example/s/undo-1',
+			type: 'Undo',
+			actor: ['https://remote.example/u/alice'],
+			object: [undone],
+		};
+
+		const req = {
+			app: { locals: { apex } },
+			body: undoActivity,
+			params: { actor: 'bob' },
+		} as unknown as Request;
+		const res = {
+			locals: {
+				apex: {
+					activity: true,
+					actor,
+					target: recipient,
+					object: undone,
+					postWork: [],
+				},
+			},
+		} as unknown as Response;
+
+		await new Promise<void>((resolve, reject) => {
+			apex.net.activity.inboxSideEffects(req, res, ((err?: unknown) => {
+				if (err) {
+					reject(err);
+				} else {
+					resolve();
+				}
+			}) as NextFunction);
+		});
+
+		expect(res.locals.apex.postWork).toHaveLength(0);
+	});
+});

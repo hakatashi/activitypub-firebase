@@ -92,6 +92,7 @@ export interface ApexSettings<S extends ApexStore = ApexStore> {
 	remoteFetchPolicy?: RemoteFetchPolicy | (() => RemoteFetchPolicy);
 	endpoints?: Record<string, string>;
 	nodeInfoMetadata?: Record<string, unknown>;
+	publishCollectionUpdates?: boolean;
 }
 
 // index.ts が設定から組み立てるプロパティ

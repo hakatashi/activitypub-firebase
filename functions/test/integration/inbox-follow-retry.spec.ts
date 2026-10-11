@@ -112,8 +112,8 @@ describe('inbox Follow error recovery and retry (ADR-0111 / Issue #258)', () => 
 		const userInfoAfterSecond = await UserInfos.doc(escapeFirestoreKey(RECIPIENT_ID)).get();
 		expect(userInfoAfterSecond.data()?.followers_count).toBe(1);
 
-		// Accept と followers 更新の配送が enqueue されている (2回)
-		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(2);
+		// Accept の配送のみ enqueue されている (followers 更新の Update は配送しない → ADR-0112)
+		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(1);
 
 		// 3回目: 承認済みの Follow が再送された場合は何もしない (素通り 200)
 		const thirdRes = await postFollow();
@@ -122,7 +122,7 @@ describe('inbox Follow error recovery and retry (ADR-0111 / Issue #258)', () => 
 		// カウンタも配送回数も増えていない
 		const userInfoAfterThird = await UserInfos.doc(escapeFirestoreKey(RECIPIENT_ID)).get();
 		expect(userInfoAfterThird.data()?.followers_count).toBe(1);
-		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(2);
+		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(1);
 	});
 
 	test('returns 500 when addToOutbox throws in inbox processing', async () => {
@@ -168,7 +168,7 @@ describe('inbox Follow error recovery and retry (ADR-0111 / Issue #258)', () => 
 
 		const userInfo = await UserInfos.doc(escapeFirestoreKey(RECIPIENT_ID)).get();
 		expect(userInfo.data()?.followers_count).toBe(1);
-		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(2);
+		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(1);
 
 		// 再度実行すると未承認 Follow は 0 件
 		const secondReconcile = await reconcilePendingFollows({ dryRun: false });

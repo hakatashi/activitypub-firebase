@@ -126,9 +126,11 @@ export const inboxSideEffects = (req: Request, res: Response, next: NextFunction
 							'collection',
 							first(recipient.following),
 						);
-						resLocal.postWork.push(async () =>
-							apex.publishUpdate(recipient, await apex.getFollowing(recipient), actorId),
-						);
+						if (apex.settings.publishCollectionUpdates) {
+							resLocal.postWork.push(async () =>
+								apex.publishUpdate(recipient, await apex.getFollowing(recipient), actorId),
+							);
+						}
 					})(),
 				);
 			}
@@ -151,7 +153,7 @@ export const inboxSideEffects = (req: Request, res: Response, next: NextFunction
 						activity = await apex.store.updateActivityMeta(activity, 'collection', collectionId);
 						// publish updated object with updated likes/shares count
 						const updatedTarget = await apex.updateCollection(collectionId);
-						if (updatedTarget) {
+						if (updatedTarget && apex.settings.publishCollectionUpdates) {
 							resLocal.postWork.push(() => apex.publishUpdate(recipient, updatedTarget, actorId));
 						}
 					}
@@ -182,9 +184,11 @@ export const inboxSideEffects = (req: Request, res: Response, next: NextFunction
 						const following = first(recipient.following);
 						if (apex.hasMeta(object, 'collection', following)) {
 							object = await apex.store.updateActivityMeta(object, 'collection', following, true);
-							resLocal.postWork.push(async () =>
-								apex.publishUpdate(recipient, await apex.getFollowing(recipient)),
-							);
+							if (apex.settings.publishCollectionUpdates) {
+								resLocal.postWork.push(async () =>
+									apex.publishUpdate(recipient, await apex.getFollowing(recipient)),
+								);
+							}
 						}
 					})(),
 				);
@@ -199,14 +203,16 @@ export const inboxSideEffects = (req: Request, res: Response, next: NextFunction
 				// deleting the activity also removes it from all collections,
 				// undoing follows, blocks, shares, and likes
 				toDo.push(apex.store.removeActivity(undone, actorId));
-				resLocal.postWork.push(() => {
-					// update any collections the activity was removed from
-					const audience = apex.audienceFromActivity(undone).concat(actor.id);
-					const updates = undone._meta?.collection?.map((colId) =>
-						apex.publishUndoUpdate(colId, recipient, audience),
-					);
-					return updates && Promise.allSettled(updates);
-				});
+				if (apex.settings.publishCollectionUpdates) {
+					resLocal.postWork.push(() => {
+						// update any collections the activity was removed from
+						const audience = apex.audienceFromActivity(undone).concat(actor.id);
+						const updates = undone._meta?.collection?.map((colId) =>
+							apex.publishUndoUpdate(colId, recipient, audience),
+						);
+						return updates && Promise.allSettled(updates);
+					});
+				}
 			}
 			break;
 		}
@@ -254,7 +260,9 @@ export const outboxSideEffects = (req: Request, res: Response, next: NextFunctio
 				toDo.push(
 					apex.acceptFollow(actor, objectValue).then(({ postTask, updated }) => {
 						object = updated;
-						resLocal.postWork.push(postTask);
+						if (apex.settings.publishCollectionUpdates) {
+							resLocal.postWork.push(postTask);
+						}
 					}),
 				);
 			}
@@ -291,7 +299,11 @@ export const outboxSideEffects = (req: Request, res: Response, next: NextFunctio
 						first(actor.liked),
 					);
 					// publish update to shares count
-					resLocal.postWork.push(async () => apex.publishUpdate(actor, await apex.getLiked(actor)));
+					if (apex.settings.publishCollectionUpdates) {
+						resLocal.postWork.push(async () =>
+							apex.publishUpdate(actor, await apex.getLiked(actor)),
+						);
+					}
 				})(),
 			);
 			break;
@@ -332,9 +344,11 @@ export const outboxSideEffects = (req: Request, res: Response, next: NextFunctio
 								followers,
 								true,
 							);
-							resLocal.postWork.push(async () =>
-								apex.publishUpdate(actor, await apex.getFollowers(actor)),
-							);
+							if (apex.settings.publishCollectionUpdates) {
+								resLocal.postWork.push(async () =>
+									apex.publishUpdate(actor, await apex.getFollowers(actor)),
+								);
+							}
 						}
 						object = rejected;
 					})(),
@@ -360,14 +374,16 @@ export const outboxSideEffects = (req: Request, res: Response, next: NextFunctio
 				// deleting the activity also removes it from all collections,
 				// undoing follows, blocks, shares, and likes
 				toDo.push(apex.store.removeActivity(objectValue, actor.id));
-				resLocal.postWork.push(() => {
-					// update any collections the activity was removed from
-					const audience = apex.audienceFromActivity(objectValue);
-					const updates = objectValue._meta?.collection?.map((colId) =>
-						apex.publishUndoUpdate(colId, actor, audience),
-					);
-					return updates && Promise.allSettled(updates);
-				});
+				if (apex.settings.publishCollectionUpdates) {
+					resLocal.postWork.push(() => {
+						// update any collections the activity was removed from
+						const audience = apex.audienceFromActivity(objectValue);
+						const updates = objectValue._meta?.collection?.map((colId) =>
+							apex.publishUndoUpdate(colId, actor, audience),
+						);
+						return updates && Promise.allSettled(updates);
+					});
+				}
 			}
 			break;
 		default:
