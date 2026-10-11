@@ -22,3 +22,6 @@
 [submodule "third_party/phanpy"]
 	path = third_party/phanpy
 	url = https://github.com/cheeaun/phanpy.git
+[submodule "third_party/misskey"]
+	path = third_party/misskey
+	url = https://github.com/misskey-dev/misskey.git
