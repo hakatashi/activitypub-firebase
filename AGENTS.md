@@ -42,6 +42,13 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 - 各フェーズに Epic Issue が1本あり、子 Issue をタスクリストで束ねている。
 - **子 Issue はそのフェーズに着手する時点で作る。** 全フェーズ分を先に作らない。
 - ラベルは `phase:N` と `area:*` を付ける。着手前に ADR が必要なら `needs-adr` を付ける。
+- **Issue を新たに起票したら、作業中に見つけた follow-up も含めて、必ず次をすべて行う。**
+  1. そのフェーズの Milestone(例: `Phase 5: 引っ越し`)に追加する。
+  2. そのフェーズの Epic Issue の sub-issue に追加する
+     (`gh api -X POST repos/{owner}/{repo}/issues/{epic}/sub_issues -F sub_issue_id=<Issue の数値 id>`)。
+  3. Epic Issue の本文のタスクリストに追記する(どの Issue で見つけたかを括弧書きで添える)。
+  4. Relationship を整理する。他の Issue の前提になる・他の Issue を待つ場合は
+     GitHub の blocked by / blocking を設定し、Epic 本文の依存関係の記述とも食い違わないようにする。
 
 ### プルリクエスト
 
