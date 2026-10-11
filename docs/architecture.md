@@ -119,8 +119,9 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   発行されたタスクは `functions/src/tasks.ts` の
   `deliveryTask`(`onTaskDispatched`)が処理する。`actorId` から
   `store.getObject(actorId, true)` で秘密鍵を引き、`apex.deliver` で配送する。
-  401/403/404/410 とその他の 4xx は恒久失敗としてリトライせず破棄し、5xx と
-  ネットワークエラーは throw して Cloud Tasks のリトライ(`retryConfig`)に委ねる。
+  401/408/429、5xx、およびネットワークエラーは一時的な失敗として throw して
+  Cloud Tasks のリトライ(`retryConfig`)に委ね、その他の 4xx (400/403/404/410 等) は
+  恒久失敗としてリトライせず破棄する(→ [ADR-0114](adr/0114-retry-transient-delivery-failures.md))。
   配送のたびに結果を `deliveries` コレクションへ記録し、`GET /activitypub/deliveries/failed`
   で一覧、`POST /activitypub/deliveries/resend` で再送できる(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md))。
 
