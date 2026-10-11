@@ -8,6 +8,23 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 		generateId: () => 'generated-id-123',
 	} as unknown as IApexStore;
 
+	const testRoutes = {
+		actor: '/u/:actor',
+		object: '/o/:id',
+		activity: '/s/:id',
+		inbox: '/u/:actor/inbox',
+		outbox: '/u/:actor/outbox',
+		followers: '/u/:actor/followers',
+		following: '/u/:actor/following',
+		liked: '/u/:actor/liked',
+		collections: '/u/:actor/c/:id',
+		blocked: '/u/:actor/blocked',
+		rejections: '/u/:actor/rejections',
+		rejected: '/u/:actor/rejected',
+		shares: '/s/:id/shares',
+		likes: '/s/:id/likes',
+	};
+
 	const apex = ActivitypubExpress({
 		name: 'test-apex',
 		version: '1.0.0',
@@ -15,22 +32,7 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 		actorParam: 'actor',
 		objectParam: 'id',
 		activityParam: 'id',
-		routes: {
-			actor: '/u/:actor',
-			object: '/o/:id',
-			activity: '/s/:id',
-			inbox: '/u/:actor/inbox',
-			outbox: '/u/:actor/outbox',
-			followers: '/u/:actor/followers',
-			following: '/u/:actor/following',
-			liked: '/u/:actor/liked',
-			collections: '/u/:actor/c/:id',
-			blocked: '/u/:actor/blocked',
-			rejections: '/u/:actor/rejections',
-			rejected: '/u/:actor/rejected',
-			shares: '/s/:id/shares',
-			likes: '/s/:id/likes',
-		},
+		routes: testRoutes,
 		logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 		store: mockStore,
 		offlineMode: false,
@@ -144,6 +146,43 @@ describe('apex JSON-LD public address normalization (ADR-0045)', () => {
 			expect(apex.normalizePublicAddresses(undefined)).toBeUndefined();
 			expect(apex.normalizePublicAddresses('string')).toBe('string');
 			expect(apex.normalizePublicAddresses(123)).toBe(123);
+		});
+	});
+
+	describe('coreContexts resolution (Issue #282)', () => {
+		test('resolves https://purl.archive.org/socialweb/webfinger from memory without store lookup', async () => {
+			const getContextSpy = vi.fn();
+			const storeWithSpy = {
+				...mockStore,
+				getContext: getContextSpy,
+			} as unknown as IApexStore;
+			const customApex = ActivitypubExpress({
+				name: 'test-apex-wf',
+				version: '1.0.0',
+				domain: 'example.com',
+				actorParam: 'actor',
+				objectParam: 'id',
+				activityParam: 'id',
+				routes: testRoutes,
+				logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+				store: storeWithSpy,
+				offlineMode: true,
+			});
+
+			const doc = {
+				'@context': [
+					'https://www.w3.org/ns/activitystreams',
+					'https://purl.archive.org/socialweb/webfinger',
+				],
+				type: 'Person',
+				id: 'https://example.com/u/alice',
+				webfinger: 'acct:alice@example.com',
+			};
+
+			const processed = await customApex.fromJSONLD(doc);
+			expect(processed).toBeDefined();
+			expect(processed?.id).toBe('https://example.com/u/alice');
+			expect(getContextSpy).not.toHaveBeenCalled();
 		});
 	});
 });

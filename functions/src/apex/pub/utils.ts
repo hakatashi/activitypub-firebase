@@ -4,6 +4,7 @@ import type { ContextDefinition, JsonLdDocument, Options } from 'jsonld';
 import type { Apex, APObject, ApexRoutes } from '../types.js';
 import asVocab from '../vocab/as.json' with { type: 'json' };
 import securityVocab from '../vocab/security.json' with { type: 'json' };
+import webfingerVocab from '../vocab/webfinger.json' with { type: 'json' };
 import {
 	errorMessage,
 	first,
@@ -474,6 +475,10 @@ const coreContexts: Record<string, RemoteDocument> = {
 	'https://www.w3.org/ns/activitystreams': asRemoteDocument({
 		documentUrl: 'https://www.w3.org/ns/activitystreams',
 		document: asVocab,
+	}),
+	'https://purl.archive.org/socialweb/webfinger': asRemoteDocument({
+		documentUrl: 'https://purl.archive.org/socialweb/webfinger',
+		document: webfingerVocab,
 	}),
 };
 // cached JSONLD contexts to reduce requests an eliminate
