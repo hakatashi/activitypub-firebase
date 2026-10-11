@@ -35,6 +35,7 @@ TARGET_ACCOUNT="hakatashi"
 TARGET_ACCT="${TARGET_ACCOUNT}@${DEV_DOMAIN}"
 DEV_URL="https://${DEV_DOMAIN}"
 DEV_ACTOR="${DEV_URL}/activitypub/u/${TARGET_ACCOUNT}"
+LOCATION="${LOCATION:-asia-northeast1}"
 MT="${MT:-/opt/mastodon-test}"
 
 m_runner() {
@@ -165,7 +166,7 @@ puts \"  Sidekiq push queue size    : #{Sidekiq::Queue.new('push').size}\"
 				| jq -c '{followers_count: .fields.followers_count.integerValue, statuses_count: .fields.statuses_count.integerValue}' 2>/dev/null || true
 
 			echo "--- [dev side] Cloud Tasks deliveryTask queue depth ---"
-			gcloud tasks list --queue=deliveryTask --location=us-central1 --project=activitypub-firebase-dev --format="table(name,scheduleTime,dispatchCount)" | head -n 10
+			gcloud tasks list --queue=deliveryTask --location="$LOCATION" --project=activitypub-firebase-dev --format="table(name,scheduleTime,dispatchCount)" | head -n 10
 		fi
 	fi
 }
@@ -197,7 +198,7 @@ cmd_post() {
 
 	echo "Checking delivery queue after posting..."
 	sleep 2
-	gcloud tasks list --queue=deliveryTask --location=us-central1 --project=activitypub-firebase-dev --format="table(name,scheduleTime,dispatchCount)" | head -n 15
+	gcloud tasks list --queue=deliveryTask --location="$LOCATION" --project=activitypub-firebase-dev --format="table(name,scheduleTime,dispatchCount)" | head -n 15
 }
 
 cmd_unfollow() {

@@ -5,6 +5,7 @@
 ## 全体構成
 
 Firebase Hosting + Cloud Functions (Gen2, Node 22) + Firestore。TypeScript / ESM。
+Cloud Functions および Firestore はともに東京リージョン (`asia-northeast1`) に配置されている (→ [ADR-0119](adr/0119-cloud-functions-region-asia-northeast1.md))。
 実装は `functions/` 以下にある。`public/` は個人サイト hakatashi.com の git submodule であり、
 本プロジェクトのコードではない(→ [ADR-0008](adr/0008-two-domain-split.md))。
 

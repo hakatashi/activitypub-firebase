@@ -1,5 +1,8 @@
+import './init.js';
 import firebase from 'firebase-admin';
 import { getInstallations } from 'firebase-admin/installations';
+
+export { FUNCTION_REGION, taskQueueName } from './init.js';
 
 export const app = firebase.initializeApp();
 export const db = firebase.firestore();

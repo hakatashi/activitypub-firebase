@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
+	FUNCTION_REGION,
 	domain,
 	escapeFirestoreKey,
 	mastodonDomain,
 	projectId,
+	taskQueueName,
 	toFirestoreKey,
 	unescapeFirestoreKey,
 } from '../../src/firebase.js';
@@ -82,5 +84,16 @@ describe('domain and mastodonDomain configuration (ADR-0077)', () => {
 		expect(mastodonDomain).toBe('mastodon-dev.hakatashi.com');
 		expect(projectId).not.toBe('activitypub-firebase');
 		expect(projectId).toMatch(/^activitypub-firebase-dev-w/);
+	});
+});
+
+describe('FUNCTION_REGION and taskQueueName (ADR-0119)', () => {
+	test('FUNCTION_REGION is asia-northeast1', () => {
+		expect(FUNCTION_REGION).toBe('asia-northeast1');
+	});
+
+	test('taskQueueName builds resource name with asia-northeast1', () => {
+		expect(taskQueueName('deliveryTask')).toBe('locations/asia-northeast1/functions/deliveryTask');
+		expect(taskQueueName('pingTask')).toBe('locations/asia-northeast1/functions/pingTask');
 	});
 });

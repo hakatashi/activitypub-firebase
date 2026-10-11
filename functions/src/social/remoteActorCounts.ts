@@ -5,7 +5,7 @@ import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex } from '../apex.js';
 import type { APObject } from '../apex/index.js';
-import { escapeFirestoreKey } from '../firebase.js';
+import { escapeFirestoreKey, taskQueueName } from '../firebase.js';
 import { Objects } from '../schema.js';
 import { getNotes } from '../store/notes.js';
 import { isAPActor, toArray, toIdArray } from '../utils.js';
@@ -77,7 +77,7 @@ export const isTaskAlreadyExistsError = (error: unknown) =>
 export const remoteActorRefreshQueue = {
 	enqueue: async (actorIri: string, now = new Date()) => {
 		await getFunctions()
-			.taskQueue(REMOTE_ACTOR_REFRESH_QUEUE)
+			.taskQueue(taskQueueName(REMOTE_ACTOR_REFRESH_QUEUE))
 			.enqueue({ actorIri }, { id: remoteActorRefreshTaskId(actorIri, now) });
 	},
 };

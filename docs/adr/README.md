@@ -145,3 +145,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0116](0116-dotenv-for-functions-params.md) | Functions パラメータの dotenv 管理と CI デプロイ | Accepted |
 | [0117](0117-bundle-webfinger-core-context.md) | WebFinger JSON-LD コンテキストのバンドルとリソース割り当て検証 | Accepted |
 | [0118](0118-hash-based-mastodon-id-sequence-start.md) | Mastodon ID のシーケンスは IRI のハッシュを起点に空きを探す | Accepted |
+| [0119](0119-cloud-functions-region-asia-northeast1.md) | Cloud Functions を Firestore と同じ asia-northeast1 へ移行する | Accepted |
