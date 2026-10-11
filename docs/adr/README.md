@@ -139,6 +139,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0110](0110-refresh-remote-actor-and-counts.md) | リモート actor 本体を取り直し、アバターなどの変更を反映する | Accepted |
 | [0111](0111-retry-unaccepted-follow-and-500-on-sync-failure.md) | 未承認 Follow の再送を受理し、同期処理の失敗時は 500 を返す | Accepted |
 | [0112](0112-do-not-deliver-collection-updates.md) | コレクションの変更時に Update を配送しない | Accepted |
-| [0113](0113-temporary-min-instances-during-migration.md) | アカウント移行時の一時的な最小インスタンス数設定 | Accepted |
+| [0113](0113-temporary-min-instances-during-migration.md) | アカウント移行時の一時的な最小インスタンス数設定 | Accepted (切り替え方法は ADR-0116 で Superseded) |
 | [0114](0114-retry-transient-delivery-failures.md) | 配送時の 401 / 408 / 429 を一時エラーとして再試行する | Accepted |
 | [0115](0115-inbox-4xx-only-for-sender-faults.md) | inbox は送信側の不正が確定したときだけ 4xx を返す | Accepted |
+| [0116](0116-dotenv-for-functions-params.md) | Functions パラメータの dotenv 管理と CI デプロイ | Accepted |
