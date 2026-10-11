@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
+import { findMastodonIds } from '../../src/mastodonId.js';
 import { plainTextToHtml, publishNote } from '../../src/notes.js';
 import { rebuildNotificationProjection } from '../../src/projections/notifications.js';
 import { Notifications, Streams } from '../../src/schema.js';
@@ -402,7 +403,10 @@ describe('notification projection (Issue #221, ADR-0088)', () => {
 			expect(dryRunStats.written).toBe(2);
 			expect(dryRunStats.follow).toBe(1);
 			expect(dryRunStats.favourite).toBe(1);
+			expect(dryRunStats.unassigned).toBe(2);
 			expect(await getNotifications()).toHaveLength(0);
+			// dry-run は Mastodon ID を採番しない (本番に向けて読み取りだけで実行できるように)
+			expect((await findMastodonIds([followIri, likeIri])).size).toBe(0);
 
 			// Actual run
 			const stats = await rebuildNotificationProjection({ dryRun: false });

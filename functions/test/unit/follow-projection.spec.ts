@@ -7,7 +7,7 @@ import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { localFollowersId } from '../../src/localActor.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
-import { getOrAssignMastodonId } from '../../src/mastodonId.js';
+import { findMastodonIds, getOrAssignMastodonId } from '../../src/mastodonId.js';
 import { buildMetaIndex } from '../../src/meta.js';
 import { followContributions, rebuildFollowProjection } from '../../src/projections/follows.js';
 import { FollowRelations, Streams, UserInfos } from '../../src/schema.js';
@@ -343,6 +343,28 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 			expect(strip(await getRelations('following'))).toEqual(strip(incremental.following));
 			expect(await getCounts()).toEqual(incremental.counts);
 			await expectConsistent();
+		});
+
+		test('dry-run writes nothing, including Mastodon IDs', async () => {
+			const followIri = 'https://remote.example/follows/alice-backfill';
+			await Streams.doc(escapeFirestoreKey(followIri)).set({
+				id: followIri,
+				type: 'Follow',
+				actor: ALICE,
+				object: me.id,
+				published: '2026-10-07T10:00:00Z',
+				_meta: { collection: [localFollowersId] },
+			} as APObject);
+
+			expect(await rebuildFollowProjection({ dryRun: true })).toMatchObject({
+				written: 1,
+				deleted: 0,
+			});
+			expect((await getRelations('followers')).size).toBe(0);
+			expect((await findMastodonIds([followIri])).size).toBe(0);
+
+			expect(await rebuildFollowProjection()).toMatchObject({ written: 1, deleted: 0 });
+			expect((await findMastodonIds([followIri])).size).toBe(1);
 		});
 	});
 

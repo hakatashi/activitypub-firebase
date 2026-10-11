@@ -1,13 +1,14 @@
 import { unescapeFirestoreKey, toFirestoreKey } from '../src/firebase.js';
-import { getMastodonIds, toIdTimestamp } from '../src/mastodonId.js';
+import { findMastodonIds, getMastodonIds, toIdTimestamp } from '../src/mastodonId.js';
 import { getMentionIris } from '../src/mastodon/statusAttributes.js';
 import { Objects, Streams } from '../src/schema.js';
 import { isAPNote } from '../src/utils.js';
 
 // 既存の objects / streams に Mastodon ID を振るバックフィル (→ ADR-0006、ADR-0058、ADR-0069)。
 // 新規保存時と同じく `published` を基準に採番するので、既存データの時系列順序が保たれる。
-// 採番済みの IRI はスキップするため、何度実行してもよい。
+// 採番済みの IRI はスキップするため、何度実行してもよい。`--dry-run` で採番せずに未採番の件数だけ出す。
 
+const dryRun = process.argv.includes('--dry-run');
 const now = Date.now();
 
 const [objects, streams] = await Promise.all([Objects.get(), Streams.get()]);
@@ -33,5 +34,15 @@ const mentionEntries = Array.from(new Set(mentionIris)).map((iri) => ({
 	published: undefined,
 }));
 
-const ids = await getMastodonIds([...entries, ...mentionEntries]);
-console.log(`assigned or found: ${ids.size}`);
+const allEntries = [...entries, ...mentionEntries];
+if (dryRun) {
+	const found = await findMastodonIds(allEntries.map(({ iri }) => iri));
+	const unassigned = allEntries.filter(({ iri }) => !found.has(iri));
+	console.log({ dryRun, found: found.size, unassigned: unassigned.length });
+	for (const { iri } of unassigned.slice(0, 20)) {
+		console.log(`  unassigned: ${iri}`);
+	}
+} else {
+	const ids = await getMastodonIds(allEntries);
+	console.log(`assigned or found: ${ids.size}`);
+}
