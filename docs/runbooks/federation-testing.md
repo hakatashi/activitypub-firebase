@@ -455,6 +455,18 @@ curl -s -X DELETE -H "Authorization: Bearer $GCP_TOKEN" \
   ```bash
   gcloud run services update activitypub --region=us-central1 --project=activitypub-firebase-dev --min-instances=1
   ```
+- CPU などのリソース割り当てが本番と同じであること。`gcloud run services update` で変えた値は
+  `firebase deploy` 後も残るので、試験前に本番と見比べる。
+  ```bash
+  for p in activitypub-firebase activitypub-firebase-dev; do
+    gcloud run services describe activitypub --region=us-central1 --project=$p \
+      --format='value(spec.template.spec.containers[0].resources.limits)'
+  done
+  ```
+- 設定の変更やデプロイの直後は新しいインスタンスが起動中なので、actor に数回 GET してから試験を始める。
+- **送信者の actor が dev にまだ無い状態で試験する。** 一度 Follow したアカウントの actor は dev に保存済みで、
+  2回目以降は actor の取得・保存 (引っ越し時に最も重い処理) を通らない。再試験の前には
+  `cleanup` → `create` でアカウントを作り直す (actor の URI はアカウント ID から決まるので別物になる)。
 - 自宅サーバー上のテストインスタンス `/opt/mastodon-test` が稼働中であること。
 
 ### 実行スクリプト (`functions/bin/loadTestFollowRush.sh`)

@@ -20,3 +20,16 @@ apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` 
 `POST /oauth/revoke` による失効には対応しているが、期限切れのアクセストークン・
 リフレッシュトークン・認可コードを `functions/src/mastodon/oauth2Model.ts` の外から掃除する仕組みがない。
 
+
+## 性能
+
+### Functions と Firestore のリージョンが異なる
+
+Cloud Functions は `us-central1`、Firestore は `asia-northeast1` にあり (本番・dev とも)、
+Firestore の RPC ごとに太平洋を往復する。Follow 殺到の負荷試験 (#282) では、
+単一ドキュメントの読み取りに約 300ms、inbox の1リクエスト全体に約 5 秒かかっており、その大半がこの往復だった。
+
+### 投稿時の宛先解決がフォロワー数に比例する
+
+apex の `address` (`functions/src/apex/pub/activity.ts`) は followers コレクションの各 actor を
+`resolveObject` で1件ずつ Firestore から読む。フォロワー 500 人で `POST /api/v1/statuses` に約 13 秒かかった (#271)。

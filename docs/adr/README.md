@@ -83,7 +83,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0055](0055-resolve-references-limits-and-cycle-detection.md) | `resolveReferences` での循環参照検出・探索数制限・タグ再帰抑止 | Accepted |
 | [0056](0056-verify-digest-and-date-window-in-http-signature.md) | HTTP 署名検証における Digest 検証と Date 有効期限チェックの追加 | Accepted |
 | [0057](0057-support-rfc-9421-via-standard-library.md) | RFC 9421 (HTTP Message Signatures) に標準ライブラリ http-message-sig で対応する | Accepted |
-| [0058](0058-mastodon-id-snowflake-layout.md) | Mastodon ID の具体的な採番方式と IRI との相互マッピング | Accepted |
+| [0058](0058-mastodon-id-snowflake-layout.md) | Mastodon ID の具体的な採番方式と IRI との相互マッピング | Accepted (シーケンスの探索起点は ADR-0118 で Superseded) |
 | [0059](0059-never-refetch-local-objects.md) | ローカルオブジェクトを HTTP で取り直さず、fullReplace でも _meta を引き継ぐ | Accepted |
 | [0060](0060-derive-status-attributes-from-note.md) | Status エンティティの属性を Note の実データから導出する | Accepted |
 | [0061](0061-timeline-actor-filter-and-visibility.md) | タイムラインは actor で絞り、可視性を1箇所で判定する | Accepted |
@@ -144,3 +144,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0115](0115-inbox-4xx-only-for-sender-faults.md) | inbox は送信側の不正が確定したときだけ 4xx を返す | Accepted |
 | [0116](0116-dotenv-for-functions-params.md) | Functions パラメータの dotenv 管理と CI デプロイ | Accepted |
 | [0117](0117-bundle-webfinger-core-context.md) | WebFinger JSON-LD コンテキストのバンドルとリソース割り当て検証 | Accepted |
+| [0118](0118-hash-based-mastodon-id-sequence-start.md) | Mastodon ID のシーケンスは IRI のハッシュを起点に空きを探す | Accepted |
