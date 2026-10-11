@@ -117,8 +117,11 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   (→ [ADR-0053](adr/0053-prevent-object-corruption-and-counter-underflow.md))。
 - ActivityPub C2S のプロキシエンドポイント(`/activitypub/proxy`、actor の `endpoints.proxyUrl`)は公開しない。
 - 管理者専用エンドポイント(`/activitypub/createAdmin`, `/createPost`,
-  `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`)は
-  `X-Hakatashi-Token` ヘッダで認証する。
+  `/publishProfileUpdate`, `/pingTaskQueue`, `/deliveries/failed`, `/deliveries/resend`,
+  `/aliases`)は `X-Hakatashi-Token` ヘッダで認証する。
+- **アカウント別名 (`alsoKnownAs`) の管理**:
+  別名はローカル actor オブジェクトの `alsoKnownAs` プロパティ(URI の文字列配列)として Firestore の `objects` コレクションに保存される。
+  設定・確認・解除は管理者エンドポイント(`GET` / `POST` / `DELETE /activitypub/aliases`、`X-Hakatashi-Token` 認証)または `functions/bin/manageAliases.ts` スクリプトで行う。追加・削除時には入力(`acct` または URI)の WebFinger / actor 取得による検証が行われ、完了時にフォロワーへ `Update(Person)` が配送される(→ [ADR-0121](adr/0121-actor-aliases-via-also-known-as.md))。また、`apex.ts` の context に `alsoKnownAs` (`as:alsoKnownAs`) および受信用に `movedTo` (`as:movedTo`) が定義されている。
 - `offlineMode: true` で初期化しており、apex 内蔵の配送ループ(`setInterval` による
   常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store/index.ts`)が
   受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている

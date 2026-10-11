@@ -19,6 +19,12 @@ import { requestResolutionOfObjectActors } from './social/remoteActorResolution.
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
+import {
+	AliasError,
+	addAccountAlias,
+	getAccountAliases,
+	removeAccountAlias,
+} from './social/aliases.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
 const activitypubMinInstances = params.defineInt('ACTIVITYPUB_MIN_INSTANCES', {
@@ -95,6 +101,10 @@ export const pingTaskQueueQuerySchema = z.object({
 export const resendDeliveryBodySchema = z.object({
 	activityId: z.string().min(1),
 	inbox: z.string().min(1),
+});
+
+export const aliasBodySchema = z.object({
+	alias: z.string().min(1),
 });
 
 app.get(
@@ -218,6 +228,52 @@ app.post(
 
 		await apex.store.deliveryEnqueue(delivery.actorId, delivery.body, inbox, undefined);
 		res.send('ok');
+	},
+);
+
+app.get('/activitypub/aliases', adminOnly, async (_req: express.Request, res: express.Response) => {
+	const aliases = await getAccountAliases();
+	res.json({ aliases });
+});
+
+app.post('/activitypub/aliases', adminOnly, async (req: express.Request, res: express.Response) => {
+	const parsedBody = aliasBodySchema.safeParse(req.body ?? {});
+	if (!parsedBody.success) {
+		res.status(400).json({ error: 'alias is required' });
+		return;
+	}
+	try {
+		const result = await addAccountAlias(parsedBody.data.alias);
+		res.json(result);
+	} catch (error) {
+		if (error instanceof AliasError) {
+			res.status(error.status).json({ error: error.message });
+			return;
+		}
+		throw error;
+	}
+});
+
+app.delete(
+	'/activitypub/aliases',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		const aliasParam = req.body?.alias ?? req.query?.alias;
+		const parsed = aliasBodySchema.safeParse({ alias: aliasParam });
+		if (!parsed.success) {
+			res.status(400).json({ error: 'alias is required' });
+			return;
+		}
+		try {
+			const result = await removeAccountAlias(parsed.data.alias);
+			res.json(result);
+		} catch (error) {
+			if (error instanceof AliasError) {
+				res.status(error.status).json({ error: error.message });
+				return;
+			}
+			throw error;
+		}
 	},
 );
 
