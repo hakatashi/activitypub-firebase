@@ -21,6 +21,10 @@ import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
 
 const hakatashiToken = params.defineSecret('HAKATASHI_TOKEN');
+const activitypubMinInstances = params.defineInt('ACTIVITYPUB_MIN_INSTANCES', {
+	default: 0,
+	description: 'The minimum number of instances for the activitypub function.',
+});
 
 const app = express();
 // Express 5 の既定 (simple) では `id[]=1&id[]=2` 形式の配列クエリを解釈できない (→ ADR-0087)。
@@ -249,6 +253,12 @@ onApexInbox(app, async (message) => {
 	}
 });
 
-export const activitypub = https.onRequest({ secrets: [hakatashiToken] }, app);
+export const activitypub = https.onRequest(
+	{
+		secrets: [hakatashiToken],
+		minInstances: activitypubMinInstances,
+	},
+	app,
+);
 
 export { app };
