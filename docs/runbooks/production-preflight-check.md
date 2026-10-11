@@ -43,6 +43,8 @@ dev(`activitypub-firebase-dev`)に向けても同じように動くので、ス�
 
 ### 2. 設定とインフラ(`infra`)
 
+- **デプロイ**: 直近の main の run で `Deploy to Firebase except for Hosting` が `success`。各 Function の最終更新が最後にマージした変更より後。
+  Hosting のジョブだけ成功して Functions のデプロイが失敗していることがあり、その場合は main にあるコードが本番に入っていない(→ #280)。
 - **インデックス**: `missing` が空。`extra` は過去の実験やクエリの変更で残ったもので、それだけでは問題ない
   (削除するなら不要と確かめてから。`firebase deploy` に `--force` を付けて消さない)。
 - **TTL ポリシー**: `defined` のすべてが `deployed ... ACTIVE` にある。
@@ -52,7 +54,10 @@ dev(`activitypub-firebase-dev`)に向けても同じように動くので、ス�
 
 ### 3. ログと配送の記録(`logs`)
 
-- `severity>=ERROR` を Function(サービス)と `jsonPayload.type` ごとに見て、原因の分からないものがない。
+- `severity>=ERROR` を Function(サービス)と `jsonPayload.type` ごとに見て、原因の分からないものがない。既知のもの:
+  - `mastodonapi` の型なしの ERROR の大半は、脆弱性スキャナが未実装のパス(`/api/.env` など)を叩いた 501 のリクエストログ
+  - デプロイ直後の `FAILED_PRECONDITION: ... index is currently building` は、インデックスの構築が終われば消える
+  - サービス名のない監査ログの `Permission denied to enable service [firebaseextensions.googleapis.com]` は、CI のデプロイが API の有効化を試みているだけ
 - inbox の応答の **4xx** を1件ずつ見る。4xx は送信元にとって恒久的な失敗で、フォロワーを失う原因になる(→ #260、ADR-0115)。
   署名の検証に失敗した 401 は、鍵を失ったアカウントからの Delete などで普通に起きるので、送信元で判断する。
 - 失敗・リトライ中の配送: `attempts` が 5(`maxAttempts`)に達した `retrying` は実質的な失敗(→ [federation-testing.md](federation-testing.md))。

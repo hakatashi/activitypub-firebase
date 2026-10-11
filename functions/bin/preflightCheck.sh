@@ -77,6 +77,14 @@ fi
 if [[ " $SECTIONS " == *" infra "* ]]; then
 	section "2. 設定とインフラ ($PROJECT)"
 
+	item "main の自動デプロイ (直近5回) と各 Function の最終更新"
+	# Hosting だけ成功して Functions のデプロイが失敗することがある (→ #280)。ジョブ単位で見る。
+	for run in $(gh run list --workflow main.yml --branch main --limit 5 --json databaseId --jq '.[].databaseId'); do
+		gh run view "$run" --json createdAt,displayTitle,jobs \
+			--jq '"\(.createdAt)\t\(.displayTitle[0:50])\t" + ([.jobs[] | select(.name | test("\\('"$PROJECT"',")) | "\(.name | split(" (")[0]):\(.conclusion)"] | join(" / "))'
+	done
+	gcloud functions list --project="$PROJECT" --format='value(name.basename(),updateTime)' | sort -k2
+
 	item "Firestore インデックス (firestore.indexes.json との差分。__name__ は除く)"
 	deployed="$(cd "$FUNCTIONS_DIR" && npx firebase firestore:indexes --project "$PROJECT" 2>/dev/null)"
 	normalize='[.indexes[] | {collectionGroup, queryScope, fields: [.fields[] | select(.fieldPath != "__name__") | {fieldPath, order, arrayConfig} | with_entries(select(.value != null))]} | tojson]'
