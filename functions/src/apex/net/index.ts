@@ -75,6 +75,7 @@ export default {
 			activity.inboxSideEffects,
 			activity.forwardFromInbox,
 			responders.status,
+			responders.serverError,
 		],
 		get: [
 			validators.jsonld,

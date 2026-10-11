@@ -1,6 +1,6 @@
 # ADR-0054: `jsonldContextLoader` での SSRF 防御と 4xx エラー応答
 
-- **Status:** Accepted
+- **Status:** Accepted (`@context` 取得失敗時の応答は ADR-0115 で Superseded)
 - **Date:** 2026-10-01
 
 ## 背景

@@ -14,6 +14,7 @@ import {
 	toArray,
 } from '../values.js';
 import { request } from 'undici';
+import { responseStatusError, withTransientFetchErrors } from './fetchErrors.js';
 import { assertSafeUrl, makePinnedAgent, maxRedirects, readBodyWithLimit } from './ssrf.js';
 
 type DocumentLoader = NonNullable<Options.Compact['documentLoader']>;
@@ -505,13 +506,16 @@ export const jsonldContextLoader = async function (
 
 		const agent = makePinnedAgent(addresses);
 		try {
-			const response = await request(targetUrl, {
-				method: 'GET',
-				headers,
-				headersTimeout: this.requestTimeout,
-				bodyTimeout: this.requestTimeout,
-				dispatcher: agent,
-			});
+			const response = await withTransientFetchErrors(
+				targetUrl,
+				request(targetUrl, {
+					method: 'GET',
+					headers,
+					headersTimeout: this.requestTimeout,
+					bodyTimeout: this.requestTimeout,
+					dispatcher: agent,
+				}),
+			);
 
 			if (response.statusCode >= 300 && response.statusCode < 400) {
 				const { location } = response.headers;
@@ -528,7 +532,7 @@ export const jsonldContextLoader = async function (
 
 			if (response.statusCode < 200 || response.statusCode >= 300) {
 				await response.body.dump();
-				throw new Error(`Request failed with status code ${response.statusCode}`);
+				throw responseStatusError(response.statusCode);
 			}
 
 			const body = await readBodyWithLimit(response.body, response.headers);

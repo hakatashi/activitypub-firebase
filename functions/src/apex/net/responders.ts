@@ -1,5 +1,6 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import type { APObject } from '../types.js';
+import { errorMessage } from '../values.js';
 import { getApex, getLocals } from './locals.js';
 
 const sendJsonLd = async (req: Request, res: Response, body: APObject | null | undefined) => {
@@ -33,3 +34,20 @@ export const status = (_req: Request, res: Response): void => {
 // sends the target object as jsonld
 export const target = (req: Request, res: Response): Promise<void> =>
 	sendJsonLd(req, res, getLocals(res).target);
+
+// ルートの処理中に投げられた例外 (Firestore のトランザクション競合など) は、送信側の不正ではなく
+// こちら側の障害なので、Express 既定のハンドラに任せず常に 500 を返して再送させる (→ ADR-0115)。
+// res.send は本体側で postWork を実行するよう差し替えられうるため、res.end で直接返す。
+export const serverError = (
+	err: unknown,
+	req: Request,
+	res: Response,
+	next: NextFunction,
+): void => {
+	if (res.headersSent) {
+		next(err);
+		return;
+	}
+	getApex(req).logger.error('Error processing request', errorMessage(err));
+	res.status(500).end();
+};

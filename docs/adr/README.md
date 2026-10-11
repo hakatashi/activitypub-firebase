@@ -79,7 +79,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0051](0051-typescript-apex-fork.md) | apex フォークを TypeScript / ESM 化し、型を実装から導出する | Accepted |
 | [0052](0052-connect-apex-specs-to-firestore-store.md) | apex 同梱 spec を Firestore Store の適合テストとして繋ぎ直す | Accepted |
 | [0053](0053-prevent-object-corruption-and-counter-underflow.md) | 受信処理における既存オブジェクトの上書き防止と非正規化カウンタの保護 | Accepted |
-| [0054](0054-ssrf-safe-jsonld-context-loader.md) | `jsonldContextLoader` での SSRF 防御と 4xx エラー応答 | Accepted |
+| [0054](0054-ssrf-safe-jsonld-context-loader.md) | `jsonldContextLoader` での SSRF 防御と 4xx エラー応答 | Accepted (応答は ADR-0115 で Superseded) |
 | [0055](0055-resolve-references-limits-and-cycle-detection.md) | `resolveReferences` での循環参照検出・探索数制限・タグ再帰抑止 | Accepted |
 | [0056](0056-verify-digest-and-date-window-in-http-signature.md) | HTTP 署名検証における Digest 検証と Date 有効期限チェックの追加 | Accepted |
 | [0057](0057-support-rfc-9421-via-standard-library.md) | RFC 9421 (HTTP Message Signatures) に標準ライブラリ http-message-sig で対応する | Accepted |
@@ -141,4 +141,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0112](0112-do-not-deliver-collection-updates.md) | コレクションの変更時に Update を配送しない | Accepted |
 | [0113](0113-temporary-min-instances-during-migration.md) | アカウント移行時の一時的な最小インスタンス数設定 | Accepted |
 | [0114](0114-retry-transient-delivery-failures.md) | 配送時の 401 / 408 / 429 を一時エラーとして再試行する | Accepted |
-
+| [0115](0115-inbox-4xx-only-for-sender-faults.md) | inbox は送信側の不正が確定したときだけ 4xx を返す | Accepted |

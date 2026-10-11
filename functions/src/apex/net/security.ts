@@ -216,6 +216,9 @@ const EXPIRATION_WINDOW_LIMIT_SECONDS = 12 * 60 * 60; // 12 hours
 const CLOCK_SKEW_MARGIN_MS = CLOCK_SKEW_MARGIN_SECONDS * 1000;
 const EXPIRATION_WINDOW_LIMIT_MS = EXPIRATION_WINDOW_LIMIT_SECONDS * 1000;
 
+const isTombstone = (object: APObject): boolean =>
+	typeof object.type === 'string' && object.type.toLowerCase() === 'tombstone';
+
 class TombstoneIgnoredError extends Error {}
 class KeyNotFoundError extends Error {}
 class InvalidComponentsError extends Error {}
@@ -436,9 +439,20 @@ const verifyRfc9421 = async (req: Request, res: Response, next: NextFunction): P
 		if (!signer) {
 			throw new KeyNotFoundError(`Could not resolve signer: ${keyId}`);
 		}
+
+		let publicKeyPem = publicKeyPemOf(signer, keyId);
+		if (!publicKeyPem && cachedKey && !isTombstone(signer)) {
+			// 鍵なしのキャッシュは送信側の不正と決めつけず取り直す。失敗は ResolverFailed (500) になる (→ ADR-0115)
+			apex.logger.info(`Refreshing keyless signer ${keyId}`);
+			cachedKey = false;
+			signer = await apex.resolveObject(keyId, false, true);
+			if (!signer) {
+				throw new KeyNotFoundError(`Could not resolve signer: ${keyId}`);
+			}
+			publicKeyPem = publicKeyPemOf(signer, keyId);
+		}
 		resolvedSigner = signer;
 
-		const publicKeyPem = publicKeyPemOf(signer, keyId);
 		if (!publicKeyPem) {
 			throw new KeyNotFoundError(`Could not find public key for ${keyId}`);
 		}
@@ -733,7 +747,21 @@ export const verifySignature = async (
 		return;
 	}
 
-	const signerKey = publicKeyPemOf(signer);
+	let signerKey = publicKeyPemOf(signer);
+	if (signer && signerKey === undefined && cached && !isTombstone(signer)) {
+		// インラインのオブジェクトから保存された鍵なしのキャッシュかもしれないので、
+		// 送信側の不正と決めつけず取り直す (→ ADR-0115)
+		console.log('Refreshing keyless signer %s', sigHead.keyId);
+		cached = false;
+		try {
+			signer = await apex.resolveObject(sigHead.keyId, false, true);
+		} catch (err) {
+			apex.logger.warn('error refreshing keyless signer for signature verification', err);
+			res.status(500).send();
+			return;
+		}
+		signerKey = publicKeyPemOf(signer);
+	}
 	if (!signer || signerKey === undefined) {
 		apex.logger.warn(
 			'Could not find key for %s (signer id: %s, type: %s)',

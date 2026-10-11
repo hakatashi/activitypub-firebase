@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { isTransientFailure } from '../pub/fetchErrors.js';
 import type { APObject } from '../types.js';
 import {
 	errorMessage,
@@ -203,6 +204,11 @@ export const jsonld = async (req: Request, res: Response, next: NextFunction): P
 		} catch (err) {
 			// potential fetch errors on context sources
 			apex.logger.error('jsonld validation', errorMessage(err));
+			// @context の配信元の一時的な障害なら、送信側に再送させるため 5xx を返す (→ ADR-0115)
+			if (isTransientFailure(err)) {
+				res.status(503).send('Temporarily unable to process request JSON-LD');
+				return;
+			}
 			res.status(400).send('Error processing request JSON-LD');
 			return;
 		}
