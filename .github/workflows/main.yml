@@ -128,18 +128,18 @@ jobs:
       - name: Create or update issue on deploy failure
         env:
           GH_TOKEN: ${{ secrets.USER_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
         run: |
           TITLE="Deploy ワークフローが main で失敗した"
-          EXISTING_ISSUE=$(gh issue list --repo "${{ github.repository }}" --search "${TITLE} in:title state:open" --json number -q '.[0].number')
-          BODY="main への push によるデプロイワークフローが失敗しました。
-
-- コミット: ${{ github.sha }} (${{ github.event.head_commit.message }})
-- 実行ログ: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-本番への反映が止まっている可能性があるため確認してください。"
+          EXISTING_ISSUE=$(gh issue list --repo "$REPO" --search "${TITLE} in:title state:open" --json number -q '.[0].number')
+          BODY=$(printf "main への push によるデプロイワークフローが失敗しました。\n\n- コミット: %s (%s)\n- 実行ログ: %s/%s/actions/runs/%s\n\n本番への反映が止まっている可能性があるため確認してください。" "$COMMIT_SHA" "$COMMIT_MSG" "$SERVER_URL" "$REPO" "$RUN_ID")
 
           if [ -n "$EXISTING_ISSUE" ]; then
-            gh issue comment "$EXISTING_ISSUE" --repo "${{ github.repository }}" --body "$BODY"
+            gh issue comment "$EXISTING_ISSUE" --repo "$REPO" --body "$BODY"
           else
-            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY" --label "area:infra,phase:5"
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label "area:infra,phase:5"
           fi
