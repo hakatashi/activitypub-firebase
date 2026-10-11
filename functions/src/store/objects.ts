@@ -1,11 +1,9 @@
-// `objects` に対するアプリ独自のクエリ。apex の Store 契約には含まれない。
+// `objects` に対するクエリ。Store クラス (ApexStore) とアプリ側の双方が共有する。
 import type { APObject } from '../apex/index.js';
-import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import { chunk } from 'lodash-es';
-import { escapeFirestoreKey } from '../firebase.js';
+import { db, escapeFirestoreKey } from '../firebase.js';
 import { Objects } from '../schema.js';
-import { FIRESTORE_IN_QUERY_LIMIT } from './limits.js';
 
 export const getObjects = async (ids: string[], includeMeta = false): Promise<APObject[]> => {
 	logger.info({
@@ -18,20 +16,24 @@ export const getObjects = async (ids: string[], includeMeta = false): Promise<AP
 		return [];
 	}
 
-	const idChunks = chunk(ids.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
-	const objectDocsChunks = await Promise.all(
-		idChunks.map((idChunk) =>
-			Objects.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+	const uniqueIds = Array.from(new Set(ids));
+	const idChunks = chunk(uniqueIds, 500);
+	const docSnapshotsChunks = await Promise.all(
+		idChunks.map((chunkIds) =>
+			db.getAll(...chunkIds.map((id) => Objects.doc(escapeFirestoreKey(id)))),
 		),
 	);
 
-	return objectDocsChunks.flatMap((objectDocs) =>
-		objectDocs.docs.map((doc) => {
-			const object = doc.data();
+	return docSnapshotsChunks.flatMap((docSnapshots) =>
+		docSnapshots.flatMap((doc) => {
+			if (!doc.exists) {
+				return [];
+			}
+			const object = doc.data() as APObject;
 			if (includeMeta !== true) {
 				delete object._meta;
 			}
-			return object;
+			return [object];
 		}),
 	);
 };

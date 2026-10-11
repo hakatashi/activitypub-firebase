@@ -18,6 +18,7 @@ import { prepareProjectionUpdates } from '../projections/index.js';
 import { Contexts, Objects, Streams } from '../schema.js';
 import { isAPAnnounce, toIdArray } from '../utils.js';
 import { enqueueDeliveryTasks } from './deliveries.js';
+import { getObjects } from './objects.js';
 import { prepareRepliesCountUpdate } from './replies.js';
 import { objectToUpdateDoc, replaceKeepingMeta, updateObjectCopies } from './updates.js';
 
@@ -75,6 +76,10 @@ export default class Store extends IApexStore implements ApexStore {
 		}
 
 		return object;
+	}
+
+	override getObjects(ids: string[], includeMeta?: boolean) {
+		return getObjects(ids, includeMeta);
 	}
 
 	override async saveObject(object: APObject) {

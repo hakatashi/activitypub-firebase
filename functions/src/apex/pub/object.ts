@@ -56,6 +56,72 @@ export const resolveObject = async function (
 	return object;
 };
 
+export const resolveObjects = async function (
+	this: Apex,
+	items: unknown[],
+	_includeMeta?: boolean,
+	refresh?: boolean,
+	localOnly?: boolean,
+): Promise<(APObject | undefined)[]> {
+	if (items.length === 0) {
+		return [];
+	}
+
+	const parsedItems = items.map((item) => {
+		const id = first(item);
+		if (isAPObject(id)) {
+			const objectId = typeof id.id === 'string' ? id.id : undefined;
+			return { item, objectId, isObject: true };
+		}
+		try {
+			const iri = new URL(String(id));
+			const objectId = `${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`;
+			return { item, objectId, isObject: false };
+		} catch {
+			return { item, objectId: undefined, isObject: false };
+		}
+	});
+
+	const uniqueObjectIds = Array.from(
+		new Set(parsedItems.map((p) => p.objectId).filter((id): id is string => id !== undefined)),
+	);
+
+	const cachedObjects =
+		typeof this.store.getObjects === 'function'
+			? await this.store.getObjects(uniqueObjectIds, true)
+			: (await Promise.all(uniqueObjectIds.map((id) => this.store.getObject(id, true)))).filter(
+					(obj): obj is APObject => obj !== undefined,
+				);
+
+	const cachedMap = new Map<string, APObject>();
+	for (const obj of cachedObjects) {
+		if (typeof obj.id === 'string') {
+			cachedMap.set(obj.id, obj);
+		}
+	}
+
+	return Promise.all(
+		parsedItems.map(({ item, objectId, isObject }) => {
+			if (objectId !== undefined) {
+				const cached = cachedMap.get(objectId);
+				if (isObject) {
+					if (cached && this.isLocalIRI(objectId)) {
+						return cached;
+					}
+					if (cached && !refresh) {
+						return cached;
+					}
+				} else {
+					if (cached && (!refresh || this.isLocalIRI(objectId))) {
+						return cached;
+					}
+				}
+			}
+			return this.resolveObject(item, _includeMeta, refresh, localOnly);
+		}),
+	);
+};
+
 export const resolveUnknown = async function (
 	this: Apex,
 	rawObjectOrIRI: unknown,

@@ -9,6 +9,7 @@ describe('apex pub/federation resolveReferences (ADR-0055)', () => {
 	const createMockStore = () =>
 		({
 			getObject: vi.fn().mockResolvedValue(undefined),
+			getObjects: vi.fn().mockResolvedValue([]),
 			saveObject: vi.fn().mockResolvedValue(true),
 			updateObject: vi.fn().mockResolvedValue(true),
 			getActivity: vi.fn().mockResolvedValue(undefined),
