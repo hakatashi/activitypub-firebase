@@ -28,7 +28,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 
 | Function | 種別 | 役割 |
 |---|---|---|
-| `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ |
+| `activitypub` | HTTP | ActivityPub 本体。`hakatashi.com` にマップ (通常時は最小インスタンス数 0、移行時のみパラメータ `ACTIVITYPUB_MIN_INSTANCES` でウォーム待機可能、→ [ADR-0113](adr/0113-temporary-min-instances-during-migration.md)) |
 | `mastodonApi` | HTTP | Mastodon 互換 REST API + OAuth2。`mastodon.hakatashi.com` にマップ。本文のハッシュタグのリンク先 `/tags/:name` は Elk のタグのページへリダイレクト。`/@:acct/:id`・`/@:acct` はリンクプレビュー用の最小限の HTML (→ [ADR-0107](adr/0107-minimal-html-status-page-for-link-previews.md))。`/avatars/original/missing.png`・`/headers/original/missing.png` は画像のない Account の既定画像 (→ [ADR-0109](adr/0109-default-avatar-and-header-images.md)) (256MiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
 | `mediaUploadApi` | HTTP | メディアアップロード・取得・編集 API。Hosting rewrite でマップ (2GiB メモリ、→ [ADR-0093](adr/0093-split-media-upload-function.md)) |
 | `beforeUserCreate` | Auth blocking | Google ログインかつ特定アドレスのみ許可し、`userInfos` を作成 |
