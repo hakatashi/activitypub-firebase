@@ -86,7 +86,11 @@ const ActivitypubExpress = <S extends ApexStore>(settings: ApexSettings<S>): Ape
 	if (!settings.store) {
 		throw new Error('Store is required');
 	}
-	const logger = settings.logger ?? console;
+	const normalizedSettings: ApexSettings<S> = {
+		...settings,
+		publishCollectionUpdates: settings.publishCollectionUpdates ?? false,
+	};
+	const logger = normalizedSettings.logger ?? console;
 
 	const onFinishedHandler = (err: Error | null, res: Response) => {
 		if (err) {
@@ -120,44 +124,44 @@ const ActivitypubExpress = <S extends ApexStore>(settings: ApexSettings<S>): Ape
 
 	let baseUrl;
 	let domain;
-	if (settings.baseUrl === undefined) {
-		// Assumes settings.domain is set (backward-compatible)
-		baseUrl = `https://${settings.domain}`;
-		({ domain } = settings);
+	if (normalizedSettings.baseUrl === undefined) {
+		// Assumes normalizedSettings.domain is set (backward-compatible)
+		baseUrl = `https://${normalizedSettings.domain}`;
+		({ domain } = normalizedSettings);
 	} else {
-		baseUrl = settings.baseUrl;
+		baseUrl = normalizedSettings.baseUrl;
 		domain = new URL(baseUrl).host;
 	}
 	const asContext: JsonLdContext[] = pub.consts.ASContext;
 	const params = {
-		actorParam: settings.actorParam,
-		objectParam: settings.objectParam,
-		activityParam: settings.activityParam || settings.objectParam,
-		collectionParam: settings.collectionParam || settings.objectParam,
+		actorParam: normalizedSettings.actorParam,
+		objectParam: normalizedSettings.objectParam,
+		activityParam: normalizedSettings.activityParam || normalizedSettings.objectParam,
+		collectionParam: normalizedSettings.collectionParam || normalizedSettings.objectParam,
 	};
 	const core = {
-		settings,
+		settings: normalizedSettings,
 		baseUrl,
 		domain,
-		context: settings.context ? asContext.concat(settings.context) : asContext,
+		context: normalizedSettings.context ? asContext.concat(normalizedSettings.context) : asContext,
 		net,
-		store: settings.store,
+		store: normalizedSettings.store,
 		...params,
-		pageParam: settings.pageParam || 'page',
-		itemsPerPage: settings.itemsPerPage || 20,
-		threadDepth: settings.threadDepth ?? 5,
-		threadLimit: settings.threadLimit ?? 10,
-		threadConcurrency: settings.threadConcurrency ?? 2,
-		systemUser: settings.systemUser,
+		pageParam: normalizedSettings.pageParam || 'page',
+		itemsPerPage: normalizedSettings.itemsPerPage || 20,
+		threadDepth: normalizedSettings.threadDepth ?? 5,
+		threadLimit: normalizedSettings.threadLimit ?? 10,
+		threadConcurrency: normalizedSettings.threadConcurrency ?? 2,
+		systemUser: normalizedSettings.systemUser,
 		logger,
-		offlineMode: settings.offlineMode,
-		requestTimeout: settings.requestTimeout ?? 5000,
+		offlineMode: normalizedSettings.offlineMode,
+		requestTimeout: normalizedSettings.requestTimeout ?? 5000,
 	};
 	// pub の関数は呼び出し時に this (= apex) のプロパティを読むので、束縛の時点では
 	// 組み立て途中のオブジェクトを渡してよい
 	const withCore = Object.assign(middleware, core);
 	const methods = bindPub(withCore);
-	const utils = buildUtils(methods, settings, baseUrl, params);
+	const utils = buildUtils(methods, normalizedSettings, baseUrl, params);
 	const apex: Apex<S> = Object.assign(withCore, methods, { utils });
 	return apex;
 };

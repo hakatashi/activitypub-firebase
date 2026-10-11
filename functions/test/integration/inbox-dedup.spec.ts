@@ -79,10 +79,9 @@ describe('/inbox redundant delivery (Issue #50)', () => {
 		const second = await postFollow();
 		expect(second.status).toBe(200);
 
-		// Follow 自動承認1回につき、Accept の配送と followers コレクション更新の配送で
-		// deliveryEnqueue が2回呼ばれる。重複配送で side effect が再実行されていれば、
-		// 2回目の POST でさらに deliveryEnqueue が呼ばれ、合計が2回を超える。
-		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(2);
+		// Follow 自動承認1回につき、Accept の配送のみ enqueue される (ADR-0112: followers 更新の Update は配送しない)。
+		// 重複配送で side effect が再実行されていれば、2回目の POST でさらに deliveryEnqueue が呼ばれ、合計が1回を超える。
+		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(1);
 	});
 
 	test('still runs side effects for a genuinely new delivery (different activity)', async () => {
@@ -109,7 +108,7 @@ describe('/inbox redundant delivery (Issue #50)', () => {
 		expect(second.status).toBe(200);
 
 		// 別の Follow activity なので、それぞれ独立して自動承認の side effect が走る
-		// (Follow ごとに Accept の配送 + followers コレクション更新の配送で2回)。
-		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(4);
+		// (Follow ごとに Accept の配送で1回、合計2回。ADR-0112: followers 更新の Update は配送しない)。
+		expect(deliveryEnqueueSpy).toHaveBeenCalledTimes(2);
 	});
 });

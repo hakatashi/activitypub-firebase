@@ -163,7 +163,11 @@ export const acceptFollow = async function (
 		'collection',
 		first(actor.followers),
 	);
-	const postTask = async () => this.publishUpdate(actor, await this.getFollowers(actor));
+	const postTask = async () => {
+		if (this.settings.publishCollectionUpdates) {
+			await this.publishUpdate(actor, await this.getFollowers(actor));
+		}
+	};
 	return { postTask, updated };
 };
 
@@ -229,6 +233,9 @@ export const publishUndoUpdate = async function (
 	actor: APObject,
 	audience: unknown[],
 ): Promise<void> {
+	if (!this.settings.publishCollectionUpdates) {
+		return undefined;
+	}
 	const info = typeof colId === 'string' ? this.utils.iriToCollectionInfo(colId) : undefined;
 	if (typeof colId !== 'string' || !info || !undoUpdatableCollections.has(info.name)) {
 		return undefined;

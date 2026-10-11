@@ -72,7 +72,7 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `runPostWorkBeforeSend` ミドルウェアがリクエストごとに `res.send` を差し替え、
   送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを await している
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
-  `postWorkCompleted` ログに出る。`runPostWork` が例外で失敗した場合は 500 を返し、送信元に再送を促す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。`apex-inbox` リスナーで Follow の自動 Accept を実装している。
+  `postWorkCompleted` ログに出る。`runPostWork` が例外で失敗した場合は 500 を返し、送信元に再送を促す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。`apex-inbox` リスナーで Follow の自動 Accept を実装している。なお、Follow の承認時や Undo(Follow) / Reject 受信時に followers などのコレクション Update は配送しない(→ [ADR-0112](adr/0112-do-not-deliver-collection-updates.md))。
 - inbox への配送処理は `apex.net.inbox.post` をそのまま利用している。
   重複配送の検出と `isNewActivity` の設定は `Store#saveActivity` の戻り値契約に基づいて apex 内部で完結して行われ(→ [ADR-0049](adr/0049-save-activity-return-contract-and-inbox-dedup.md))、
   重複配送(`isNewActivity === false`)であっても受信者の `followers` コレクションに入っていない未承認の Follow は重複無視せず `apex-inbox` イベントを発火して承認をやり直す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。
@@ -80,7 +80,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   (なお、Like/Announce の通常オブジェクト解決は apex フォークの validators で行われ [ADR-0047](adr/0047-resolve-like-announce-object-in-apex.md)、
   Undo の object 非正規化は apex フォークの `activity.save` で行われ [ADR-0048](adr/0048-denormalize-undo-object-in-apex.md)、
   宛先の `as:Public` 正規化は apex フォークの JSON-LD 処理層で行われ [ADR-0045](adr/0045-normalize-public-address-in-apex-jsonld.md)、
-  Update/Delete の同一オリジン検証は apex フォークの `validateOwner` で行われる → [ADR-0046](adr/0046-validate-owner-same-origin-in-apex.md))。
+  Update/Delete の同一オリジン検証は apex フォークの `validateOwner` で行われ [ADR-0046](adr/0046-validate-owner-same-origin-in-apex.md)、
+  コレクション変更時の Update 配送は apex フォークの `publishCollectionUpdates: false` で抑止される → [ADR-0112](adr/0112-do-not-deliver-collection-updates.md))。
 - 承認した `Follow` には `_meta.isPublic` を付与し、匿名の `/followers` コレクションに
   表示されるようにしている(Follow は `to`/`cc` を持たないため → ADR-0035)。
 - `Like` / `Announce` の受信カウントは apex 本体のコレクション機構(activity 専用)を使わず、

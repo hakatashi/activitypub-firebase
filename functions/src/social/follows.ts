@@ -160,16 +160,14 @@ export const acceptAndPublishFollow = async (
 	const accept = await apex.buildActivity('Accept', recipient.id, followerId, {
 		object,
 	});
-	const { postTask: publishUpdatedFollowers } = await apex.acceptFollow(recipient, follow);
+	// followers コレクションへの追加。Update の配信は行わない (→ ADR-0112)。
+	await apex.acceptFollow(recipient, follow);
 	// Follow は to/cc を持たないため、明示的に isPublic を立てないと匿名の
 	// followers コレクションから除外されてしまう (→ ADR-0035)。
 	await markActivityPublic(follow);
 
 	logger.info(`Accepting follow request from ${followerId}`);
 	await apex.addToOutbox(recipient, accept);
-
-	logger.info('Publishing updated followers');
-	await publishUpdatedFollowers();
 
 	logger.info(`Follow request from ${followerId} accepted`);
 };
