@@ -39,32 +39,6 @@ jobs:
         run: npm --prefix functions run lint
       - name: Run format check
         run: npm --prefix functions run format:check
-  deploy-hosting:
-    name: Deploy to Firebase Hosting
-    needs: [test, lint]
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        project:
-          - id: activitypub-firebase
-            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
-          - id: activitypub-firebase-dev
-            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22.x
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{secrets.GITHUB_TOKEN}}'
-          firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
-          channelId: live
-          projectId: '${{matrix.project.id}}'
   deploy-firebase:
     name: Deploy to Firebase except for Hosting
     needs: [test, lint]
@@ -92,9 +66,35 @@ jobs:
         env:
           GCP_SA_KEY: '${{secrets[matrix.project.key]}}'
           PROJECT_ID: '${{matrix.project.id}}'
+  deploy-hosting:
+    name: Deploy to Firebase Hosting
+    needs: [test, lint, deploy-firebase]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - id: activitypub-firebase
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+          - id: activitypub-firebase-dev
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{secrets.GITHUB_TOKEN}}'
+          firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
+          channelId: live
+          projectId: '${{matrix.project.id}}'
   smoke-test-dev:
     name: Smoke test (dev)
-    needs: [deploy-hosting, deploy-firebase]
+    needs: [deploy-firebase, deploy-hosting]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -116,3 +116,30 @@ jobs:
           exit 1
       - name: Run activitypub-testing smoke test
         run: npx activitypub-testing test actor https://activitypub-dev.hakatashi.com/activitypub/u/hakatashi
+  notify-deploy-failure:
+    name: Notify Deploy Failure
+    needs: [deploy-firebase, deploy-hosting, smoke-test-dev]
+    if: always() && contains(needs.*.result, 'failure') && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create or update issue on deploy failure
+        env:
+          GH_TOKEN: ${{ secrets.USER_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          TITLE="Deploy ワークフローが main で失敗した"
+          EXISTING_ISSUE=$(gh issue list --repo "$REPO" --search "${TITLE} in:title state:open" --json number -q '.[0].number')
+          BODY=$(printf "main への push によるデプロイワークフローが失敗しました。\n\n- コミット: %s (%s)\n- 実行ログ: %s/%s/actions/runs/%s\n\n本番への反映が止まっている可能性があるため確認してください。" "$COMMIT_SHA" "$COMMIT_MSG" "$SERVER_URL" "$REPO" "$RUN_ID")
+
+          if [ -n "$EXISTING_ISSUE" ]; then
+            gh issue comment "$EXISTING_ISSUE" --repo "$REPO" --body "$BODY"
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label "area:infra,phase:5"
+          fi

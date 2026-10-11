@@ -1,6 +1,6 @@
 # ADR-0113: アカウント移行時の一時的な最小インスタンス数設定
 
-- **Status:** Accepted
+- **Status:** Accepted (切り替え方法は ADR-0116 で Superseded)
 - **Date:** 2026-10-11
 
 ## 背景
