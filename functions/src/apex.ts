@@ -16,9 +16,19 @@ export { routes };
 const remoteFetchPolicy = (): RemoteFetchPolicy => {
 	const isLocalDevelopment =
 		process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test';
-	return isLocalDevelopment
-		? { allowedProtocols: ['https:', 'http:'], allowedRanges: ['unicast', 'loopback'] }
-		: {};
+	const allowPrivateNetwork = process.env.ALLOW_PRIVATE_NETWORK === 'true';
+	if (isLocalDevelopment) {
+		return {
+			allowedProtocols: ['https:', 'http:'],
+			allowedRanges: allowPrivateNetwork
+				? ['unicast', 'loopback', 'private']
+				: ['unicast', 'loopback'],
+		};
+	}
+	if (allowPrivateNetwork) {
+		return { allowedRanges: ['unicast', 'private'] };
+	}
+	return {};
 };
 
 export const apex = ActivitypubExpress({

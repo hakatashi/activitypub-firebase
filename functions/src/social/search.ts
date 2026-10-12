@@ -88,7 +88,10 @@ const findLocalObjectByUrl = async (url: URL): Promise<APObject | undefined> => 
 };
 
 // URL からアカウント (actor) か投稿 (Note) を引く。Note は投稿者の actor も手元に入れる。
-const resolveUrl = async (query: string, resolve: boolean): Promise<APObject | undefined> => {
+export const resolveUrl = async (
+	query: string,
+	resolve: boolean,
+): Promise<APObject | undefined> => {
 	const url = parseUrl(query);
 	if (url === undefined) {
 		return undefined;

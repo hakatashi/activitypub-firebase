@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import qs from 'qs';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
-import { getFollowFlags, getFollowIri } from '../../social/follows.js';
+import { followActor, getFollowFlags, getFollowIri } from '../../social/follows.js';
 import { escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../../firebase.js';
 import { assignMediaMastodonId } from '../../mastodonId.js';
 import { plainTextToHtml } from '../../notes.js';
@@ -38,7 +38,6 @@ import {
 } from '../presenters/account.js';
 import type { RelationshipEntity } from '../presenters/account.js';
 import { STATUS_PAGE_LIMITS, getAccountStatuses } from '../presenters/status.js';
-import { markActivityPublic } from '../../store/activities.js';
 import { requestRemoteActorRefreshIfStale } from '../../social/remoteActorCounts.js';
 
 const router = express.Router();
@@ -358,17 +357,7 @@ router.post(
 			throw new UnprocessableError('You cannot follow yourself');
 		}
 
-		const [flags] = await getFollowFlags(actor, [targetActor.id]);
-		assert(flags !== undefined);
-
-		if (!flags.following) {
-			const activity = await apex.buildActivity('Follow', actor.id, targetActor.id, {
-				object: targetActor.id,
-			});
-			await apex.addToOutbox(actor, activity);
-			// following コレクションを匿名にも公開するため (→ ADR-0035, ADR-0075)。
-			await markActivityPublic(activity);
-		}
+		const { flags } = await followActor(actor, targetActor);
 
 		const isTargetLocked =
 			targetActor.manuallyApprovesFollowers === true || resolved.userInfo?.locked === true;
