@@ -1,3 +1,4 @@
+import { createHash, randomInt } from 'node:crypto';
 import type { Transaction } from '@google-cloud/firestore';
 import { db, escapeFirestoreKey } from './firebase.js';
 import { MastodonIds, MastodonIdsByIri } from './schema.js';
@@ -60,6 +61,37 @@ export const toPublishedSortKey = (published: unknown, now = Date.now()) => {
 	return new Date(toIdTimestamp(published, now)).toISOString();
 };
 
+// 空きシーケンスを探す起点。IRI の SHA-256 の先頭 16 bit を使う (→ ADR-0118)。
+// Mastodon の actor の `published` は日単位なので同じタイムスタンプの採番が集中しうるが、
+// 起点が散らばっていれば大半は最初の読み取りで空きが見つかり、並行するトランザクションも競合しない。
+export const sequenceStartOf = (iri: string) =>
+	createHash('sha256').update(iri).digest().readUInt16BE(0);
+
+// `start` から 65,536 で折り返しながら空きシーケンスを探す。書き込みは呼び出し側が行う。
+const findFreeMastodonIdInTransaction = async (
+	transaction: Transaction,
+	timestamp: number,
+	start: number,
+) => {
+	const sequenceCount = MAX_SEQUENCE + 1;
+	for (let offset = 0; offset < sequenceCount; offset += PROBE_BATCH_SIZE) {
+		const candidates = Array.from(
+			{ length: Math.min(PROBE_BATCH_SIZE, sequenceCount - offset) },
+			(_, index) => buildMastodonId(timestamp, (start + offset + index) % sequenceCount),
+		);
+		const candidateDocs = await transaction.getAll(
+			...candidates.map((candidate) => MastodonIds.doc(escapeFirestoreKey(candidate))),
+		);
+		const freeIndex = candidateDocs.findIndex((doc) => !doc.exists);
+		const mastodonId = candidates[freeIndex];
+		if (mastodonId !== undefined) {
+			return mastodonId;
+		}
+	}
+
+	throw new Error(`Mastodon ID sequence exhausted at ${timestamp}`);
+};
+
 // トランザクション内で IRI の Mastodon ID を引き、無ければ採番する。
 //
 // Firestore のトランザクションは「すべての読み取りの後に書き込み」を要求する。この関数は
@@ -78,25 +110,14 @@ export const getOrAssignMastodonIdInTransaction = async (
 		return existing;
 	}
 
-	const timestamp = toIdTimestamp(published);
-	for (let start = 0; start <= MAX_SEQUENCE; start += PROBE_BATCH_SIZE) {
-		const candidates = Array.from(
-			{ length: Math.min(PROBE_BATCH_SIZE, MAX_SEQUENCE - start + 1) },
-			(_, offset) => buildMastodonId(timestamp, start + offset),
-		);
-		const candidateDocs = await transaction.getAll(
-			...candidates.map((candidate) => MastodonIds.doc(escapeFirestoreKey(candidate))),
-		);
-		const freeIndex = candidateDocs.findIndex((doc) => !doc.exists);
-		const mastodonId = candidates[freeIndex];
-		if (mastodonId !== undefined) {
-			transaction.create(MastodonIds.doc(escapeFirestoreKey(mastodonId)), { iri });
-			transaction.set(byIriRef, { mastodonId });
-			return mastodonId;
-		}
-	}
-
-	throw new Error(`Mastodon ID sequence exhausted at ${timestamp} for ${iri}`);
+	const mastodonId = await findFreeMastodonIdInTransaction(
+		transaction,
+		toIdTimestamp(published),
+		sequenceStartOf(iri),
+	);
+	transaction.create(MastodonIds.doc(escapeFirestoreKey(mastodonId)), { iri });
+	transaction.set(byIriRef, { mastodonId });
+	return mastodonId;
 };
 
 export const getOrAssignMastodonId = (iri: string, published: unknown) =>
@@ -149,26 +170,16 @@ export const assignMediaMastodonIdInTransaction = async (
 	transaction: Transaction,
 	now = Date.now(),
 ) => {
-	const timestamp = toIdTimestamp(now);
-	for (let start = 0; start <= MAX_SEQUENCE; start += PROBE_BATCH_SIZE) {
-		const candidates = Array.from(
-			{ length: Math.min(PROBE_BATCH_SIZE, MAX_SEQUENCE - start + 1) },
-			(_, offset) => buildMastodonId(timestamp, start + offset),
-		);
-		const candidateDocs = await transaction.getAll(
-			...candidates.map((candidate) => MastodonIds.doc(escapeFirestoreKey(candidate))),
-		);
-		const freeIndex = candidateDocs.findIndex((doc) => !doc.exists);
-		const mastodonId = candidates[freeIndex];
-		if (mastodonId !== undefined) {
-			transaction.create(MastodonIds.doc(escapeFirestoreKey(mastodonId)), {
-				iri: `mediaAttachment:${mastodonId}`,
-			});
-			return mastodonId;
-		}
-	}
-
-	throw new Error(`Mastodon ID sequence exhausted at ${timestamp} for mediaAttachment`);
+	// IRI が無いので乱数を起点にする (→ ADR-0118)。
+	const mastodonId = await findFreeMastodonIdInTransaction(
+		transaction,
+		toIdTimestamp(now),
+		randomInt(MAX_SEQUENCE + 1),
+	);
+	transaction.create(MastodonIds.doc(escapeFirestoreKey(mastodonId)), {
+		iri: `mediaAttachment:${mastodonId}`,
+	});
+	return mastodonId;
 };
 
 export const assignMediaMastodonId = (now = Date.now()) =>

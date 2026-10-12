@@ -7,14 +7,19 @@ import {
 	isMastodonId,
 	mastodonIdToTimestamp,
 	MAX_SEQUENCE,
+	sequenceStartOf,
 	toIdTimestamp,
 	toPublishedSortKey,
 } from '../../src/mastodonId.js';
+import { escapeFirestoreKey } from '../../src/firebase.js';
+import { MastodonIds } from '../../src/schema.js';
 import Store from '../../src/store/index.js';
 import { resetFirestore } from '../helpers/index.js';
 
 // 長さでソート → 辞書順でソート (Mastodon API ドキュメントの推奨手順) で比較する。
 const compareIds = (a: string, b: string) => a.length - b.length || Number(a > b) - Number(a < b);
+
+const sequenceOf = (mastodonId: string) => Number(BigInt(mastodonId) & BigInt(MAX_SEQUENCE));
 
 describe('buildMastodonId', () => {
 	test('uses the Mastodon snowflake layout and pads to 20 digits', () => {
@@ -112,6 +117,47 @@ describe('Mastodon ID mapping (Firestore)', () => {
 		const reverse = await Promise.all(ids.map((id) => getIriByMastodonId(id)));
 		expect(reverse).toEqual(iris);
 	}, 30000);
+
+	// Mastodon の actor の published は日単位なので、同じタイムスタンプの採番が集中する (→ ADR-0118)
+	test('starts probing for a free sequence at the hash of the IRI', async () => {
+		const iri = 'https://example.com/users/alice';
+		const id = await getOrAssignMastodonId(iri, '2023-06-01T00:00:00.000Z');
+		expect(sequenceOf(id)).toBe(sequenceStartOf(iri));
+	});
+
+	test('skips occupied sequences, wrapping around past the maximum', async () => {
+		// 起点が上限の近くになる IRI を選び、探索が 0 側へ折り返すようにする
+		let iri = '';
+		for (let i = 0; sequenceStartOf(iri) <= MAX_SEQUENCE - 10; i++) {
+			iri = `https://example.com/users/u${i}`;
+		}
+		const published = '2023-06-01T00:00:00.000Z';
+		const timestamp = Date.parse(published);
+		const start = sequenceStartOf(iri);
+		const occupied = Array.from({ length: 20 }, (_, i) => (start + i) % (MAX_SEQUENCE + 1));
+		await Promise.all(
+			occupied.map((sequence) =>
+				MastodonIds.doc(escapeFirestoreKey(buildMastodonId(timestamp, sequence))).set({
+					iri: `https://example.com/occupied/${sequence}`,
+				}),
+			),
+		);
+
+		const id = await getOrAssignMastodonId(iri, published);
+		expect(sequenceOf(id)).toBe((start + 20) % (MAX_SEQUENCE + 1));
+		expect(mastodonIdToTimestamp(id)).toBe(timestamp);
+	});
+
+	test('sequenceStartOf is deterministic and within the sequence range', () => {
+		const iris = Array.from({ length: 100 }, (_, i) => `https://example.com/users/u${i}`);
+		const starts = iris.map((iri) => sequenceStartOf(iri));
+		expect(iris.map((iri) => sequenceStartOf(iri))).toEqual(starts);
+		for (const start of starts) {
+			expect(start).toBeGreaterThanOrEqual(0);
+			expect(start).toBeLessThanOrEqual(MAX_SEQUENCE);
+		}
+		expect(new Set(starts).size).toBeGreaterThan(90);
+	});
 
 	test('getMastodonIds returns existing ids and assigns missing ones in published order', async () => {
 		const existing = await getOrAssignMastodonId(

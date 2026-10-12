@@ -1,6 +1,6 @@
 # ADR-0058: Mastodon ID の具体的な採番方式と IRI との相互マッピング
 
-- **Status:** Accepted
+- **Status:** Accepted (シーケンスの探索起点は ADR-0118 で Superseded)
 - **Date:** 2026-10-02
 
 ## 背景
