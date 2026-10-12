@@ -136,6 +136,46 @@ export const getFollowersPageEntries = (actor: APActor, page: PageParams = { lim
 export const getFollowingPageEntries = (actor: APActor, page: PageParams = { limit: 40 }) =>
 	getFollowPageEntries(actor, 'following', page);
 
+export interface FollowActorOptions {
+	skipRequested?: boolean;
+}
+
+export interface FollowActorResult {
+	flags: FollowFlags;
+	followed: boolean;
+}
+
+// actor から targetActor をフォローする (ADR-0124)。
+// 既フォロー時は Follow を二重に送らない。skipRequested が真の場合は承認待ち時も送らない。
+export const followActor = async (
+	actor: APActor,
+	targetActor: APActor,
+	options: FollowActorOptions = {},
+): Promise<FollowActorResult> => {
+	assert(actor.id !== undefined, 'actor.id is undefined');
+	assert(targetActor.id !== undefined, 'targetActor.id is undefined');
+
+	if (targetActor.id === actor.id) {
+		throw new Error('You cannot follow yourself');
+	}
+
+	const [flags] = await getFollowFlags(actor, [targetActor.id]);
+	assert(flags !== undefined, 'flags is undefined');
+
+	const shouldSkip = flags.following || (options.skipRequested === true && flags.requested);
+	if (!shouldSkip) {
+		const activity = await apex.buildActivity('Follow', actor.id, targetActor.id, {
+			object: targetActor.id,
+		});
+		await apex.addToOutbox(actor as unknown as APObject, activity);
+		// following コレクションを匿名にも公開するため (→ ADR-0035, ADR-0075)。
+		await markActivityPublic(activity);
+		return { flags, followed: true };
+	}
+
+	return { flags, followed: false };
+};
+
 // Follow の自動承認と Accept の送信を行う (ADR-0111)。
 // onApexInbox と reconcilePendingFollows で共有する。
 export const acceptAndPublishFollow = async (

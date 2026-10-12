@@ -202,6 +202,26 @@ streams の Follow から組み立て直す(→ [ADR-0082](../adr/0082-project-f
 
 対象プロジェクトを間違えないよう、実行前に `GCLOUD_PROJECT` を確認すること。
 
+## Mastodon エクスポートデータのインポート
+
+pawoo.net などからエクスポートした CSV を読み込み、フォロー関係とブックマークを再登録する
+ワンショットスクリプトがある (→ [ADR-0124](../adr/0124-import-following-and-bookmarks-from-csv.md))。
+冪等であり、中断しても再実行可能。
+
+```bash
+# フォローのインポート
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importFollowing.ts <path-to-following_accounts.csv> --dry-run
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importFollowing.ts <path-to-following_accounts.csv> [--interval-ms=1000]
+
+# ブックマークのインポート
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importBookmarks.ts <path-to-bookmarks.csv> --dry-run
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importBookmarks.ts <path-to-bookmarks.csv> [--interval-ms=1000]
+```
+
+- `--dry-run`: 外部への Follow 送信やブックマーク保存を行わず、解決結果とサマリーだけを出力する。
+- `--interval-ms`: 外部サーバーや配送キューへの負荷集中を防ぐための送信間隔 (ミリ秒、デフォルト 1000ms)。
+- 引っ越し済みアカウント (`movedTo` があるもの) や解決失敗したものはスキップされ、最後に一覧でサマリー表示される。
+
 ## デプロイ
 
 `main` への push で CI が自動デプロイする(`.github/workflows/main.yml`)。
