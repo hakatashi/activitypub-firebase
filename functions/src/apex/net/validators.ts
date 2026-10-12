@@ -67,8 +67,28 @@ export const activityObject = (req: Request, res: Response, next: NextFunction):
 		object = isAPObject(inline) ? inline : undefined;
 	}
 	Promise.resolve(object)
-		.then((obj) => {
-			resLocal.object = obj ?? undefined;
+		.then(async (obj) => {
+			let resolvedObj = obj;
+			if (!resolvedObj && type === 'undo' && resLocal.target) {
+				// If Undo target activity wasn't found by objectId, check if it's an Undo(Follow)
+				// where the follower sends an inline Follow or a synthesized ID (e.g. Misskey).
+				// We look up the existing Follow activity by (followersCollection, actorId).
+				const inlineObject = first(activity.object);
+				const isFollow =
+					isAPObject(inlineObject) &&
+					typeof inlineObject.type === 'string' &&
+					inlineObject.type.toLowerCase() === 'follow';
+				const actorId = apex.actorIdFromActivity(activity) ?? resLocal.actor?.id;
+				const followers = firstString(resLocal.target.followers);
+				if (isFollow && actorId && followers) {
+					resolvedObj = await apex.store.findActivityByCollectionAndActorId(
+						followers,
+						actorId,
+						true,
+					);
+				}
+			}
+			resLocal.object = resolvedObj ?? undefined;
 			next();
 		})
 		.catch(next);

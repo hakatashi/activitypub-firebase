@@ -153,6 +153,51 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 			expect(res.locals.apex.object).toEqual(note);
 			expect(mockStore.getObject).toHaveBeenCalledWith(NOTE_ID, true);
 		});
+
+		test('resolves target Follow activity by collection and actorId for Undo activity when getActivity returns undefined (ADR-0123)', async () => {
+			const existingFollow = {
+				id: 'https://remote.example/follows/request-1',
+				type: 'Follow',
+				actor: [ACTOR_ID],
+				object: [RECIPIENT_ID],
+			};
+			const undoActivity = {
+				id: 'https://remote.example/follows/alice/bob/undo',
+				type: 'Undo',
+				actor: [ACTOR_ID],
+				object: [
+					{
+						id: 'https://remote.example/follows/alice/bob',
+						type: 'Follow',
+						actor: [ACTOR_ID],
+						object: [RECIPIENT_ID],
+					},
+				],
+			};
+
+			vi.mocked(mockStore.getActivity).mockResolvedValueOnce(undefined);
+			vi.mocked(mockStore.findActivityByCollectionAndActorId).mockResolvedValueOnce(existingFollow);
+
+			const { req, res } = createMockReqRes(undoActivity, {
+				target: {
+					...recipient,
+					followers: [`${RECIPIENT_ID}/followers`],
+				},
+				actor,
+			});
+			await runMiddleware(apex.net.validators.activityObject, req, res);
+
+			expect(mockStore.getActivity).toHaveBeenCalledWith(
+				'https://remote.example/follows/alice/bob',
+				true,
+			);
+			expect(mockStore.findActivityByCollectionAndActorId).toHaveBeenCalledWith(
+				`${RECIPIENT_ID}/followers`,
+				ACTOR_ID,
+				true,
+			);
+			expect(res.locals.apex.object).toEqual(existingFollow);
+		});
 	});
 
 	describe('inboxActivity', () => {
