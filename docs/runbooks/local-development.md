@@ -222,6 +222,36 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importBookmarks.ts
 - `--interval-ms`: 外部サーバーや配送キューへの負荷集中を防ぐための送信間隔 (ミリ秒、デフォルト 1000ms)。
 - 引っ越し済みアカウント (`movedTo` があるもの) や解決失敗したものはスキップされ、最後に一覧でサマリー表示される。
 
+## アカウント移行の進捗確認と事前配送 (migrationStatus)
+
+pawoo.net からの引っ越し (Phase 5) で、フォロワーの移行進捗の可視化と相手サーバーへの事前配送を行うスクリプトがある (→ [ADR-0125](../adr/0125-migration-progress-reconciliation-and-pre-delivery.md))。
+
+```bash
+# 1. 旧アカウントのフォロワー一覧を取得して保存 (Move の前に必ず実行)
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/migrationStatus.ts --account=hakatashi@pawoo.net --save=scratch/pawoo_followers.json
+
+# 2. 事前 Update(Person) 配送の dry-run (宛先ドメインと sharedInbox の確認)
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/migrationStatus.ts --file=scratch/pawoo_followers.json --announce --dry-run
+
+# 3. 事前 Update(Person) 配送の実行 (相手サーバーの UnavailableDomain 記録解除と actor キャッシュ更新)
+# ※ 本番 (activitypub-firebase) では誤操作防止のため --force フラグが必要
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/migrationStatus.ts --file=scratch/pawoo_followers.json --announce
+
+# 4. 引っ越し中・直後の進捗確認 (4 状態とドメイン別の集計表出力)
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/migrationStatus.ts --file=scratch/pawoo_followers.json
+
+# 機械可読な JSON 出力
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/migrationStatus.ts --file=scratch/pawoo_followers.json --json
+```
+
+- `--account`: 取得対象のリモートアカウント (デフォルト: `hakatashi@pawoo.net`)。
+- `--file`: 保存済み JSON ファイルの読み込みパス。
+- `--save`: 取得したフォロワー一覧の JSON 保存先パス。
+- `--announce`: フォロワー所在サーバーの sharedInbox (なければ inbox) へ事前 `Update(Person)` を配送する。
+- `--dry-run`: 配送キューへの登録を行わず、宛先一覧のみを表示する。
+- `--skip-remote`: 未マッチアカウントのリモート WebFinger 解決をスキップし、ローカル情報のみで照合する。
+- `--force`: 本番プロジェクト (`activitypub-firebase`) での `--announce` 配送を許可する。
+
 ## デプロイ
 
 `main` への push で CI が自動デプロイする(`.github/workflows/main.yml`)。

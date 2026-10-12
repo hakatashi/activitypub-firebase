@@ -4,12 +4,18 @@ import { getInstallations } from 'firebase-admin/installations';
 
 export { FUNCTION_REGION, taskQueueName } from './init.js';
 
-export const app = firebase.initializeApp();
 const isTestOrEmulator =
 	process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test';
-if (!app.options.serviceAccountId && process.env.GCLOUD_PROJECT && !isTestOrEmulator) {
-	app.options.serviceAccountId = `${process.env.GCLOUD_PROJECT}@appspot.gserviceaccount.com`;
+const appOptions: firebase.AppOptions = {};
+const projectIdEnv = process.env.GCLOUD_PROJECT;
+if (projectIdEnv) {
+	appOptions.projectId = projectIdEnv;
 }
+if (!isTestOrEmulator) {
+	const defaultProjectId = projectIdEnv ?? 'activitypub-firebase-dev';
+	appOptions.serviceAccountId = `${defaultProjectId}@appspot.gserviceaccount.com`;
+}
+export const app = firebase.initializeApp(appOptions);
 export const db = firebase.firestore();
 export const projectId = getInstallations().app.options.projectId;
 export const domain =
