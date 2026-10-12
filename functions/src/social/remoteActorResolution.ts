@@ -4,6 +4,7 @@ import { uniq } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
 import { getObjects } from '../store/objects.js';
 import { isAPActor, toIdArray } from '../utils.js';
+import { taskQueueName } from '../firebase.js';
 import {
 	REMOTE_ACTOR_REFRESH_QUEUE,
 	isTaskAlreadyExistsError,
@@ -33,7 +34,7 @@ export const clearRequestedRemoteActorResolutions = () => {
 export const remoteActorResolutionQueue = {
 	enqueue: async (actorIri: string, taskId: string) => {
 		await getFunctions()
-			.taskQueue(REMOTE_ACTOR_REFRESH_QUEUE)
+			.taskQueue(taskQueueName(REMOTE_ACTOR_REFRESH_QUEUE))
 			.enqueue({ actorIri, kind: 'resolve' }, { id: taskId });
 	},
 };

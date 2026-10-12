@@ -33,15 +33,24 @@
       "rewrites": [
         {
           "source": "/.well-known/**",
-          "function": "activitypub"
+          "function": {
+            "functionId": "activitypub",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/activitypub/**",
-          "function": "activitypub"
+          "function": {
+            "functionId": "activitypub",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/nodeinfo/**",
-          "function": "activitypub"
+          "function": {
+            "functionId": "activitypub",
+            "region": "asia-northeast1"
+          }
         }
       ]
     },
@@ -79,55 +88,94 @@
       "rewrites": [
         {
           "source": "/api/v1/accounts/update_credentials",
-          "function": "mediaUploadApi"
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/api/v1/media",
-          "function": "mediaUploadApi"
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/api/v1/media/**",
-          "function": "mediaUploadApi"
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/api/v2/media",
-          "function": "mediaUploadApi"
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/api/v2/media/**",
-          "function": "mediaUploadApi"
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/api/**",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/oauth/**",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/.well-known/nodeinfo",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/nodeinfo/:version*",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/tags/**",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/avatars/original/missing.png",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "source": "/headers/original/missing.png",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         },
         {
           "regex": "^/@[^/]+(?:/[0-9]+)?/?$",
-          "function": "mastodonApi"
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
         }
       ]
     }

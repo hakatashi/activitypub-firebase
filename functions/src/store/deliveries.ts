@@ -2,7 +2,7 @@
 import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
-import { escapeFirestoreKey } from '../firebase.js';
+import { escapeFirestoreKey, taskQueueName } from '../firebase.js';
 import { Deliveries } from '../schema.js';
 
 export interface DeliveryResult {
@@ -21,7 +21,7 @@ export interface DeliveryResult {
 export const enqueueDeliveryTasks = async (actorId: string, body: string, addresses: string[]) => {
 	await Promise.all(
 		addresses.map((address) =>
-			getFunctions().taskQueue('deliveryTask').enqueue({ actorId, body, address }),
+			getFunctions().taskQueue(taskQueueName('deliveryTask')).enqueue({ actorId, body, address }),
 		),
 	);
 };

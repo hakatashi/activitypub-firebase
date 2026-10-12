@@ -399,7 +399,7 @@ curl -sH 'Accept: application/activity+json' "$ACTOR/followers" | jq '{totalItem
 curl -sH "X-Hakatashi-Token: $HAKATASHI_TOKEN" "$DEV/activitypub/deliveries/failed" | jq
 
 # キューに残っているタスク(リトライ待ちはここに見える)
-gcloud tasks list --queue=deliveryTask --location=us-central1 \
+gcloud tasks list --queue=deliveryTask --location=asia-northeast1 \
   --project=activitypub-firebase-dev --format='value(name,scheduleTime,dispatchCount)'
 
 # ワーカーのログ
@@ -453,13 +453,13 @@ curl -s -X DELETE -H "Authorization: Bearer $GCP_TOKEN" \
 
 - `activitypub` Function に最小インスタンス数 `minInstances: 1` が設定されていること (→ [ADR-0113](../adr/0113-temporary-min-instances-during-migration.md))。
   ```bash
-  gcloud run services update activitypub --region=us-central1 --project=activitypub-firebase-dev --min-instances=1
+  gcloud run services update activitypub --region=asia-northeast1 --project=activitypub-firebase-dev --min-instances=1
   ```
 - CPU などのリソース割り当てが本番と同じであること。`gcloud run services update` で変えた値は
   `firebase deploy` 後も残るので、試験前に本番と見比べる。
   ```bash
   for p in activitypub-firebase activitypub-firebase-dev; do
-    gcloud run services describe activitypub --region=us-central1 --project=$p \
+    gcloud run services describe activitypub --region=asia-northeast1 --project=$p \
       --format='value(spec.template.spec.containers[0].resources.limits)'
   done
   ```

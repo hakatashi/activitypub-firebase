@@ -2,6 +2,7 @@ import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { z } from 'zod';
+import { taskQueueName } from './firebase.js';
 import { apex } from './apex.js';
 import { toError } from './utils.js';
 import { recordDeliveryResult } from './store/deliveries.js';
@@ -29,7 +30,7 @@ export const pingTask = onTaskDispatched<unknown>(
 );
 
 export const enqueuePingTask = async (message: string) => {
-	await getFunctions().taskQueue('pingTask').enqueue({ message });
+	await getFunctions().taskQueue(taskQueueName('pingTask')).enqueue({ message });
 };
 
 export const deliveryTaskPayloadSchema = z.object({

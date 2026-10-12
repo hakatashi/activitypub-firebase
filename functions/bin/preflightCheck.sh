@@ -29,7 +29,7 @@ FUNCTIONS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_DIR="$(dirname "$FUNCTIONS_DIR")"
 ACTOR="https://$DOMAIN/activitypub/u/hakatashi"
 AS='Accept: application/activity+json'
-LOCATION=us-central1
+LOCATION="${LOCATION:-asia-northeast1}"
 FRESHNESS="${FRESHNESS:-30d}"
 
 section() { printf '\n\033[1m## %s\033[0m\n' "$*"; }
