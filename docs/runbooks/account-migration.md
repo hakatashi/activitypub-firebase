@@ -39,7 +39,6 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
 | 引っ越しの Follow にこちらが 4xx を返す | できない。401 / 408 / 429 以外の 4xx は再送されず、旧アカウントのフォローも外れる(`MigratedFollowDeliveryWorker`) | 個別に連絡してフォローし直してもらう |
 | フォローのインポート(相手へ Follow を配送) | 解除はできる(Undo を配送) | 外したい相手を Elk でフォロー解除する |
 | 別名(`alsoKnownAs`)の設定 | **できる。** それ自体は無害 | `manageAliases.ts remove` |
-| 投稿履歴のインポート | 外への影響はない(配送しない)。ただし消すスクリプトはない(`deleteLocalStatuses.ts` は `_meta.legacyUri` のある Note を対象外にする) | 冪等なので、途中で止まったら再実行する。消す必要が出たら `_meta.legacyUri` で見分けるスクリプトを作る(→ [ADR-0126](../adr/0126-import-post-history-from-mastodon-archive.md)) |
 
 ## 2. 前提条件のチェックリスト(Go / No-Go)
 
@@ -59,14 +58,12 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
     --format='value(serviceConfig.minInstanceCount)'   # → 1(0 のときは空になる)
   ```
 - [ ] **デプロイの凍結を宣言した。** Move の前日から3日後までは main にマージしない。main への push は本番に自動デプロイされ、全インスタンスが入れ替わる(例外は「5. 問題が起きたときの対処」)
-- [ ] 移行の前後でローカル actor の鍵をローテーションしない(`functions/bin/rotateActorKey.ts`、[ADR-0009](../adr/0009-rotate-actor-key-before-delivery.md))。Move を処理するサーバーが鍵をキャッシュしている
+- [ ] 移行の前後でローカル actor の鍵をローテーションしない(`functions/bin/rotateActorKey.ts`、[ADR-0009](../adr/0009-rotate-actor-key-now.md))。Move を処理するサーバーが鍵をキャッシュしている
 - [ ] 旧アカウントで、移行フォームの本人確認を通れることを確かめた。
   pawoo.net の `@hakatashi` は pixiv の OAuth 連携でログインしており、パスワードがない。
   Mastodon 4.1.18 の移行フォームは、パスワードが設定されていなければ**現在のユーザー名**(`hakatashi`)の入力を求める(`AccountMigration#save_with_challenge`)。
   フォームを開いて入力欄が「現在のユーザー名」になっていることだけを確かめ、送信しない
-- [ ] 旧アカウントのデータを保存した(pawoo.net の「設定 > インポート・エクスポート > データのエクスポート」)。**アーカイブは7日に1回しか要求できないので、早めに要求する**
-  - [ ] アーカイブ(`archive-*.tar.gz`)
-  - [ ] フォロー(`following_accounts.csv`)、ブックマーク(`bookmarks.csv`)
+- [ ] 旧アカウントのフォロー(`following_accounts.csv`)とブックマーク(`bookmarks.csv`)の CSV を保存した(pawoo.net の「設定 > インポート・エクスポート > データのエクスポート」)
 - [ ] 旧アカウントのフォロワー一覧を保存した(手順4。Move の後は旧アカウントのフォロワーが減っていくので、**Move の前に**保存したものを基準にする)
 - [ ] 当日、Move の実行から少なくとも3時間は張り付いて監視できる
 
@@ -129,14 +126,7 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
 
 ### 3.4. 落ち着いてから
 
-12. **投稿履歴をインポートする**(→ [ADR-0126](../adr/0126-import-post-history-from-mastodon-archive.md)、[ADR-0127](../adr/0127-import-archive-media-attachments.md))。
-    配送は1件も起きない。引っ越しの Follow が落ち着いてから(目安: 72時間後の確認の後)行う。中断しても再実行してよい(冪等)。
-    ```bash
-    npx tsx bin/importArchive.ts ~/migration/archive-*.tar.gz --dry-run
-    npx tsx bin/importArchive.ts ~/migration/archive-*.tar.gz | tee ~/migration/import-archive.log
-    ```
-    実行後、`deliveries` にインポートによる配送がないことを確かめる(実行中の時刻の `deliveryEnqueue` のログが、ほかの操作の分しかない)。
-13. **後片付け。**
+12. **後片付け。**
     - 最小インスタンス数を戻すか判断する。Move から1週間(各サーバーの `PROCESSING_COOLDOWN`)経って、新しい Follow が来なくなったら `ACTIVITYPUB_MIN_INSTANCES=0` に戻す PR をマージする
     - デプロイの凍結を解く
     - 移らなかったフォロワーの内訳と対応を #273 に記録する
@@ -147,8 +137,14 @@ Move の実行直後・1時間後・24時間後・72時間後に、次をすべ�
 
 **進捗の突き合わせ。** サーバーごとに、移ってきたフォロワーの数を見る。
 `[ALL PENDING - Move not processed?]` が付いたサーバーは、そのサーバーで Move が捨てられた可能性がある。
-途中に出る JSON の WARNING(`ssrfBlockedUnresolvable`、`webfingerResolutionFailed` など)は、フォロワーのサーバーが既に消えている・応答しないことを示す。
-そのサーバーのフォロワーは移ってこないので、移らなかった人数から除いて数える(2026-10-13 の時点で mstdn.poyo.me、meisskey.blue、mangadon.net などが該当)。
+途中に出る JSON の WARNING は、まだ移ってきていないフォロワーの WebFinger を引けなかったことを示す。種類によって扱いが違う。
+
+- `ssrfBlockedUnresolvable` / `Could not resolve hostname`: **サーバーが消えている**(DNS で引けない)。そのフォロワーは移ってこないので、移らなかった人数から除いて数える。
+  2026-10-13 の時点で 13 ドメイン・15 人が該当(3.nu、compassion.online、kabutodon.com、lucida-don.net、m6n.jp、mangadon.net、masutabedon.com、
+  med-mstdn.com、meisskey.blue、mstdn.engrowth.com、mstdn.umiu.si、social.hideo54.com、zoudon.jp)
+- `webfingerErrorResponse` の 404 / 410: サーバーはあるがアカウントが消えている(同時点で friends.nico の 8 人など 10 人)。これも除いて数える
+- 接続のタイムアウト・証明書のエラーなど: サーバーは残っているが今は応答しない(同時点で mstdn.poyo.me、mastodon.nara.jp など)。
+  一時的な障害の可能性があるので除かず、72時間後も残れば個別に連絡する候補にする
 2回目以降は `--skip-remote` を付けると、未達のフォロワーの WebFinger の解決を省いて速く終わる。
 
 ```bash
