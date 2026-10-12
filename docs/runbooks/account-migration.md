@@ -27,6 +27,9 @@
 - 検証用 Mastodon と検証用 Misskey の間の連合には、互いのプライベートアドレスの許可が要る
   (mastodon-test の `extra_hosts` と `ALLOWED_PRIVATE_ADDRESSES`、misskey-test の `allowedPrivateNetworks`。2026-10-13 に設定済み)。
 - `rails runner` で作ったテストアカウントは `user.update_column(:approved, true)` まで行う。承認待ちのままだと actor が 404 になり、インポートで `Unresolvable` になる。
+- Mastodon は一度もログインしていないユーザーのホームのフィードに書き込まないので、移ってきたフォロワーのタイムラインに投稿が届いたかは、
+  `FeedManager.instance.populate_home(account)` の後に `HomeFeed#get` で見る(投稿が相手のサーバーに届いていることは `Status` で確かめる)。
+- 移行フォームの送信は Playwright で行ってよい(パスワードを `rails runner` で設定する)。
 
 ## 0. 共通の準備
 
@@ -185,6 +188,9 @@ npx tsx bin/migrationStatus.ts --file=$HOME/migration/followers.json --json > ~/
 | `accept_delivery_failed` | Accept の配送が失敗・リトライ中 | 配送を再送する(下記) |
 | `not_followed` | Follow が届いていない | 時間をおいて再確認。72時間後も残れば「5. 問題が起きたときの対処」 |
 
+移ってきたかどうかは、この突き合わせ(こちらの射影)で判断する。**Misskey 側の `users/relation` の `isFollowing` は使えない。**
+Misskey は相手がロックしていなければ、Follow を送った時点で自分の側のフォローを作るので、こちらに Follow が届いていなくても `true` になる。
+
 **承認漏れ。** inbox にあるが followers に入っていない Follow を見つけて承認し直す(→ [ADR-0111](../adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。
 
 ```bash
@@ -229,7 +235,7 @@ gcloud tasks list --queue=deliveryTask --location=asia-northeast1 --project=$GCL
 |---|---|
 | `accept_delivery_failed`、相手で follow_request のまま | `deliveries/resend` で Accept を再送する。原因(相手の 5xx、署名)を `deliveries/failed` の `statusCode` / `error` で見る |
 | `follow_received_not_projected` | `reconcilePendingFollows.ts` で承認し直す。`activitypub` Function の ERROR ログで承認が失敗した原因を見る |
-| inbox が 5xx を返している | 相手は再送してくるので、慌てない。原因を特定し、直してデプロイする(下記の凍結の例外) |
+| inbox が 5xx を返している | 相手は再送してくるので、慌てない。原因を特定し、直してデプロイする(下記の凍結の例外)。2026-10-13 のリハーサルでは、inbox が18分間 503 を返す最中に Move しても、復旧後に全員が移ってきた(Mastodon は復旧から約10分、Misskey は約30分以内) |
 | inbox が 4xx を返している | そのフォロワーは失われた可能性が高い。`userAgent` と時刻からサーバーを特定し、個別に連絡する候補にする。原因は直してデプロイする(凍結の例外) |
 | 特定のサーバーから誰も来ない(`ALL PENDING`) | そのサーバーで Move が捨てられた可能性(移行先の actor の取得が HTTP エラーになった、`UnavailableDomain` だった、Move に対応していない)。72時間待っても来なければ、個別に連絡する候補として一覧にする |
 | 移行フォームで「not an alias」 | 何も実行されていない。手順6で `alsoKnownAs` を確かめて再試行する |
@@ -240,6 +246,12 @@ gcloud tasks list --queue=deliveryTask --location=asia-northeast1 --project=$GCL
 - inbox が 4xx / 5xx を返している、または Accept が送られていないなど、**今まさにフォロワーを失っている・失いうる**不具合である
 - 修正が小さく、dev にデプロイして連合を確かめた([federation-testing.md](federation-testing.md))
 - マージの直後に actor・WebFinger を数回 GET してウォームアップし、「4. 監視」を一通り行う
+
+修正を dev で確かめるときは、`gcloud` で最小インスタンス数を 1 にしてある dev に `firebase deploy` すると、
+`functions/.env` の `ACTIVITYPUB_MIN_INSTANCES=0` で最小インスタンス数が 0 に戻る。作業ツリーに
+`functions/.env.activitypub-firebase-dev`(gitignore 済み)を置いて `ACTIVITYPUB_MIN_INSTANCES=1` を書き、
+`firebase deploy --only functions:activitypub -P activitypub-firebase-dev --force` でデプロイする
+(`--force` は最小インスタンス数による料金の増加の確認を飛ばすため。`--only` で対象を絞っているので他の Function は消えない)。
 
 見た目の不具合や、移行と関係のない修正は凍結が解けるまで待つ。
 
