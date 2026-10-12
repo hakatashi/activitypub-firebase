@@ -151,4 +151,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0122](0122-self-hosted-misskey-federation-test-instance.md) | 連合の検証相手として Misskey を自前ホストする | Accepted |
 | [0123](0123-resolve-undo-follow-by-actor-and-collection.md) | inbox の Undo(Follow) で対象アクティビティを actor と collection から解決する | Accepted |
 | [0124](0124-import-following-and-bookmarks-from-csv.md) | Mastodon エクスポート CSV からのフォローとブックマークのインポート | Accepted |
+| [0125](0125-migration-progress-reconciliation-and-pre-delivery.md) | 引っ越しのフォロワー進捗突き合わせと事前の Update(Person) 配送 | Accepted |
 

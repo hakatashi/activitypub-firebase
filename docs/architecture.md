@@ -122,6 +122,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
 - **アカウント別名 (`alsoKnownAs`) の管理**:
   別名はローカル actor オブジェクトの `alsoKnownAs` プロパティ(URI の文字列配列)として Firestore の `objects` コレクションに保存される。
   設定・確認・解除は管理者エンドポイント(`GET` / `POST` / `DELETE /activitypub/aliases`、`X-Hakatashi-Token` 認証)または `functions/bin/manageAliases.ts` スクリプトで行う。追加・削除時には入力(`acct` または URI)の WebFinger / actor 取得による検証が行われ、完了時にフォロワーへ `Update(Person)` が配送される(→ [ADR-0121](adr/0121-actor-aliases-via-also-known-as.md))。また、`apex.ts` の context に `alsoKnownAs` (`as:alsoKnownAs`) および受信用に `movedTo` (`as:movedTo`) が定義されている。
+- **アカウント移行の進捗突き合わせと事前配送 (`migrationStatus.ts`)**:
+  旧アカウントのフォロワー一覧 (`GET /api/v1/accounts/:id/followers`) を JSON ファイルに保存・読み込み可能にし、フォロワー射影 (`userInfos/{actor}/followers`)、受信した `Follow` (`Streams`)、および `Accept` の配送結果 (`deliveries`) と突き合わせて進捗をドメイン別に集計・表示する。また、相手サーバーの `UnavailableDomain` 記録を解除するため、フォロワー所在サーバーの sharedInbox (なければ inbox) へ事前 `Update(Person)` を配送する (→ [ADR-0125](adr/0125-migration-progress-reconciliation-and-pre-delivery.md))。
 - `offlineMode: true` で初期化しており、apex 内蔵の配送ループ(`setInterval` による
   常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store/index.ts`)が
   受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている
