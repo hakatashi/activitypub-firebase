@@ -12,6 +12,21 @@
 | 旧アカウント `hakatashi@pawoo.net` | 検証用 Mastodon(`mastodon-test.hakatashi.com`)/ 検証用 Misskey の旧アカウント |
 | `activitypub-firebase` / `hakatashi.com` | `activitypub-firebase-dev` / `activitypub-dev.hakatashi.com` |
 | `functions/.env` の変更を main にマージ | `gcloud run services update ... --min-instances=1`(→ [federation-testing.md](federation-testing.md) の 13) |
+| `~/migration/` | `~/migration-rehearsal/`(本番の記録と混ぜない) |
+| pawoo.net の Web 画面から CSV を書き出す | mastodon-test の `bin/rails runner` で `Export.new(account).to_following_accounts_csv` / `to_bookmarks_csv` |
+| `migrationStatus.ts --account=...`(旧アカウントが Mastodon) | 旧アカウントが Misskey のときは `--account` が使えない(Mastodon API でしか取得しない)。Misskey の `users/followers` から `[{id, username, acct, url}]` の JSON を作って `--file` で渡す |
+| 移行フォームの本人確認(現在のユーザー名) | テストアカウントにはパスワードがあるので、パスワードを求められる。ユーザー名の入力欄は本番の前日に pawoo.net で確かめる |
+
+リハーサルだけの事情(2026-10-13 のリハーサルで判明):
+
+- **ローカルのスクリプトには `ALLOW_PRIVATE_NETWORK=true` を付ける。** HakataMatrix から見ると検証用インスタンスは LAN のアドレス(192.168.10.112)に解決され、
+  SSRF ガードで止まる(`importFollowing.ts` の WebFinger、`migrationStatus.ts` の解決など)。本番の相手は公開サーバーなので付けない。
+- HakataMatrix の `/etc/hosts` で `misskey-test.hakatashi.com` が 127.0.0.1 を向いているため、ループバックは許可されず、
+  手順7の事前配送で misskey-test が `Unresolved Domains` に出る。Misskey は `Move` を受けると移行先の actor を取り直す
+  (`ApPersonService#updatePerson`)ので、移行には影響しない。
+- 検証用 Mastodon と検証用 Misskey の間の連合には、互いのプライベートアドレスの許可が要る
+  (mastodon-test の `extra_hosts` と `ALLOWED_PRIVATE_ADDRESSES`、misskey-test の `allowedPrivateNetworks`。2026-10-13 に設定済み)。
+- `rails runner` で作ったテストアカウントは `user.update_column(:approved, true)` まで行う。承認待ちのままだと actor が 404 になり、インポートで `Unresolvable` になる。
 
 ## 0. 共通の準備
 
@@ -50,6 +65,8 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
   - 直近の main の run で `Deploy to Firebase except for Hosting` が `success`(main のコードが本番に入っている)
   - inbox の 4xx がない(あれば1件ずつ説明がつく)
   - `reconcilePendingFollows.ts --dry-run` の `pendingFollows` が空
+  - `deliveries/failed` に Accept の失敗(`retrying` / `permanent_failure`)が残っていない。
+    相手側でこちらへのフォローがリクエスト中のまま止まっていると、Move を受けても Follow は送り直されない(「6. 既知の制約」)
   - `checkActorKeyPair.ts` が `matches: true`
   - WebFinger が1段で解決し、actor に `alsoKnownAs` が出ている(手順3の後)
 - [ ] `activitypub` Function の最小インスタンス数が本番で 1 になっている(手順2。→ [ADR-0113](../adr/0113-temporary-min-instances-during-migration.md)、[ADR-0116](../adr/0116-dotenv-for-functions-params.md))
@@ -86,6 +103,9 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
    npx tsx bin/importBookmarks.ts ~/migration/bookmarks.csv | tee ~/migration/import-bookmarks.log
    ```
    `Moved to new actor` に出た相手は、引っ越し先を Elk で手動でフォローする。`Failed` は理由を見て、必要なら手動でフォローする。
+   フォローした相手から新アカウントがフォローバックされても、引っ越しは妨げられない。旧アカウントのフォロワーが移行先をすでにフォローしていれば、
+   Move を受けたサーバーは Follow を送らずに済ませる(Mastodon の `FollowService#call` は `following?` なら `change_follow_options!` だけを行う。
+   Misskey は `already following` で終わる)。そのフォロワーは手順8の時点で `followed` と数えられる。
 
 ### 3.2. 前日
 
@@ -145,6 +165,12 @@ Move の実行直後・1時間後・24時間後・72時間後に、次をすべ�
 - `webfingerErrorResponse` の 404 / 410: サーバーはあるがアカウントが消えている(同時点で friends.nico の 8 人など 10 人)。これも除いて数える
 - 接続のタイムアウト・証明書のエラーなど: サーバーは残っているが今は応答しない(同時点で mstdn.poyo.me、mastodon.nara.jp など)。
   一時的な障害の可能性があるので除かず、72時間後も残れば個別に連絡する候補にする
+
+WARNING とは別に、次のフォロワーは移ってこないことが分かっているので、移らなかった人数から除いて数える。
+
+- `activitypub-dev.hakatashi.com` の1人(dev の actor)。dev は旧アカウントをフォローしているので一覧に入るが、Move を捨てる(「6. 既知の制約」)ので
+  `not_followed`(`ALL PENDING`)のまま残る。
+
 2回目以降は `--skip-remote` を付けると、未達のフォロワーの WebFinger の解決を省いて速く終わる。
 
 ```bash
@@ -228,5 +254,8 @@ gcloud tasks list --queue=deliveryTask --location=asia-northeast1 --project=$GCL
 - **Bridgy Fed(`bsky.brid.gy`)経由の Bluesky のフォロワー**(6人、2026-10-10 時点)が Move に追従するかは未確認。リハーサルでは確かめられない。
   移行後に状態を見て、必要なら新アカウントで Bridgy Fed を有効にし直す。
 - **Move に対応していないソフトウェアのフォロワーは移らない。**
+- **相手側で新アカウントへのフォローがリクエスト中のまま止まっているフォロワーは移らない。** Mastodon の `FollowService#call` は、
+  `requested?` なら `change_follow_request_options!` だけを行い、Follow を送り直さない。こちらに Follow が届いていない場合は
+  `migrationStatus.ts` には `not_followed` としか出ず、区別できない。Accept の失敗による停滞は、チェックリストの `deliveries/failed` で Move の前に潰す。
 - **リスト・ミュート・ブロック・お気に入りは移らない**(このプロジェクトに機能がない。→ Epic #10 のスコープ外)。
 - **dev にも `Move` が届く。** dev の `@hakatashi@activitypub-dev.hakatashi.com` は旧アカウントをフォローしているため。こちらは `Move` を 2xx で受け取って捨てる(#260、[ADR-0115](../adr/0115-inbox-4xx-only-for-sender-faults.md))。
