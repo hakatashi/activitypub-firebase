@@ -37,6 +37,7 @@ Firestore REST API で読める。
 | 他オリジンの `Delete`/`Update` 拒否 | 手で組んだ署名付きリクエストを inbox へ | **要**(署名を自分で作る) |
 | 配送のリトライと記録 | `deliveries/resend` + `gcloud tasks list` + `gcloud logging read` | 不要 |
 | テストアカウントとアクセストークンの発行 | `tootctl` + `rails runner` | 不要 |
+| アカウント別名 (`alsoKnownAs`) と移行前検証 | `/activitypub/aliases` + `rails runner` | 不要 |
 
 **他オリジンからの `Delete`/`Update` の拒否を除き、手作業はゼロにできる。**
 相手インスタンスを自前で持っている(→ [ADR-0014](../adr/0014-self-hosted-federation-test-instance.md))
@@ -504,6 +505,65 @@ functions/bin/loadTestFollowRush.sh metrics [開始UTC時刻]
 - [ ] **トランザクション競合:** Firestore トランザクションの `ABORTED` (Contention) がないこと。
 - [ ] **投稿ファンアウト:** sharedInbox 重複排除により、ドメイン単位の inbox に集約配送されること。
 - [ ] **フォロー解除の完全性:** Undo(Follow) 処理後、`followers_count` と `followers` コレクションが初期値に戻ること。
+
+## 14. アカウント別名 (alsoKnownAs) と移行前検証
+
+アカウント引っ越し(Phase 5)の前提として、移行先(dev)の actor に旧アカウントの URI が
+`alsoKnownAs` として設定されている必要がある(→ [ADR-0121](../adr/0121-actor-aliases-via-also-known-as.md))。
+テスト用インスタンス(`mastodon-test.hakatashi.com`)のアカウントを別名に設定し、
+移行元の Mastodon 側から検証を通せることを確認する。
+
+### 1. 別名の設定と確認
+
+```bash
+# 現在の別名一覧の確認
+curl -sH "X-Hakatashi-Token: $HAKATASHI_TOKEN" "$DEV/activitypub/aliases" | jq .
+
+# テスト用アカウント (admin@mastodon-test.hakatashi.com) を別名として追加
+curl -s -X POST -H "X-Hakatashi-Token: $HAKATASHI_TOKEN" -H "Content-Type: application/json" \
+  "$DEV/activitypub/aliases" -d '{"alias":"admin@mastodon-test.hakatashi.com"}' | jq .
+
+# dev actor の JSON に alsoKnownAs が出力されているか確認
+curl -s -H "Accept: application/activity+json" "$DEV/activitypub/u/hakatashi" | jq .alsoKnownAs
+```
+
+### 2. テスト用 Mastodon (rails runner) からの検証
+
+テスト用インスタンスの `rails runner` を実行し、キャッシュをスキップして dev actor を取得したときに
+旧アカウントの URI が含まれていること、および移行バリデーションが通ることを確認する。
+
+```bash
+cd /opt/mastodon-test
+docker compose exec -T web bin/rails runner '
+  old_account = Account.find_local("admin")
+  target_acct = "hakatashi@activitypub-dev.hakatashi.com"
+
+  # 1. ResolveAccountService で取得した actor の also_known_as に旧アカウントの URI が含まれるか
+  resolved = ResolveAccountService.new.call(target_acct, skip_cache: true)
+  old_uri = ActivityPub::TagManager.instance.uri_for(old_account)
+  puts "Old Account URI: #{old_uri}"
+  puts "Resolved also_known_as: #{resolved.also_known_as.inspect}"
+  puts "Include old URI?: #{resolved.also_known_as.include?(old_uri)}"
+
+  # 2. AccountMigration バリデーションが通るか (missing_also_known_as エラーが出ないこと)
+  migration = AccountMigration.new(account: old_account, acct: target_acct)
+  puts "Migration valid?: #{migration.valid?}"
+  puts "Migration errors: #{migration.errors.full_messages.inspect}" unless migration.valid?
+'
+```
+
+### 3. 確認後の後片付け
+
+```bash
+# 検証が終わったら別名を解除
+curl -s -X DELETE -H "X-Hakatashi-Token: $HAKATASHI_TOKEN" -H "Content-Type: application/json" \
+  "$DEV/activitypub/aliases" -d '{"alias":"admin@mastodon-test.hakatashi.com"}' | jq .
+```
+
+- [ ] `alsoKnownAs` に旧アカウントの URI が出力される
+- [ ] `ResolveAccountService` の取得結果に旧アカウント URI が含まれる
+- [ ] `AccountMigration.valid?` が真になる (エラーが `missing_also_known_as` でない)
+- [ ] 確認後、検証用の別名を削除できる
 
 ## Firestore を直接読む
 
