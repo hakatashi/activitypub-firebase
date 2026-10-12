@@ -220,12 +220,16 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importBookmarks.ts
 # 投稿履歴アーカイブのインポート (配送なし、ADR-0126)
 GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importArchive.ts <path-to-archive.tar.gz|dir|outbox.json> --dry-run
 GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importArchive.ts <path-to-archive.tar.gz|dir|outbox.json> [--concurrency=5]
+
+# インポート前の既存ローカル投稿の削除 (Mastodon API DELETE /api/v1/statuses/:id 経由)
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/deleteLocalStatuses.ts --dry-run
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/deleteLocalStatuses.ts
 ```
 
 - `--dry-run`: 外部への送信や DB への書き込みを行わず、件数・公開範囲の内訳とサマリーだけを出力する。
 - `--interval-ms`: 外部サーバーや配送キューへの負荷集中を防ぐための送信間隔 (ミリ秒、デフォルト 1000ms)。
 - `--concurrency`: アーカイブ取り込み時の並行書き込みワーカー数 (デフォルト 5)。
-- アーカイブインポートは外部への配送を一切行わず、冪等に再実行可能。既存投稿はスキップされ、自リプライのスレッド結合や公開範囲の維持、Mastodon ID 採番が自動で行われる。
+- アーカイブインポートは `Create` と `Announce` を外部への配送なしで取り込み、冪等に再実行可能。既存投稿はスキップされ、自リプライのスレッド結合や公開範囲の維持、Snowflake ID からのミリ秒・Mastodon ID (`00<statusId>`) 復元が自動で行われる。
 - 引っ越し済みアカウント (`movedTo` があるもの) や解決失敗したものはスキップされ、最後に一覧でサマリー表示される。
 
 ## アカウント移行の進捗確認と事前配送 (migrationStatus)

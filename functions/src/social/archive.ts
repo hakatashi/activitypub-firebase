@@ -7,7 +7,8 @@ import type { APObject } from '../apex/index.js';
 import { apex } from '../apex.js';
 import type { NoteVisibility } from '../addressing.js';
 import { noteToVisibility } from '../addressing.js';
-import { toArray, toIdArray, toStringValue } from '../utils.js';
+import { isAPNote, toArray, toIdArray, toStringValue } from '../utils.js';
+import { resolveUrl } from './search.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -59,33 +60,58 @@ export type ArchiveItem =
 export type ArchiveVisibility = NoteVisibility;
 
 export interface ImportArchiveOptions {
-	dryRun?: boolean;
-	concurrency?: number;
-	onProgress?: (info: {
-		index: number;
-		total: number;
-		status: 'imported' | 'already_exists' | 'skipped_announce' | 'skipped_other' | 'failed';
-		id?: string;
-		visibility?: ArchiveVisibility;
-		detail?: string;
-	}) => void;
+	dryRun?: boolean | undefined;
+	concurrency?: number | undefined;
+	onProgress?:
+		| ((info: {
+				index: number;
+				total: number;
+				status: 'imported' | 'imported_announce' | 'already_exists' | 'skipped_other' | 'failed';
+				id?: string | undefined;
+				visibility?: ArchiveVisibility | undefined;
+				detail?: string | undefined;
+		  }) => void)
+		| undefined;
 }
 
 export interface ImportArchiveResult {
 	total: number;
 	imported: Array<{ id: string; oldUri: string; visibility: ArchiveVisibility }>;
+	importedAnnounces: Array<{ id: string; oldUri: string; targetUri: string }>;
 	alreadyExists: string[];
-	skippedAnnounce: string[];
 	skippedOther: number;
-	failed: Array<{ oldUri?: string; reason: string }>;
+	failed: Array<{ oldUri?: string | undefined; reason: string }>;
 	visibilityCounts: Record<ArchiveVisibility, number>;
 }
 
 const statusIdPattern = /(?:\/users\/[^/]+\/statuses\/|\/@[^/]+\/)(?<id>\d+)/u;
+const digitsOnlyPattern = /^\d+$/u;
+const SNOWFLAKE_PUBLISHED_TOLERANCE_MS = 5000;
 
 export const extractStatusId = (uri: string): string | undefined => {
 	const match = statusIdPattern.exec(uri);
 	return match?.groups?.id;
+};
+
+// 旧 status ID が Snowflake 形式 (`id >> 16` が `published` の時刻と5秒以内で一致) なら、
+// Snowflake 側のミリ秒タイムスタンプから ISO 8601 文字列を復元する (→ ADR-0126)。
+// 2017年初期の非 Snowflake 連番 ID は元の `published` をそのまま返す。
+export const resolveArchivePublished = (
+	statusId: string | undefined,
+	rawPublished: string | undefined,
+): string => {
+	const parsedPublished = rawPublished === undefined ? Number.NaN : Date.parse(rawPublished);
+	if (
+		statusId !== undefined &&
+		digitsOnlyPattern.test(statusId) &&
+		!Number.isNaN(parsedPublished)
+	) {
+		const snowflakeTimestamp = Number(BigInt(statusId) >> 16n);
+		if (Math.abs(snowflakeTimestamp - parsedPublished) <= SNOWFLAKE_PUBLISHED_TOLERANCE_MS) {
+			return new Date(snowflakeTimestamp).toISOString();
+		}
+	}
+	return rawPublished ?? new Date().toISOString();
 };
 
 export const resolveArchiveNoteIri = (oldUri: string): string => {
@@ -157,7 +183,7 @@ export const convertArchiveNote = (
 		}
 	}
 
-	const published = oldNote.published ?? new Date().toISOString();
+	const published = resolveArchivePublished(statusId, oldNote.published);
 
 	const note: APObject = {
 		id: newNoteId,
@@ -182,6 +208,59 @@ export const convertArchiveNote = (
 	};
 
 	return { note, oldUri, visibility, statusId };
+};
+
+export const convertArchiveAnnounce = (
+	localActor: APObject,
+	announceItem: ArchiveAnnounceItem,
+	options: { oldActorIri: string; targetNoteIri: string },
+): { activity: APObject; oldUri: string; visibility: ArchiveVisibility; statusId?: string } => {
+	const { oldActorIri, targetNoteIri } = options;
+	const oldActivityUri = typeof announceItem.id === 'string' ? announceItem.id : undefined;
+	const statusId = oldActivityUri ? extractStatusId(oldActivityUri) : undefined;
+	const activityId =
+		statusId === undefined ? apex.utils.activityIdToIRI() : apex.utils.activityIdToIRI(statusId);
+
+	const newFollowersIri = toIdArray(localActor.followers)[0];
+	assert(
+		newFollowersIri !== undefined,
+		`Local actor has no followers collection: ${localActor.id}`,
+	);
+
+	const oldFollowersIri = `${oldActorIri}/followers`;
+	const to = convertAudience(announceItem.to, oldFollowersIri, newFollowersIri);
+	const cc = convertAudience(announceItem.cc, oldFollowersIri, newFollowersIri);
+	const visibility = detectArchiveVisibility(to, cc, newFollowersIri);
+	const published = resolveArchivePublished(statusId, announceItem.published);
+
+	const activity: APObject = {
+		id: activityId,
+		type: 'Announce',
+		actor: localActor.id,
+		published,
+		to,
+		cc,
+		object: targetNoteIri,
+		...(oldActivityUri === undefined
+			? {}
+			: {
+					_meta: {
+						legacyUri: oldActivityUri,
+					},
+				}),
+	};
+
+	const outboxIri = toIdArray(localActor.outbox)[0];
+	if (outboxIri !== undefined) {
+		apex.addMeta(activity, 'collection', outboxIri);
+	}
+
+	return {
+		activity,
+		oldUri: oldActivityUri ?? announceItem.object,
+		visibility,
+		...(statusId === undefined ? {} : { statusId }),
+	};
 };
 
 export interface BuildArchiveCreateActivityOptions {
@@ -229,15 +308,17 @@ export const importArchiveItems = async (
 ): Promise<ImportArchiveResult> => {
 	const { dryRun = false, concurrency = 5, onProgress } = options;
 
-	const oldActorIri = items.find((item) => item.type === 'Create' && typeof item.actor === 'string')
-		?.actor as string | undefined;
+	const oldActorIri = items.find(
+		(item) =>
+			(item.type === 'Create' || item.type === 'Announce') && typeof item.actor === 'string',
+	)?.actor as string | undefined;
 	const resolvedOldActorIri = oldActorIri ?? 'https://pawoo.net/users/hakatashi';
 
 	const result: ImportArchiveResult = {
 		total: items.length,
 		imported: [],
+		importedAnnounces: [],
 		alreadyExists: [],
-		skippedAnnounce: [],
 		skippedOther: 0,
 		failed: [],
 		visibilityCounts: {
@@ -248,26 +329,132 @@ export const importArchiveItems = async (
 		},
 	};
 
+	// リモート取得のバーストや同一投稿者の並行保存トランザクション競合を防ぐため直列化する
+	let remoteResolutionQueue = Promise.resolve();
+	const withRemoteResolutionLock = <T>(fn: () => Promise<T>): Promise<T> => {
+		const next = remoteResolutionQueue.then(fn, fn);
+		remoteResolutionQueue = next.then(
+			() => undefined,
+			() => undefined,
+		);
+		return next;
+	};
+
 	// 並行度制御のためのワーカープール
 	let currentIndex = 0;
 
-	const processItem = async (item: ArchiveItem, index: number) => {
-		if (item.type === 'Announce') {
-			let oldUri: string;
-			if (typeof item.object === 'string') {
-				oldUri = item.object;
-			} else if (typeof item.id === 'string') {
-				oldUri = item.id;
-			} else {
-				oldUri = `announce-${index}`;
-			}
-			result.skippedAnnounce.push(oldUri);
+	const processAnnounceItem = async (announceItem: ArchiveAnnounceItem, index: number) => {
+		const rawTargetUri = typeof announceItem.object === 'string' ? announceItem.object : '';
+		const oldActivityUri = typeof announceItem.id === 'string' ? announceItem.id : undefined;
+		if (!rawTargetUri) {
+			result.failed.push({
+				oldUri: oldActivityUri,
+				reason: 'Announce item is missing object URI',
+			});
 			onProgress?.({
 				index: index + 1,
 				total: items.length,
-				status: 'skipped_announce',
-				id: oldUri,
+				status: 'failed',
+				id: oldActivityUri,
+				detail: 'Missing object URI',
 			});
+			return;
+		}
+
+		const statusId = oldActivityUri ? extractStatusId(oldActivityUri) : undefined;
+		if (statusId !== undefined) {
+			const candidateActivityId = apex.utils.activityIdToIRI(statusId);
+			const existingActivity = await apex.store.getActivity(candidateActivityId);
+			if (existingActivity !== undefined) {
+				result.alreadyExists.push(candidateActivityId);
+				onProgress?.({
+					index: index + 1,
+					total: items.length,
+					status: 'already_exists',
+					id: candidateActivityId,
+				});
+				return;
+			}
+		}
+
+		if (dryRun) {
+			const targetIri = rawTargetUri.startsWith(resolvedOldActorIri)
+				? resolveArchiveNoteIri(rawTargetUri)
+				: rawTargetUri;
+			const converted = convertArchiveAnnounce(localActor, announceItem, {
+				oldActorIri: resolvedOldActorIri,
+				targetNoteIri: targetIri,
+			});
+			result.importedAnnounces.push({
+				id: converted.activity.id,
+				oldUri: converted.oldUri,
+				targetUri: targetIri,
+			});
+			onProgress?.({
+				index: index + 1,
+				total: items.length,
+				status: 'imported_announce',
+				id: converted.activity.id,
+				visibility: converted.visibility,
+			});
+			return;
+		}
+
+		try {
+			const targetNote = await withRemoteResolutionLock(() => {
+				if (rawTargetUri.startsWith(resolvedOldActorIri)) {
+					return apex.store.getObject(resolveArchiveNoteIri(rawTargetUri));
+				}
+				return resolveUrl(rawTargetUri, true);
+			});
+
+			if (targetNote === undefined || !isAPNote(targetNote) || typeof targetNote.id !== 'string') {
+				const reason = `Failed to resolve boosted status: ${rawTargetUri}`;
+				result.failed.push({ oldUri: oldActivityUri ?? rawTargetUri, reason });
+				onProgress?.({
+					index: index + 1,
+					total: items.length,
+					status: 'failed',
+					id: oldActivityUri ?? rawTargetUri,
+					detail: reason,
+				});
+				return;
+			}
+
+			const converted = convertArchiveAnnounce(localActor, announceItem, {
+				oldActorIri: resolvedOldActorIri,
+				targetNoteIri: targetNote.id,
+			});
+			await apex.store.saveActivity(converted.activity);
+
+			result.importedAnnounces.push({
+				id: converted.activity.id,
+				oldUri: converted.oldUri,
+				targetUri: targetNote.id,
+			});
+			onProgress?.({
+				index: index + 1,
+				total: items.length,
+				status: 'imported_announce',
+				id: converted.activity.id,
+				visibility: converted.visibility,
+			});
+		} catch (err) {
+			const reason = err instanceof Error ? err.message : String(err);
+			result.failed.push({ oldUri: oldActivityUri ?? rawTargetUri, reason });
+			onProgress?.({
+				index: index + 1,
+				total: items.length,
+				status: 'failed',
+				id: oldActivityUri ?? rawTargetUri,
+				detail: reason,
+			});
+		}
+	};
+
+	const processItem = async (item: ArchiveItem, index: number) => {
+		if (item.type === 'Announce') {
+			await processAnnounceItem(item as ArchiveAnnounceItem, index);
 			return;
 		}
 

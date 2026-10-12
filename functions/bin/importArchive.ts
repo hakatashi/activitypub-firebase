@@ -74,9 +74,11 @@ const main = async () => {
 
 	console.log('\n=== Archive Import Summary ===');
 	console.log(`Total items in archive: ${result.total}`);
-	console.log(`Imported:               ${result.imported.length}${dryRun ? ' (dry-run)' : ''}`);
+	console.log(`Imported Notes:         ${result.imported.length}${dryRun ? ' (dry-run)' : ''}`);
+	console.log(
+		`Imported Announces:     ${result.importedAnnounces.length}${dryRun ? ' (dry-run)' : ''}`,
+	);
 	console.log(`Already exists:         ${result.alreadyExists.length}`);
-	console.log(`Skipped Announce:       ${result.skippedAnnounce.length}`);
 	console.log(`Skipped Other:          ${result.skippedOther}`);
 	console.log(`Failed:                 ${result.failed.length}`);
 

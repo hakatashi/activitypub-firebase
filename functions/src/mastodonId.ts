@@ -61,11 +61,23 @@ export const toPublishedSortKey = (published: unknown, now = Date.now()) => {
 	return new Date(toIdTimestamp(published, now)).toISOString();
 };
 
-// 空きシーケンスを探す起点。IRI の SHA-256 の先頭 16 bit を使う (→ ADR-0118)。
-// Mastodon の actor の `published` は日単位なので同じタイムスタンプの採番が集中しうるが、
-// 起点が散らばっていれば大半は最初の読み取りで空きが見つかり、並行するトランザクションも競合しない。
-export const sequenceStartOf = (iri: string) =>
-	createHash('sha256').update(iri).digest().readUInt16BE(0);
+const trailingNumericIdPattern = /\/(?<id>\d{15,20})$/u;
+
+// 空きシーケンスを探す起点。IRI 末尾の数値 ID が Snowflake (`id >> 16` が timestamp と一致) なら
+// その下位 16 bit を優先し (→ ADR-0126)、それ以外は IRI の SHA-256 の先頭 16 bit を使う (→ ADR-0118)。
+export const sequenceStartOf = (iri: string, timestamp?: number) => {
+	if (timestamp !== undefined) {
+		const match = trailingNumericIdPattern.exec(iri);
+		const id = match?.groups?.id;
+		if (id !== undefined) {
+			const bigId = BigInt(id);
+			if (bigId >> SEQUENCE_BITS === BigInt(timestamp)) {
+				return Number(bigId & BigInt(MAX_SEQUENCE));
+			}
+		}
+	}
+	return createHash('sha256').update(iri).digest().readUInt16BE(0);
+};
 
 // `start` から 65,536 で折り返しながら空きシーケンスを探す。書き込みは呼び出し側が行う。
 const findFreeMastodonIdInTransaction = async (
@@ -110,10 +122,11 @@ export const getOrAssignMastodonIdInTransaction = async (
 		return existing;
 	}
 
+	const timestamp = toIdTimestamp(published);
 	const mastodonId = await findFreeMastodonIdInTransaction(
 		transaction,
-		toIdTimestamp(published),
-		sequenceStartOf(iri),
+		timestamp,
+		sequenceStartOf(iri, timestamp),
 	);
 	transaction.create(MastodonIds.doc(escapeFirestoreKey(mastodonId)), { iri });
 	transaction.set(byIriRef, { mastodonId });
