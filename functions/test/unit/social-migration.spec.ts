@@ -7,6 +7,7 @@ import { Deliveries, FollowRelations, Streams } from '../../src/schema.js';
 import {
 	classifyFollowerStatus,
 	formatDomainSummaryTable,
+	getActorSharedInboxOrInbox,
 	parseNextLink,
 	preDeliverUpdatePerson,
 	reconcileMigrationProgress,
@@ -45,6 +46,66 @@ describe('social/migration (ADR-0125)', () => {
 		test('returns undefined when link header is null or empty', () => {
 			expect(parseNextLink(null)).toBeUndefined();
 			expect(parseNextLink('')).toBeUndefined();
+		});
+	});
+
+	describe('getActorSharedInboxOrInbox', () => {
+		const actorId = 'https://remote.example/users/alice';
+
+		test('reads sharedInbox from plain object endpoints', () => {
+			expect(
+				getActorSharedInboxOrInbox({
+					id: actorId,
+					inbox: `${actorId}/inbox`,
+					endpoints: { sharedInbox: 'https://remote.example/inbox' },
+				} as never),
+			).toBe('https://remote.example/inbox');
+		});
+
+		test('reads sharedInbox from array-form endpoints with array sharedInbox (apex storage form)', () => {
+			expect(
+				getActorSharedInboxOrInbox({
+					id: [actorId],
+					inbox: [`${actorId}/inbox`],
+					endpoints: [{ sharedInbox: ['https://remote.example/inbox'] }],
+				} as never),
+			).toBe('https://remote.example/inbox');
+		});
+
+		test('reads sharedInbox from array-form endpoints with string sharedInbox', () => {
+			expect(
+				getActorSharedInboxOrInbox({
+					id: actorId,
+					inbox: `${actorId}/inbox`,
+					endpoints: [{ sharedInbox: 'https://remote.example/inbox' }],
+				} as never),
+			).toBe('https://remote.example/inbox');
+		});
+
+		test('falls back to top-level sharedInbox', () => {
+			expect(
+				getActorSharedInboxOrInbox({
+					id: actorId,
+					inbox: `${actorId}/inbox`,
+					sharedInbox: ['https://remote.example/inbox'],
+				} as never),
+			).toBe('https://remote.example/inbox');
+		});
+
+		test('falls back to inbox when endpoints is absent', () => {
+			expect(
+				getActorSharedInboxOrInbox({ id: actorId, inbox: [`${actorId}/inbox`] } as never),
+			).toBe(`${actorId}/inbox`);
+		});
+
+		test('falls back to inbox when array-form endpoints has no sharedInbox', () => {
+			expect(
+				getActorSharedInboxOrInbox({
+					id: actorId,
+					inbox: `${actorId}/inbox`,
+					endpoints: [{}],
+				} as never),
+			).toBe(`${actorId}/inbox`);
 		});
 	});
 
