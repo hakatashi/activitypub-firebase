@@ -26,7 +26,7 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | GET | `/api/v1/instance` | ✅ | `urls.streaming_api` は空文字、`UserInfos` 実データを反映 |
-| GET | `/api/v2/instance` | ✅ | `version: 4.3.0`、`api_versions`、`urls.streaming` は空文字、`UserInfos` 実データを反映 |
+| GET | `/api/v2/instance` | ✅ | `version: 4.3.0`、`api_versions`、`urls.streaming` は空文字、`UserInfos` 実データを反映、GoToSocial 拡張の `account_domain` で ActivityPub のドメインを返す (→ [ADR-0128](adr/0128-instance-account-domain.md)) |
 | GET | `/.well-known/nodeinfo`, `/nodeinfo/:version` | ✅ | apex のハンドラを再利用 |
 | GET | `/api/v1/streaming` | ✅ | **404 を返す**(→ [ADR-0007](adr/0007-no-streaming-api.md)) |
 

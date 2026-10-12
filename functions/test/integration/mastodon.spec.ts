@@ -88,6 +88,7 @@ describe('mastodon', () => {
 				const response = await request(mastodon).get('/api/v2/instance');
 				expect(response.status).toBe(200);
 				expect(response.body.domain).toBe('mastodon-dev.hakatashi.com');
+				expect(response.body.account_domain).toBe('activitypub-dev.hakatashi.com');
 				expect(response.body.title).toBe('HakataFediverse');
 				expect(response.body.version).toBe('4.3.0');
 				expect(response.body.api_versions).toEqual({ mastodon: 1 });

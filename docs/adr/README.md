@@ -154,3 +154,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0125](0125-migration-progress-reconciliation-and-pre-delivery.md) | 引っ越しのフォロワー進捗突き合わせと事前の Update(Person) 配送 | Accepted |
 | [0126](0126-import-post-history-from-mastodon-archive.md) | Mastodon アーカイブから投稿履歴を配送せずにインポートする | Accepted |
 
+| [0128](0128-instance-account-domain.md) | インスタンス情報で account_domain を返し、acct のドメインを ActivityPub 側に揃える | Accepted |
