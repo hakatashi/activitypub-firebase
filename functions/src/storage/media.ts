@@ -40,12 +40,25 @@ export interface UploadedProfileImage {
 	storagePath: string;
 }
 
+export interface UploadArchiveFileParams {
+	storagePath: string;
+	buffer: Buffer;
+	mimeType: string;
+}
+
+export interface UploadedArchiveFile {
+	url: string;
+	storagePath: string;
+	alreadyExisted: boolean;
+}
+
 export interface MediaStorageDriver {
 	upload(params: UploadMediaParams): Promise<UploadedMedia>;
 	uploadPreview(
 		params: UploadPreviewParams,
 	): Promise<{ previewUrl: string; previewStoragePath: string }>;
 	uploadProfileImage?(params: UploadProfileImageParams): Promise<UploadedProfileImage>;
+	uploadArchiveFile?(params: UploadArchiveFileParams): Promise<UploadedArchiveFile>;
 	delete?(paths: string[]): Promise<void>;
 }
 
@@ -124,6 +137,32 @@ export const defaultMediaStorageDriver: MediaStorageDriver = {
 		};
 	},
 
+	async uploadArchiveFile({ storagePath, buffer, mimeType }) {
+		const bucketName = getMediaStorageBucketName();
+		const bucket = getStorage(app).bucket(bucketName);
+		const file = bucket.file(storagePath);
+		const [exists] = await file.exists();
+		if (exists) {
+			return {
+				url: `https://storage.googleapis.com/${bucketName}/${storagePath}`,
+				storagePath,
+				alreadyExisted: true,
+			};
+		}
+
+		await file.save(buffer, {
+			contentType: mimeType,
+			resumable: false,
+		});
+		await file.makePublic();
+
+		return {
+			url: `https://storage.googleapis.com/${bucketName}/${storagePath}`,
+			storagePath,
+			alreadyExisted: false,
+		};
+	},
+
 	async delete(paths: string[]) {
 		const bucketName = getMediaStorageBucketName();
 		const bucket = getStorage(app).bucket(bucketName);
@@ -160,6 +199,12 @@ export const uploadProfileImage = (params: UploadProfileImageParams) => {
 		throw new Error('uploadProfileImage is not implemented in current driver');
 	}
 	return currentMediaStorageDriver.uploadProfileImage(params);
+};
+export const uploadArchiveFile = (params: UploadArchiveFileParams) => {
+	if (!currentMediaStorageDriver.uploadArchiveFile) {
+		throw new Error('uploadArchiveFile is not implemented in current driver');
+	}
+	return currentMediaStorageDriver.uploadArchiveFile(params);
 };
 export const deleteMediaFiles = (paths: string[]) =>
 	currentMediaStorageDriver.delete ? currentMediaStorageDriver.delete(paths) : Promise.resolve();
