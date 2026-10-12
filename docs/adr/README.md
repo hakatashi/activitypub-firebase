@@ -156,3 +156,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0127](0127-import-archive-media-attachments.md) | インポートした投稿の添付メディアを Cloud Storage に取り込む | Accepted |
 
 | [0128](0128-instance-account-domain.md) | インスタンス情報で account_domain を返し、acct のドメインを ActivityPub 側に揃える | Accepted |
+| [0129](0129-no-store-for-api-errors.md) | `/api/**` のエラー応答に `Cache-Control: no-store` を付ける | Accepted |

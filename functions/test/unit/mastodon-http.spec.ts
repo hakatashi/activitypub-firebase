@@ -380,6 +380,20 @@ describe('Mastodon API router on Express 5', () => {
 		expect(response.body).toEqual({ error: 'Record not found' });
 	});
 
+	it('marks error responses as no-store and leaves successful ones alone (ADR-0129)', async () => {
+		const notFound = await request(mastodon).get('/api/v1/accounts/lookup?acct=nobody@example.com');
+		expect(notFound.status).toBe(404);
+		expect(notFound.headers['cache-control']).toBe('no-store');
+
+		const fallback = await request(mastodon).get('/api/v1/no-such-endpoint');
+		expect(fallback.status).toBe(404);
+		expect(fallback.headers['cache-control']).toBe('no-store');
+
+		const ok = await request(mastodon).get('/api/v1/instance');
+		expect(ok.status).toBe(200);
+		expect(ok.headers['cache-control']).not.toBe('no-store');
+	});
+
 	it('responds with 500 when an async handler rejects with an unexpected error', async () => {
 		vi.spyOn(account, 'resolveAccountActor').mockRejectedValueOnce(new Error('boom'));
 

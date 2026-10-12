@@ -1,5 +1,5 @@
 import express from 'express';
-import { mastodonCors, mastodonErrorHandler } from './http/middlewares.js';
+import { mastodonCors, mastodonErrorHandler, noStoreErrors } from './http/middlewares.js';
 import accountsRouter from './routes/accounts.js';
 import appsRouter from './routes/apps.js';
 import instanceRouter from './routes/instance.js';
@@ -20,6 +20,8 @@ import timelinesRouter from './routes/timelines.js';
 const router = express.Router();
 
 router.use('/', mastodonCors);
+// エラー応答をキャッシュさせない (→ ADR-0129)
+router.use(noStoreErrors);
 
 router.use(instanceRouter);
 router.use(stubsRouter);
