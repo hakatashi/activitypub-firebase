@@ -143,3 +143,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0114](0114-retry-transient-delivery-failures.md) | 配送時の 401 / 408 / 429 を一時エラーとして再試行する | Accepted |
 | [0115](0115-inbox-4xx-only-for-sender-faults.md) | inbox は送信側の不正が確定したときだけ 4xx を返す | Accepted |
 | [0116](0116-dotenv-for-functions-params.md) | Functions パラメータの dotenv 管理と CI デプロイ | Accepted |
+| [0117](0117-bundle-webfinger-core-context.md) | WebFinger JSON-LD コンテキストのバンドルとリソース割り当て検証 | Accepted |
