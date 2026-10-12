@@ -114,6 +114,11 @@ export const resolveArchivePublished = (
 	return rawPublished ?? new Date().toISOString();
 };
 
+export const isOldActorStatusUri = (uri: string, oldActorIri: string): boolean => {
+	const prefix = oldActorIri.endsWith('/') ? oldActorIri : `${oldActorIri}/`;
+	return uri.startsWith(prefix) && extractStatusId(uri) !== undefined;
+};
+
 export const resolveArchiveNoteIri = (oldUri: string): string => {
 	const id = extractStatusId(oldUri);
 	if (id !== undefined) {
@@ -173,7 +178,7 @@ export const convertArchiveNote = (
 	if (oldNote.inReplyTo) {
 		const rawInReplyTo = toStringValue(oldNote.inReplyTo);
 		if (rawInReplyTo) {
-			if (rawInReplyTo.startsWith(oldActorIri)) {
+			if (isOldActorStatusUri(rawInReplyTo, oldActorIri)) {
 				// 自アカウントの過去投稿への返信は新 IRI に解決する (ADR-0126)
 				inReplyTo = resolveArchiveNoteIri(rawInReplyTo);
 			} else {
@@ -340,9 +345,6 @@ export const importArchiveItems = async (
 		return next;
 	};
 
-	// 並行度制御のためのワーカープール
-	let currentIndex = 0;
-
 	const processAnnounceItem = async (announceItem: ArchiveAnnounceItem, index: number) => {
 		const rawTargetUri = typeof announceItem.object === 'string' ? announceItem.object : '';
 		const oldActivityUri = typeof announceItem.id === 'string' ? announceItem.id : undefined;
@@ -377,10 +379,10 @@ export const importArchiveItems = async (
 			}
 		}
 
+		const isSelfTarget = isOldActorStatusUri(rawTargetUri, resolvedOldActorIri);
+
 		if (dryRun) {
-			const targetIri = rawTargetUri.startsWith(resolvedOldActorIri)
-				? resolveArchiveNoteIri(rawTargetUri)
-				: rawTargetUri;
+			const targetIri = isSelfTarget ? resolveArchiveNoteIri(rawTargetUri) : rawTargetUri;
 			const converted = convertArchiveAnnounce(localActor, announceItem, {
 				oldActorIri: resolvedOldActorIri,
 				targetNoteIri: targetIri,
@@ -402,7 +404,7 @@ export const importArchiveItems = async (
 
 		try {
 			const targetNote = await withRemoteResolutionLock(() => {
-				if (rawTargetUri.startsWith(resolvedOldActorIri)) {
+				if (isSelfTarget) {
 					return apex.store.getObject(resolveArchiveNoteIri(rawTargetUri));
 				}
 				return resolveUrl(rawTargetUri, true);
@@ -488,11 +490,18 @@ export const importArchiveItems = async (
 		}
 
 		const { note, oldUri, visibility, statusId } = converted;
-		result.visibilityCounts[visibility] = (result.visibilityCounts[visibility] ?? 0) + 1;
+		const activity = buildArchiveCreateActivity(localActor, note, {
+			oldActivityUri: createItem.id,
+			statusId,
+		});
 
-		// 冪等性チェック: 既に存在するか
-		const existing = await apex.store.getObject(note.id);
-		if (existing !== undefined) {
+		// 冪等性チェック: Note と Create アクティビティの双方が既に存在するか
+		const [existingObject, existingActivity] = await Promise.all([
+			apex.store.getObject(note.id),
+			apex.store.getActivity(activity.id),
+		]);
+		if (existingObject !== undefined && existingActivity !== undefined) {
+			result.visibilityCounts[visibility] = (result.visibilityCounts[visibility] ?? 0) + 1;
 			result.alreadyExists.push(note.id);
 			onProgress?.({
 				index: index + 1,
@@ -505,6 +514,7 @@ export const importArchiveItems = async (
 		}
 
 		if (dryRun) {
+			result.visibilityCounts[visibility] = (result.visibilityCounts[visibility] ?? 0) + 1;
 			result.imported.push({ id: note.id, oldUri, visibility });
 			onProgress?.({
 				index: index + 1,
@@ -518,15 +528,16 @@ export const importArchiveItems = async (
 
 		try {
 			// Note を保存 (Store#saveObject が Mastodon ID, _meta, 返信数などをトランザクションで設定)
-			await apex.store.saveObject(note);
+			if (existingObject === undefined) {
+				await apex.store.saveObject(note);
+			}
 
 			// Create アクティビティを保存 (Store#saveActivity が outbox に載せ、Mastodon ID を設定)
-			const activity = buildArchiveCreateActivity(localActor, note, {
-				oldActivityUri: createItem.id,
-				statusId,
-			});
-			await apex.store.saveActivity(activity);
+			if (existingActivity === undefined) {
+				await apex.store.saveActivity(activity);
+			}
 
+			result.visibilityCounts[visibility] = (result.visibilityCounts[visibility] ?? 0) + 1;
 			result.imported.push({ id: note.id, oldUri, visibility });
 			onProgress?.({
 				index: index + 1,
@@ -548,17 +559,27 @@ export const importArchiveItems = async (
 		}
 	};
 
-	const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
-		while (currentIndex < items.length) {
-			const index = currentIndex++;
-			const item = items[index];
-			if (item !== undefined) {
-				await processItem(item, index);
-			}
-		}
-	});
+	// 自アカウント投稿へのブーストが未保存の Note を参照する競合を防ぐため、
+	// 第1パスで Create / その他を処理し、第2パスで Announce を処理する
+	const indexedItems = items.map((item, index) => ({ item, index }));
+	const firstPassItems = indexedItems.filter(({ item }) => item.type !== 'Announce');
+	const secondPassItems = indexedItems.filter(({ item }) => item.type === 'Announce');
 
-	await Promise.all(workers);
+	const runPool = async (entries: Array<{ item: ArchiveItem; index: number }>) => {
+		let cursor = 0;
+		const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
+			while (cursor < entries.length) {
+				const entry = entries[cursor++];
+				if (entry !== undefined) {
+					await processItem(entry.item, entry.index);
+				}
+			}
+		});
+		await Promise.all(workers);
+	};
+
+	await runPool(firstPassItems);
+	await runPool(secondPassItems);
 
 	return result;
 };
@@ -578,7 +599,7 @@ export const readArchiveOutbox = async (archivePath: string): Promise<ArchiveIte
 		// tar コマンドで標準出力へ outbox.json を取り出す
 		const { stdout } = await execFileAsync(
 			'tar',
-			['-zxvf', resolvedPath, '-O', 'outbox.json'],
+			['-zxf', resolvedPath, '-O', 'outbox.json'],
 			{ maxBuffer: 100 * 1024 * 1024 }, // 100MB
 		);
 		jsonContent = stdout;

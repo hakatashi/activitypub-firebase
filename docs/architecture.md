@@ -211,6 +211,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
 | `_meta.hashtags` | `objects` | `string[]` | タグ検索用に、`tag` の `Hashtag` の `name` を正規化(NFKC・先頭の `#` を除く・小文字化・使えない文字を除く。`functions/src/hashtags.ts`)した名前の配列。`getNotes` が `array-contains-any` で引く。タグが無ければキーを持たない。`Store#saveObject` / `updateObject` が書き、既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md))。 |
 | `_meta.actor` / `_meta.published` | `streams` (Announce) | `string` | タイムライン検索用に、Announce アクティビティの actor と published を文字列に正規化した写し。`Store#saveActivity` で保存時に非正規化して書く。既存データは `functions/bin/backfillActivityQueryMeta.ts` (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。 |
+| `_meta.legacyUri` | `objects` (Note) / `streams` (Announce) | `string` | Mastodon アーカイブからインポートされた投稿・ブーストに記録する移行元インスタンスの旧 URI (`functions/src/social/archive.ts`、→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
 

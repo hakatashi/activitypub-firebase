@@ -19,18 +19,23 @@ const actorId = localActorIri(LOCAL_USERNAME, domain);
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
-const includeImported = args.includes('--include-imported');
 
 const main = async () => {
 	console.log(
 		`Scanning local Note objects for ${actorId} (project: ${projectId}, dry-run: ${dryRun})...`,
 	);
 
-	const snapshot = await Objects.where('type', '==', 'Note').get();
+	const snapshot = await Objects.where('type', '==', 'Note')
+		.where('_meta.attributedTo', '==', actorId)
+		.get();
 	const localNotes = snapshot.docs
 		.map((doc) => doc.data())
-		.filter((obj) => isAPNote(obj) && getAttributedTo(obj) === actorId)
-		.filter((obj) => includeImported || typeof obj._meta?.legacyUri !== 'string')
+		.filter(
+			(obj) =>
+				isAPNote(obj) &&
+				getAttributedTo(obj) === actorId &&
+				typeof obj._meta?.legacyUri !== 'string',
+		)
 		.sort((a, b) => String(a.published ?? '').localeCompare(String(b.published ?? '')));
 
 	if (localNotes.length === 0) {

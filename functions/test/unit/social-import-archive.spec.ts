@@ -9,6 +9,7 @@ import {
 	detectArchiveVisibility,
 	extractStatusId,
 	importArchiveItems,
+	isOldActorStatusUri,
 	resolveArchiveNoteIri,
 	resolveArchivePublished,
 } from '../../src/social/archive.js';
@@ -33,7 +34,7 @@ describe('social/archive (ADR-0126)', () => {
 		await resetFirestore();
 	});
 
-	describe('extractStatusId, resolveArchiveNoteIri & resolveArchivePublished', () => {
+	describe('extractStatusId, isOldActorStatusUri, resolveArchiveNoteIri & resolveArchivePublished', () => {
 		test('extracts status id from standard Mastodon status URIs', () => {
 			expect(extractStatusId('https://pawoo.net/users/hakatashi/statuses/11622')).toBe('11622');
 			expect(extractStatusId('https://pawoo.net/users/hakatashi/statuses/110660715599810805')).toBe(
@@ -43,15 +44,26 @@ describe('social/archive (ADR-0126)', () => {
 			expect(extractStatusId('https://example.com/other')).toBeUndefined();
 		});
 
+		test('checks oldActorIri boundary strictly with trailing slash and valid status id', () => {
+			const oldActorIri = 'https://pawoo.net/users/hakatashi';
+			expect(
+				isOldActorStatusUri('https://pawoo.net/users/hakatashi/statuses/100', oldActorIri),
+			).toBe(true);
+			expect(
+				isOldActorStatusUri('https://pawoo.net/users/hakatashi_other/statuses/100', oldActorIri),
+			).toBe(false);
+			expect(isOldActorStatusUri('https://pawoo.net/users/hakatashi', oldActorIri)).toBe(false);
+		});
+
 		test('resolves archive note IRI deterministically', () => {
 			const iri = resolveArchiveNoteIri('https://pawoo.net/users/hakatashi/statuses/11622');
 			expect(iri).toBe(apex.utils.objectIdToIRI('11622'));
 		});
 
 		test('restores millisecond published timestamp for Snowflake status IDs', () => {
-			// 117416500863858883 >> 16 = 1791633619138 (2026-10-10T12:00:19.138Z)
-			expect(resolveArchivePublished('117416500863858883', '2026-10-10T12:00:19Z')).toBe(
-				'2026-10-10T12:00:19.138Z',
+			// 110660715599810805 >> 16 = 1688548516842 (2023-07-05T09:15:16.842Z)
+			expect(resolveArchivePublished('110660715599810805', '2023-07-05T09:15:16Z')).toBe(
+				'2023-07-05T09:15:16.842Z',
 			);
 			// Pre-Snowflake sequential ID keeps original published
 			expect(resolveArchivePublished('11622', '2017-04-14T14:36:43Z')).toBe('2017-04-14T14:36:43Z');
@@ -154,19 +166,19 @@ describe('social/archive (ADR-0126)', () => {
 			expect(converted.note.inReplyTo).toBe(apex.utils.objectIdToIRI('100'));
 		});
 
-		test('preserves remote inReplyTo without rewriting', () => {
+		test('preserves remote inReplyTo without rewriting (including actor prefix lookalikes)', () => {
 			const oldActorIri = 'https://pawoo.net/users/hakatashi';
 			const converted = convertArchiveNote(
 				me,
 				{
 					id: 'https://pawoo.net/users/hakatashi/statuses/200',
-					inReplyTo: 'https://remote.example/users/bob/statuses/999',
-					content: '<p>reply to bob</p>',
+					inReplyTo: 'https://pawoo.net/users/hakatashi_other/statuses/999',
+					content: '<p>reply to lookalike</p>',
 				},
 				oldActorIri,
 			);
 
-			expect(converted.note.inReplyTo).toBe('https://remote.example/users/bob/statuses/999');
+			expect(converted.note.inReplyTo).toBe('https://pawoo.net/users/hakatashi_other/statuses/999');
 		});
 
 		test('converts archive announce with outbox collection and audience', () => {
@@ -200,14 +212,14 @@ describe('social/archive (ADR-0126)', () => {
 		const remoteBoostTargetIri = 'https://pawoo.net/users/someone/statuses/50';
 		const sampleItems: ArchiveItem[] = [
 			{
-				id: 'https://pawoo.net/users/hakatashi/statuses/117416500863858883/activity',
+				id: 'https://pawoo.net/users/hakatashi/statuses/110660715599810805/activity',
 				type: 'Create',
 				actor: 'https://pawoo.net/users/hakatashi',
-				published: '2026-10-10T12:00:19Z',
+				published: '2023-07-05T09:15:16Z',
 				object: {
-					id: 'https://pawoo.net/users/hakatashi/statuses/117416500863858883',
+					id: 'https://pawoo.net/users/hakatashi/statuses/110660715599810805',
 					type: 'Note',
-					published: '2026-10-10T12:00:19Z',
+					published: '2023-07-05T09:15:16Z',
 					to: ['https://www.w3.org/ns/activitystreams#Public'],
 					cc: ['https://pawoo.net/users/hakatashi/followers'],
 					content: '<p>Snowflake toot #welcome</p>',
@@ -225,7 +237,7 @@ describe('social/archive (ADR-0126)', () => {
 					published: '2017-04-14T11:00:00Z',
 					to: ['https://pawoo.net/users/hakatashi/followers'],
 					cc: [],
-					inReplyTo: 'https://pawoo.net/users/hakatashi/statuses/117416500863858883',
+					inReplyTo: 'https://pawoo.net/users/hakatashi/statuses/110660715599810805',
 					content: '<p>Self reply thread</p>',
 				},
 			},
@@ -267,16 +279,16 @@ describe('social/archive (ADR-0126)', () => {
 			expect(result.visibilityCounts.private).toBe(1);
 
 			// Snowflake Note の Mastodon ID が 00 + 旧 status ID と完全一致すること
-			const snowflakeNoteId = apex.utils.objectIdToIRI('117416500863858883');
+			const snowflakeNoteId = apex.utils.objectIdToIRI('110660715599810805');
 			const snowflakeNote = await apex.store.getObject(snowflakeNoteId, true);
 			expect(snowflakeNote).toBeDefined();
 			expect(snowflakeNote?.content).toBe('<p>Snowflake toot #welcome</p>');
-			expect(snowflakeNote?.published).toBe('2026-10-10T12:00:19.138Z');
+			expect(snowflakeNote?.published).toBe('2023-07-05T09:15:16.842Z');
 			expect(snowflakeNote?._meta?.hashtags).toEqual(['welcome']);
 
 			const announceActivityId = apex.utils.activityIdToIRI('100700785027565134');
 			const mastodonIds = await findMastodonIds([snowflakeNoteId, announceActivityId]);
-			expect(mastodonIds.get(snowflakeNoteId)).toBe('00117416500863858883');
+			expect(mastodonIds.get(snowflakeNoteId)).toBe('00110660715599810805');
 			expect(mastodonIds.get(announceActivityId)).toBe('00100700785027565134');
 
 			// Note 102 が自リプライとして保存されていること
@@ -306,6 +318,38 @@ describe('social/archive (ADR-0126)', () => {
 			expect(secondResult.alreadyExists.length).toBe(3);
 		});
 
+		test('recovers missing Create activity when Note object was already saved in a previous interrupted run', async () => {
+			const partialItem = {
+				id: 'https://pawoo.net/users/hakatashi/statuses/102/activity',
+				type: 'Create' as const,
+				actor: 'https://pawoo.net/users/hakatashi',
+				published: '2017-04-14T11:00:00Z',
+				object: {
+					id: 'https://pawoo.net/users/hakatashi/statuses/102',
+					type: 'Note',
+					published: '2017-04-14T11:00:00Z',
+					to: ['https://www.w3.org/ns/activitystreams#Public'],
+					cc: ['https://pawoo.net/users/hakatashi/followers'],
+					content: '<p>Interrupted import note</p>',
+				},
+			};
+
+			const { note } = convertArchiveNote(
+				me,
+				partialItem.object,
+				'https://pawoo.net/users/hakatashi',
+			);
+			await apex.store.saveObject(note);
+
+			const result = await importArchiveItems(me, [partialItem]);
+			expect(result.imported.length).toBe(1);
+			expect(result.alreadyExists.length).toBe(0);
+
+			const activityId = apex.utils.activityIdToIRI('102');
+			const savedActivity = await apex.store.getActivity(activityId);
+			expect(savedActivity).toBeDefined();
+		});
+
 		test('dry-run does not write to database', async () => {
 			const result = await importArchiveItems(me, sampleItems, {
 				dryRun: true,
@@ -317,7 +361,7 @@ describe('social/archive (ADR-0126)', () => {
 			expect(result.importedAnnounces.length).toBe(1);
 
 			// DB に書き込まれていないこと
-			const snowflakeNoteId = apex.utils.objectIdToIRI('117416500863858883');
+			const snowflakeNoteId = apex.utils.objectIdToIRI('110660715599810805');
 			const snowflakeNote = await apex.store.getObject(snowflakeNoteId);
 			expect(snowflakeNote).toBeUndefined();
 
