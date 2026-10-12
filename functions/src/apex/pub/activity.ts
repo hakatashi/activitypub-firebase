@@ -98,29 +98,34 @@ export const address = async function (
 		}
 		return this.resolveObject(t);
 	});
-	const resolved = (await Promise.allSettled(resolutions)).flatMap((result): unknown[] => {
+	const directActors: APObject[] = [];
+	const collectionItemIds: unknown[] = [];
+
+	for (const result of await Promise.allSettled(resolutions)) {
 		if (result.status !== 'fulfilled' || !isRecord(result.value)) {
-			return [];
+			continue;
 		}
 		const { value } = result;
 		if (value.inbox || first(sharedInboxOf(value))) {
-			return [value];
+			directActors.push(value as APObject);
+		} else if (value.items) {
+			collectionItemIds.push(...toArray(value.items));
+		} else if (value.orderedItems) {
+			collectionItemIds.push(...toArray(value.orderedItems));
 		}
-		if (value.items) {
-			return toArray(value.items).map((id) => this.resolveObject(id));
-		}
-		if (value.orderedItems) {
-			return toArray(value.orderedItems).map((id) => this.resolveObject(id));
-		}
-		return [];
-	});
+	}
+
+	const resolvedCollectionItems =
+		collectionItemIds.length > 0 ? await this.resolveObjects(collectionItemIds) : [];
+
+	const allActors = [
+		...directActors,
+		...resolvedCollectionItems.filter((item): item is APObject => isRecord(item)),
+	];
+
 	// flattens and resolves collections
 	const senderInbox = first(sender.inbox);
-	const inboxes = (await Promise.allSettled(resolved)).flatMap((result) => {
-		if (result.status !== 'fulfilled' || !isRecord(result.value)) {
-			return [];
-		}
-		const { value } = result;
+	const inboxes = allActors.flatMap((value) => {
 		if (typeof value.id === 'string' && blockList.includes(value.id)) {
 			return [];
 		}

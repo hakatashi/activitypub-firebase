@@ -10,6 +10,7 @@ describe('apex pub/object resolveObject & resolveUnknown (ADR-0053)', () => {
 	const createMockStore = () =>
 		({
 			getObject: vi.fn().mockResolvedValue(undefined),
+			getObjects: vi.fn().mockResolvedValue([]),
 			saveObject: vi.fn().mockResolvedValue(true),
 			updateObject: vi.fn().mockResolvedValue(true),
 			getActivity: vi.fn().mockResolvedValue(undefined),
@@ -187,6 +188,65 @@ describe('apex pub/object resolveObject & resolveUnknown (ADR-0053)', () => {
 			expect(result).toEqual(fresh);
 			expect(requestObject).toHaveBeenCalledWith(REMOTE_NOTE_ID);
 			expect(store.updateObject).toHaveBeenCalledWith(fresh, null, true);
+		});
+	});
+
+	describe('resolveObjects (ADR-0120)', () => {
+		test('returns empty array when given empty list', async () => {
+			const store = createMockStore();
+			const apex = createApex(store);
+
+			const results = await apex.resolveObjects([]);
+			expect(results).toEqual([]);
+			expect(store.getObjects).not.toHaveBeenCalled();
+			expect(store.getObject).not.toHaveBeenCalled();
+		});
+
+		test('resolves multiple cached objects via store.getObjects in a single call', async () => {
+			const store = createMockStore();
+			const actor1 = {
+				id: 'https://remote1.example/u/1',
+				type: 'Person',
+				inbox: ['https://remote1.example/u/1/inbox'],
+			};
+			const actor2 = {
+				id: 'https://remote2.example/u/2',
+				type: 'Person',
+				inbox: ['https://remote2.example/u/2/inbox'],
+			};
+			vi.mocked(store.getObjects).mockResolvedValue([actor1, actor2]);
+
+			const apex = createApex(store);
+			apex.requestObject = vi.fn();
+
+			const results = await apex.resolveObjects([actor1.id, actor2.id]);
+
+			expect(results).toEqual([actor1, actor2]);
+			expect(store.getObjects).toHaveBeenCalledWith([actor1.id, actor2.id], true);
+			expect(store.getObject).not.toHaveBeenCalled();
+			expect(apex.requestObject).not.toHaveBeenCalled();
+		});
+
+		test('falls back to individual resolveObject when object is missing in cache', async () => {
+			const store = createMockStore();
+			const actor1 = {
+				id: 'https://remote1.example/u/1',
+				type: 'Person',
+				inbox: ['https://remote1.example/u/1/inbox'],
+			};
+			const missingIri = 'https://remote2.example/u/missing';
+			const fetchedActor = { id: missingIri, type: 'Person', inbox: [`${missingIri}/inbox`] };
+
+			vi.mocked(store.getObjects).mockResolvedValue([actor1]);
+			const apex = createApex(store);
+			apex.requestObject = vi.fn().mockResolvedValue(fetchedActor);
+
+			const results = await apex.resolveObjects([actor1.id, missingIri]);
+
+			expect(results).toEqual([actor1, fetchedActor]);
+			expect(store.getObjects).toHaveBeenCalledWith([actor1.id, missingIri], true);
+			expect(apex.requestObject).toHaveBeenCalledWith(missingIri);
+			expect(store.saveObject).toHaveBeenCalledWith(fetchedActor);
 		});
 	});
 });

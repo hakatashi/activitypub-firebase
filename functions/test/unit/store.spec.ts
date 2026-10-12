@@ -121,6 +121,36 @@ describe('Store', () => {
 			expect(result).toEqual(expect.arrayContaining(objects));
 			expect(result).toHaveLength(31);
 		});
+
+		test('fetches multiple objects via store.getObjects (ApexStore contract, ADR-0120)', async () => {
+			const objects = [
+				{ id: 'https://example.com/objects/store-a', type: 'Person', _meta: { secret: 'hidden' } },
+				{ id: 'https://example.com/objects/store-b', type: 'Person', _meta: { secret: 'hidden' } },
+			];
+			for (const object of objects) {
+				await store.saveObject(object);
+			}
+
+			const withoutMeta = await store.getObjects([
+				'https://example.com/objects/store-a',
+				'https://example.com/objects/store-a', // duplicate
+				'https://example.com/objects/non-existent',
+				'https://example.com/objects/store-b',
+			]);
+			expect(withoutMeta).toHaveLength(2);
+			expect(
+				withoutMeta.find((o) => o.id === 'https://example.com/objects/store-a')?._meta,
+			).toBeUndefined();
+
+			const withMeta = await store.getObjects(
+				['https://example.com/objects/store-a', 'https://example.com/objects/store-b'],
+				true,
+			);
+			expect(withMeta).toHaveLength(2);
+			expect(withMeta.find((o) => o.id === 'https://example.com/objects/store-a')?._meta).toEqual(
+				expect.objectContaining({ secret: 'hidden' }),
+			);
+		});
 	});
 
 	describe('saveActivity / getActivity', () => {

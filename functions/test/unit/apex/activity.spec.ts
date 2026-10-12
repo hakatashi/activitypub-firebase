@@ -25,6 +25,7 @@ describe('apex activity save (ADR-0048)', () => {
 
 	const mockStore: IApexStore = {
 		getObject: vi.fn().mockResolvedValue(undefined),
+		getObjects: vi.fn().mockResolvedValue([]),
 		saveObject: vi.fn().mockResolvedValue(true),
 		updateObject: vi.fn().mockResolvedValue(true),
 		getActivity: vi.fn().mockResolvedValue(undefined),
@@ -402,6 +403,7 @@ describe('apex collection update suppression (ADR-0112)', () => {
 	const createMockApex = (publishCollectionUpdates: boolean) => {
 		const mockStore: IApexStore = {
 			getObject: vi.fn().mockResolvedValue(undefined),
+			getObjects: vi.fn().mockResolvedValue([]),
 			saveObject: vi.fn().mockResolvedValue(true),
 			updateObject: vi.fn().mockResolvedValue(true),
 			getActivity: vi.fn().mockResolvedValue(undefined),
@@ -547,5 +549,174 @@ describe('apex collection update suppression (ADR-0112)', () => {
 		});
 
 		expect(res.locals.apex.postWork).toHaveLength(0);
+	});
+});
+
+describe('apex address batch resolution (ADR-0120)', () => {
+	const createMockApex = () => {
+		const mockStore: IApexStore = {
+			getObject: vi.fn().mockResolvedValue(undefined),
+			getObjects: vi.fn().mockResolvedValue([]),
+			saveObject: vi.fn().mockResolvedValue(true),
+			updateObject: vi.fn().mockResolvedValue(true),
+			getActivity: vi.fn().mockResolvedValue(undefined),
+			saveActivity: vi.fn().mockResolvedValue({ isNew: true, activity: {} }),
+			updateActivity: vi.fn().mockResolvedValue(true),
+			updateActivityMeta: vi.fn().mockImplementation((act) => Promise.resolve(act)),
+			removeActivity: vi.fn().mockResolvedValue(undefined),
+			generateId: vi.fn().mockReturnValue('generated-id'),
+			getContext: vi.fn().mockResolvedValue(undefined),
+			saveContext: vi.fn().mockResolvedValue(undefined),
+			setup: vi.fn().mockResolvedValue(undefined),
+			getStream: vi.fn().mockResolvedValue(undefined),
+			getStreamCount: vi.fn().mockResolvedValue(0),
+			deliveryEnqueue: vi.fn().mockResolvedValue(true),
+			deliveryRequeue: vi.fn().mockResolvedValue(true),
+			deliveryDequeue: vi.fn().mockResolvedValue(null),
+			getUserCount: vi.fn().mockResolvedValue(0),
+			findActivityByCollectionAndObjectId: vi.fn().mockResolvedValue(undefined),
+			findActivityByCollectionAndActorId: vi.fn().mockResolvedValue(undefined),
+		};
+
+		return ActivitypubExpress({
+			name: 'test-apex',
+			version: '1.0.0',
+			domain: 'example.com',
+			actorParam: 'actor',
+			objectParam: 'id',
+			activityParam: 'id',
+			routes: {
+				actor: '/u/:actor',
+				object: '/o/:id',
+				activity: '/s/:id',
+				inbox: '/u/:actor/inbox',
+				outbox: '/u/:actor/outbox',
+				followers: '/u/:actor/followers',
+				following: '/u/:actor/following',
+				liked: '/u/:actor/liked',
+				collections: '/u/:actor/c/:id',
+				blocked: '/u/:actor/blocked',
+				rejections: '/u/:actor/rejections',
+				rejected: '/u/:actor/rejected',
+				shares: '/s/:id/shares',
+				likes: '/s/:id/likes',
+			},
+			logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+			store: mockStore,
+			offlineMode: true,
+		});
+	};
+
+	test('batch-resolves follower collection items and de-dupes shared inboxes', async () => {
+		const apex = createMockApex();
+		const sender = {
+			id: 'https://example.com/u/bob',
+			type: 'Person',
+			inbox: ['https://example.com/u/bob/inbox'],
+			followers: ['https://example.com/u/bob/followers'],
+			_local: { blockList: [] },
+		};
+
+		const followerIris = [
+			'https://remote1.example/u/alice',
+			'https://remote1.example/u/charlie',
+			'https://remote2.example/u/dave',
+		];
+
+		vi.spyOn(apex, 'getFollowers').mockResolvedValue({
+			id: 'https://example.com/u/bob/followers',
+			type: 'OrderedCollectionPage',
+			orderedItems: followerIris,
+		} as never);
+
+		const resolvedActors = [
+			{
+				id: 'https://remote1.example/u/alice',
+				type: 'Person',
+				inbox: ['https://remote1.example/u/alice/inbox'],
+				endpoints: [{ sharedInbox: 'https://remote1.example/inbox' }],
+			},
+			{
+				id: 'https://remote1.example/u/charlie',
+				type: 'Person',
+				inbox: ['https://remote1.example/u/charlie/inbox'],
+				endpoints: [{ sharedInbox: 'https://remote1.example/inbox' }],
+			},
+			{
+				id: 'https://remote2.example/u/dave',
+				type: 'Person',
+				inbox: ['https://remote2.example/u/dave/inbox'],
+			},
+		];
+
+		const resolveObjectsSpy = vi
+			.spyOn(apex, 'resolveObjects')
+			.mockResolvedValue(resolvedActors as never);
+
+		const activity = {
+			id: 'https://example.com/s/note-1',
+			type: 'Create',
+			actor: [sender.id],
+			to: [apex.consts.publicAddress],
+			cc: ['https://example.com/u/bob/followers'],
+		};
+
+		const addresses = await apex.address(activity, sender);
+
+		expect(resolveObjectsSpy).toHaveBeenCalledWith(followerIris);
+		expect(addresses).toEqual([
+			'https://remote1.example/inbox',
+			'https://remote2.example/u/dave/inbox',
+		]);
+	});
+
+	test('filters out blocked actors and sender self-inbox from addresses', async () => {
+		const apex = createMockApex();
+		const sender = {
+			id: 'https://example.com/u/bob',
+			type: 'Person',
+			inbox: ['https://example.com/u/bob/inbox'],
+			followers: ['https://example.com/u/bob/followers'],
+			_local: { blockList: ['https://remote2.example/u/blocked'] },
+		};
+
+		vi.spyOn(apex, 'getFollowers').mockResolvedValue({
+			id: 'https://example.com/u/bob/followers',
+			type: 'OrderedCollectionPage',
+			orderedItems: [
+				'https://remote1.example/u/alice',
+				'https://remote2.example/u/blocked',
+				'https://example.com/u/bob',
+			],
+		} as never);
+
+		vi.spyOn(apex, 'resolveObjects').mockResolvedValue([
+			{
+				id: 'https://remote1.example/u/alice',
+				type: 'Person',
+				inbox: ['https://remote1.example/u/alice/inbox'],
+			},
+			{
+				id: 'https://remote2.example/u/blocked',
+				type: 'Person',
+				inbox: ['https://remote2.example/u/blocked/inbox'],
+			},
+			{
+				id: 'https://example.com/u/bob',
+				type: 'Person',
+				inbox: ['https://example.com/u/bob/inbox'],
+			},
+		] as never);
+
+		const activity = {
+			id: 'https://example.com/s/note-2',
+			type: 'Create',
+			actor: [sender.id],
+			to: ['https://example.com/u/bob/followers'],
+		};
+
+		const addresses = await apex.address(activity, sender);
+
+		expect(addresses).toEqual(['https://remote1.example/u/alice/inbox']);
 	});
 });

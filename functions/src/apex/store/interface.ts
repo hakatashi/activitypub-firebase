@@ -31,6 +31,7 @@ export interface ApexStore {
 	setup(initialUser?: APObject): Promise<void>;
 	generateId(): string;
 	getObject(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
+	getObjects(ids: string[], includeMeta?: boolean): Promise<APObject[]>;
 	saveObject(object: APObject): Promise<boolean>;
 	getActivity(id: string, includeMeta?: boolean): Promise<APObject | undefined>;
 	findActivityByCollectionAndObjectId(
@@ -98,6 +99,11 @@ export default class IApexStore implements ApexStore {
 
 	getObject(_id: string, _includeMeta?: boolean): Promise<APObject | undefined> {
 		throw notImplemented();
+	}
+
+	async getObjects(ids: string[], includeMeta?: boolean): Promise<APObject[]> {
+		const results = await Promise.all(ids.map((id) => this.getObject(id, includeMeta)));
+		return results.filter((obj): obj is APObject => obj !== undefined);
 	}
 
 	saveObject(_object: APObject): Promise<boolean> {

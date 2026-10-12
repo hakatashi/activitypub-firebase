@@ -42,6 +42,7 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 			}
 			return Promise.resolve(undefined);
 		}),
+		getObjects: vi.fn().mockResolvedValue([]),
 		saveObject: vi.fn().mockResolvedValue(true),
 		updateObject: vi.fn().mockResolvedValue(true),
 		getActivity: vi.fn().mockResolvedValue(undefined),
