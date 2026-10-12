@@ -280,6 +280,9 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `remoteActorCounts.ts` | リモート actor の件数・最終投稿日の取得と `_meta` への保存、古いときの取得依頼(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | `remoteActorResolution.ts` | 手元にないリモート actor の取得依頼(Account の組み立て・inbox での `Create` / `Announce` 受信時)とタスクでの取得(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
+| `archive.ts` | Mastodon アーカイブ (`outbox.json`) からの投稿履歴インポート (配送抑止、自リプライスレッド結合、公開範囲維持。→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md)) |
+| `import.ts` | Mastodon エクスポート CSV からのフォロー関係・ブックマークのインポート (→ [ADR-0124](adr/0124-import-following-and-bookmarks-from-csv.md)) |
+| `migration.ts` | pawoo.net からのアカウント移行進捗突き合わせと事前 `Update(Person)` 配送 (→ [ADR-0125](adr/0125-migration-progress-reconciliation-and-pre-delivery.md)) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
 フォロー関係は射影(→ [ADR-0083](adr/0083-read-follow-relations-from-projection.md))から読み、この層は Mastodon API ルーターモジュールを読み込まない。
