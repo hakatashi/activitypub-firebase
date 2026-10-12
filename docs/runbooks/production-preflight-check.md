@@ -2,7 +2,7 @@
 
 引っ越し(Epic [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))の前に、
 本番(`hakatashi.com`)のデータ・設定・ログを点検する手順。初回は #263 で行い、
-移行の直前(#273)と、引っ越しの手順書(`account-migration.md`、#270)の Go / No-Go 判定でも同じ手順を繰り返す。
+移行の直前(#273)と、引っ越しの手順書([account-migration.md](account-migration.md))の Go / No-Go 判定でも同じ手順を繰り返す。
 
 **すべて読み取りだけで行う。** 差分が見つかっても、この手順の中でバックフィルの本実行や再送をしない。
 直す必要があれば個別の Issue にし、本実行はユーザーの承認を得てから行う。
