@@ -186,6 +186,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 保存された画像オブジェクトは公開読み取り (`makePublic()`) に設定され、`https://storage.googleapis.com/${bucket}/${path}` から直接配信される。ブラウザクライアント (Elk / Phanpy 等) からクロスオリジンで読み込めるよう、バケットには `storage.cors.json` で CORS 設定 (`Access-Control-Allow-Origin: *`) が適用されている。
 投稿 (`POST /api/v1/statuses`) 時に `media_ids` として添付され、Note の `attachment` に組み込まれると `statusIri` が更新される。
 添付されないまま24時間以上経過したメディアは、日次スケジュール Function (`cleanupMediaTask`, `onSchedule`) により Cloud Storage のファイルと Firestore のメタデータの双方が自動削除される (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md))。
+Mastodon エクスポートアーカイブからインポートされた添付メディア (`functions/bin/importArchive.ts`) も、アーカイブ内の相対パス構造を保った `media_attachments/files/.../original/<filename>` (および画像から生成した 512px サムネイル `.../small/<filename>`) に公開読み取りで保存され、Note の `attachment` の `url` / `icon.url` に公開 URL が設定される。インポート分は `mediaAttachments` コレクションには登録しないため、`cleanupMediaTask` の削除対象にはならない (→ [ADR-0127](adr/0127-import-archive-media-attachments.md))。
 アバター・ヘッダー画像 (`PATCH /api/v1/accounts/update_credentials` 等) も同様に Cloud Storage の `accounts/avatars/${id}.${ext}` および `accounts/headers/${id}.${ext}` に保存され、公開 URL が Actor オブジェクト (`icon`, `image`) に設定される。古い画像は変更時または削除 API (`DELETE /api/v1/profile/avatar`, `/header`) 実行時に Storage から即座に削除される (→ [ADR-0094](adr/0094-avatar-header-update-and-credentials.md))。
 
 apex は `_meta.collection` を「アクティビティが所属するコレクションの集合」として扱い、
@@ -281,7 +282,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `remoteActorCounts.ts` | リモート actor の件数・最終投稿日の取得と `_meta` への保存、古いときの取得依頼(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | `remoteActorResolution.ts` | 手元にないリモート actor の取得依頼(Account の組み立て・inbox での `Create` / `Announce` 受信時)とタスクでの取得(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
-| `archive.ts` | Mastodon アーカイブ (`outbox.json`) からの投稿履歴 (`Create`・`Announce`) インポート (配送抑止、自リプライスレッド結合、公開範囲維持、Snowflake ID からのミリ秒・Mastodon ID 復元。→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md)) |
+| `archive.ts` | Mastodon アーカイブ (`outbox.json`・`media_attachments/`) からの投稿履歴 (`Create`・`Announce`) および添付メディアの Cloud Storage へのインポート (配送抑止、自リプライスレッド結合、公開範囲維持、Snowflake ID からのミリ秒・Mastodon ID 復元、サムネイル・blurhash 補完。→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md)、[ADR-0127](adr/0127-import-archive-media-attachments.md)) |
 | `import.ts` | Mastodon エクスポート CSV からのフォロー関係・ブックマークのインポート (→ [ADR-0124](adr/0124-import-following-and-bookmarks-from-csv.md)) |
 | `migration.ts` | pawoo.net からのアカウント移行進捗突き合わせと事前 `Update(Person)` 配送 (→ [ADR-0125](adr/0125-migration-progress-reconciliation-and-pre-delivery.md)) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |

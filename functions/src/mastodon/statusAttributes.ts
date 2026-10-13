@@ -386,7 +386,7 @@ export const noteToMediaAttachments = (
 
 		let attachmentId = `${statusId}${index}`;
 		if (isLocal) {
-			const match = url.match(/\/media_attachments\/files\/(?<id>[0-9]+)\//);
+			const match = url.match(/\/media_attachments\/files\/(?<id>[0-9]+)\/original\./);
 			if (match?.groups?.id) {
 				attachmentId = match.groups.id;
 			} else {

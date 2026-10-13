@@ -1,16 +1,33 @@
 import assert from 'node:assert';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { encode } from 'blurhash';
+import sharp from 'sharp';
 import type { APObject } from '../apex/index.js';
 import { apex } from '../apex.js';
 import type { NoteVisibility } from '../addressing.js';
 import { noteToVisibility } from '../addressing.js';
+import { uploadArchiveFile } from '../storage/media.js';
 import { isAPNote, toArray, toIdArray, toStringValue } from '../utils.js';
 import { resolveUrl } from './search.js';
 
 const execFileAsync = promisify(execFile);
+
+sharp.cache(false);
+sharp.concurrency(1);
+
+const ARCHIVE_THUMBNAIL_MAX_DIMENSION = 512;
+
+const formatToMimeType: Record<string, string> = {
+	jpeg: 'image/jpeg',
+	jpg: 'image/jpeg',
+	png: 'image/png',
+	gif: 'image/gif',
+	webp: 'image/webp',
+};
 
 export interface ArchiveNoteObject {
 	id: string;
@@ -62,6 +79,7 @@ export type ArchiveVisibility = NoteVisibility;
 export interface ImportArchiveOptions {
 	dryRun?: boolean | undefined;
 	concurrency?: number | undefined;
+	archiveDir?: string | undefined;
 	onProgress?:
 		| ((info: {
 				index: number;
@@ -74,6 +92,20 @@ export interface ImportArchiveOptions {
 		| undefined;
 }
 
+export interface ArchiveMediaTypeStat {
+	count: number;
+	bytes: number;
+}
+
+export interface ImportArchiveMediaSummary {
+	totalFiles: number;
+	uploadedFiles: number;
+	alreadyUploadedFiles: number;
+	totalBytes: number;
+	uploadedBytes: number;
+	byMediaType: Record<string, ArchiveMediaTypeStat>;
+}
+
 export interface ImportArchiveResult {
 	total: number;
 	imported: Array<{ id: string; oldUri: string; visibility: ArchiveVisibility }>;
@@ -82,6 +114,7 @@ export interface ImportArchiveResult {
 	skippedOther: number;
 	failed: Array<{ oldUri?: string | undefined; reason: string }>;
 	visibilityCounts: Record<ArchiveVisibility, number>;
+	media: ImportArchiveMediaSummary;
 }
 
 const statusIdPattern = /(?:\/users\/[^/]+\/statuses\/|\/@[^/]+\/)(?<id>\d+)/u;
@@ -306,12 +339,235 @@ export const buildArchiveCreateActivity = (
 	return activity;
 };
 
+export const toArchiveStoragePaths = (
+	rawUrl: string,
+): { storagePath: string; previewStoragePath: string } => {
+	const normalized = rawUrl.replace(/^\/+/, '');
+	const segments = normalized.split('/');
+	if (
+		normalized === '' ||
+		segments.includes('..') ||
+		segments.includes('.') ||
+		!normalized.startsWith('media_attachments/')
+	) {
+		throw new Error(`Invalid archive attachment path: ${rawUrl}`);
+	}
+	const previewStoragePath = normalized.includes('/original/')
+		? normalized.replace('/original/', '/small/')
+		: path.posix.join(path.posix.dirname(normalized), `small_${path.posix.basename(normalized)}`);
+	return { storagePath: normalized, previewStoragePath };
+};
+
+const isUploadedMediaUrl = (url: unknown): boolean =>
+	typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'));
+
+export const needsArchiveMediaImport = (
+	oldNote: ArchiveNoteObject,
+	existingObject: APObject | undefined,
+	archiveDir: string | undefined,
+): boolean => {
+	if (archiveDir === undefined) {
+		return false;
+	}
+	const oldAttachments = toArray(oldNote.attachment).filter(
+		(item): item is Record<string, unknown> =>
+			typeof item === 'object' &&
+			item !== null &&
+			typeof (item as Record<string, unknown>).url === 'string',
+	);
+	if (oldAttachments.length === 0) {
+		return false;
+	}
+	if (existingObject === undefined) {
+		return true;
+	}
+	const existingAttachments = toArray(existingObject.attachment).filter(
+		(item): item is Record<string, unknown> => typeof item === 'object' && item !== null,
+	);
+	if (existingAttachments.length !== oldAttachments.length) {
+		return true;
+	}
+	return existingAttachments.some((att) => !isUploadedMediaUrl(att.url));
+};
+
+const processArchiveImageBuffer = async (
+	buffer: Buffer,
+	mimeType: string,
+	existingBlurhash: string | undefined,
+): Promise<{
+	previewBuffer: Buffer;
+	previewMimeType: string;
+	width: number | undefined;
+	height: number | undefined;
+	blurhash: string | undefined;
+}> => {
+	const metadata = await sharp(buffer).metadata();
+	const format = metadata.format;
+	let thumbPipeline = sharp(buffer, { pages: 1 })
+		.rotate()
+		.resize(ARCHIVE_THUMBNAIL_MAX_DIMENSION, ARCHIVE_THUMBNAIL_MAX_DIMENSION, {
+			fit: 'inside',
+			withoutEnlargement: true,
+		});
+	if (format === 'gif') {
+		thumbPipeline = thumbPipeline.gif();
+	}
+	const thumbRes = await thumbPipeline.toBuffer({ resolveWithObject: true });
+	const previewMimeType = formatToMimeType[thumbRes.info.format] ?? mimeType;
+
+	let blurhash = existingBlurhash;
+	if (!blurhash) {
+		try {
+			const rawSample = await sharp(thumbRes.data)
+				.resize(32, 32, { fit: 'inside' })
+				.ensureAlpha()
+				.raw()
+				.toBuffer({ resolveWithObject: true });
+			blurhash = encode(
+				new Uint8ClampedArray(rawSample.data),
+				rawSample.info.width,
+				rawSample.info.height,
+				4,
+				3,
+			);
+		} catch {
+			// blurhash 計算失敗時は未設定のままにする
+		}
+	}
+
+	return {
+		previewBuffer: thumbRes.data,
+		previewMimeType,
+		width: typeof metadata.width === 'number' && metadata.width > 0 ? metadata.width : undefined,
+		height:
+			typeof metadata.height === 'number' && metadata.height > 0 ? metadata.height : undefined,
+		blurhash,
+	};
+};
+
+interface ImportNoteAttachmentsParams {
+	oldAttachments: unknown[];
+	archiveDir: string;
+	mediaSummary: ImportArchiveMediaSummary;
+	dryRun: boolean;
+	alreadyImported: boolean;
+}
+
+const importNoteAttachments = async ({
+	oldAttachments,
+	archiveDir,
+	mediaSummary,
+	dryRun,
+	alreadyImported,
+}: ImportNoteAttachmentsParams): Promise<unknown[]> => {
+	const resolved: unknown[] = [];
+
+	for (const rawItem of oldAttachments) {
+		if (typeof rawItem !== 'object' || rawItem === null) {
+			resolved.push(rawItem);
+			continue;
+		}
+		const att = rawItem as Record<string, unknown>;
+		const rawUrl = toStringValue(att.url);
+		if (!rawUrl || isUploadedMediaUrl(rawUrl)) {
+			resolved.push(att);
+			continue;
+		}
+
+		const { storagePath, previewStoragePath } = toArchiveStoragePaths(rawUrl);
+		const localFilePath = path.join(archiveDir, storagePath);
+		assert(fs.existsSync(localFilePath), `Archive media file not found: ${localFilePath}`);
+		const stat = fs.statSync(localFilePath);
+		const mediaType = toStringValue(att.mediaType) ?? 'application/octet-stream';
+
+		mediaSummary.totalFiles += 1;
+		mediaSummary.totalBytes += stat.size;
+		const typeStat = mediaSummary.byMediaType[mediaType] ?? { count: 0, bytes: 0 };
+		typeStat.count += 1;
+		typeStat.bytes += stat.size;
+		mediaSummary.byMediaType[mediaType] = typeStat;
+
+		if (alreadyImported) {
+			mediaSummary.alreadyUploadedFiles += 1;
+			resolved.push(att);
+			continue;
+		}
+
+		if (dryRun) {
+			mediaSummary.uploadedFiles += 1;
+			mediaSummary.uploadedBytes += stat.size;
+			resolved.push(att);
+			continue;
+		}
+
+		const buffer = await fs.promises.readFile(localFilePath);
+		if (mediaType.toLowerCase().startsWith('image/')) {
+			const existingBlurhash =
+				typeof att.blurhash === 'string' && att.blurhash.length > 0 ? att.blurhash : undefined;
+			const processed = await processArchiveImageBuffer(buffer, mediaType, existingBlurhash);
+			const [origUploaded, thumbUploaded] = await Promise.all([
+				uploadArchiveFile({ storagePath, buffer, mimeType: mediaType }),
+				uploadArchiveFile({
+					storagePath: previewStoragePath,
+					buffer: processed.previewBuffer,
+					mimeType: processed.previewMimeType,
+				}),
+			]);
+
+			if (origUploaded.alreadyExisted) {
+				mediaSummary.alreadyUploadedFiles += 1;
+			} else {
+				mediaSummary.uploadedFiles += 1;
+				mediaSummary.uploadedBytes +=
+					buffer.length + (thumbUploaded.alreadyExisted ? 0 : processed.previewBuffer.length);
+			}
+
+			const width = typeof att.width === 'number' && att.width > 0 ? att.width : processed.width;
+			const height =
+				typeof att.height === 'number' && att.height > 0 ? att.height : processed.height;
+
+			resolved.push({
+				...att,
+				type: typeof att.type === 'string' ? att.type : 'Document',
+				mediaType,
+				url: origUploaded.url,
+				name: att.name ?? null,
+				...(processed.blurhash === undefined ? {} : { blurhash: processed.blurhash }),
+				...(width === undefined ? {} : { width }),
+				...(height === undefined ? {} : { height }),
+				icon: {
+					type: 'Image',
+					url: thumbUploaded.url,
+				},
+			});
+		} else {
+			const origUploaded = await uploadArchiveFile({ storagePath, buffer, mimeType: mediaType });
+			if (origUploaded.alreadyExisted) {
+				mediaSummary.alreadyUploadedFiles += 1;
+			} else {
+				mediaSummary.uploadedFiles += 1;
+				mediaSummary.uploadedBytes += buffer.length;
+			}
+
+			resolved.push({
+				...att,
+				type: typeof att.type === 'string' ? att.type : 'Document',
+				mediaType,
+				url: origUploaded.url,
+				name: att.name ?? null,
+			});
+		}
+	}
+
+	return resolved;
+};
+
 export const importArchiveItems = async (
 	localActor: APObject,
 	items: ArchiveItem[],
 	options: ImportArchiveOptions = {},
 ): Promise<ImportArchiveResult> => {
-	const { dryRun = false, concurrency = 5, onProgress } = options;
+	const { dryRun = false, concurrency = 5, archiveDir, onProgress } = options;
 
 	const oldActorIri = items.find(
 		(item) =>
@@ -331,6 +587,14 @@ export const importArchiveItems = async (
 			unlisted: 0,
 			private: 0,
 			direct: 0,
+		},
+		media: {
+			totalFiles: 0,
+			uploadedFiles: 0,
+			alreadyUploadedFiles: 0,
+			totalBytes: 0,
+			uploadedBytes: 0,
+			byMediaType: {},
 		},
 	};
 
@@ -490,7 +754,7 @@ export const importArchiveItems = async (
 		}
 
 		const { note, oldUri, visibility, statusId } = converted;
-		const activity = buildArchiveCreateActivity(localActor, note, {
+		const initialActivity = buildArchiveCreateActivity(localActor, note, {
 			oldActivityUri: createItem.id,
 			statusId,
 		});
@@ -498,9 +762,24 @@ export const importArchiveItems = async (
 		// 冪等性チェック: Note と Create アクティビティの双方が既に存在するか
 		const [existingObject, existingActivity] = await Promise.all([
 			apex.store.getObject(note.id),
-			apex.store.getActivity(activity.id),
+			apex.store.getActivity(initialActivity.id),
 		]);
-		if (existingObject !== undefined && existingActivity !== undefined) {
+		const mediaPending = needsArchiveMediaImport(oldNote, existingObject, archiveDir);
+
+		if (existingObject !== undefined && existingActivity !== undefined && !mediaPending) {
+			if (archiveDir !== undefined && oldNote.attachment) {
+				try {
+					await importNoteAttachments({
+						oldAttachments: toArray(oldNote.attachment),
+						archiveDir,
+						mediaSummary: result.media,
+						dryRun,
+						alreadyImported: true,
+					});
+				} catch {
+					// 既にインポート済みの場合は統計取得失敗を無視する
+				}
+			}
 			result.visibilityCounts[visibility] = (result.visibilityCounts[visibility] ?? 0) + 1;
 			result.alreadyExists.push(note.id);
 			onProgress?.({
@@ -514,6 +793,28 @@ export const importArchiveItems = async (
 		}
 
 		if (dryRun) {
+			if (archiveDir !== undefined && oldNote.attachment) {
+				try {
+					await importNoteAttachments({
+						oldAttachments: toArray(oldNote.attachment),
+						archiveDir,
+						mediaSummary: result.media,
+						dryRun: true,
+						alreadyImported: false,
+					});
+				} catch (err) {
+					const reason = err instanceof Error ? err.message : String(err);
+					result.failed.push({ oldUri, reason });
+					onProgress?.({
+						index: index + 1,
+						total: items.length,
+						status: 'failed',
+						id: note.id,
+						detail: reason,
+					});
+					return;
+				}
+			}
 			result.visibilityCounts[visibility] = (result.visibilityCounts[visibility] ?? 0) + 1;
 			result.imported.push({ id: note.id, oldUri, visibility });
 			onProgress?.({
@@ -527,14 +828,37 @@ export const importArchiveItems = async (
 		}
 
 		try {
-			// Note を保存 (Store#saveObject が Mastodon ID, _meta, 返信数などをトランザクションで設定)
-			if (existingObject === undefined) {
-				await apex.store.saveObject(note);
+			if (
+				archiveDir !== undefined &&
+				oldNote.attachment &&
+				toArray(oldNote.attachment).length > 0
+			) {
+				note.attachment = await importNoteAttachments({
+					oldAttachments: toArray(oldNote.attachment),
+					archiveDir,
+					mediaSummary: result.media,
+					dryRun: false,
+					alreadyImported: false,
+				});
 			}
 
-			// Create アクティビティを保存 (Store#saveActivity が outbox に載せ、Mastodon ID を設定)
+			const activity = buildArchiveCreateActivity(localActor, note, {
+				oldActivityUri: createItem.id,
+				statusId,
+			});
+
+			// Note を保存または更新 (Store#saveObject が Mastodon ID, _meta, 返信数などをトランザクションで設定)
+			if (existingObject === undefined) {
+				await apex.store.saveObject(note);
+			} else if (mediaPending) {
+				await apex.store.updateObject(note, localActor.id ?? null, true);
+			}
+
+			// Create アクティビティを保存または更新 (Store#saveActivity が outbox に載せ、Mastodon ID を設定)
 			if (existingActivity === undefined) {
 				await apex.store.saveActivity(activity);
+			} else if (mediaPending) {
+				await apex.store.updateActivity(activity, true);
 			}
 
 			result.visibilityCounts[visibility] = (result.visibilityCounts[visibility] ?? 0) + 1;
@@ -584,6 +908,13 @@ export const importArchiveItems = async (
 	return result;
 };
 
+const parseOutboxJson = (jsonContent: string): ArchiveItem[] => {
+	const parsed = JSON.parse(jsonContent) as { orderedItems?: ArchiveItem[]; items?: ArchiveItem[] };
+	const items = parsed.orderedItems ?? parsed.items;
+	assert(Array.isArray(items), `Invalid outbox.json: orderedItems or items is not an array`);
+	return items;
+};
+
 export const readArchiveOutbox = async (archivePath: string): Promise<ArchiveItem[]> => {
 	const resolvedPath = path.resolve(process.cwd(), archivePath);
 	assert(fs.existsSync(resolvedPath), `Archive file/directory not found: ${resolvedPath}`);
@@ -609,9 +940,61 @@ export const readArchiveOutbox = async (archivePath: string): Promise<ArchiveIte
 		throw new Error(`Unsupported archive format: ${resolvedPath}`);
 	}
 
-	const parsed = JSON.parse(jsonContent) as { orderedItems?: ArchiveItem[]; items?: ArchiveItem[] };
-	const items = parsed.orderedItems ?? parsed.items;
-	assert(Array.isArray(items), `Invalid outbox.json: orderedItems or items is not an array`);
+	return parseOutboxJson(jsonContent);
+};
 
-	return items;
+export interface PreparedArchiveSource {
+	items: ArchiveItem[];
+	archiveDir: string | undefined;
+	cleanup?: (() => void) | undefined;
+}
+
+// アーカイブ (.tar.gz / ディレクトリ / outbox.json) を読み込み、
+// メディア添付ファイルを参照できる展開済みディレクトリパスと cleanup 関数を返す (→ ADR-0127)。
+export const prepareArchiveSource = async (archivePath: string): Promise<PreparedArchiveSource> => {
+	const resolvedPath = path.resolve(process.cwd(), archivePath);
+	assert(fs.existsSync(resolvedPath), `Archive file/directory not found: ${resolvedPath}`);
+
+	const stat = fs.statSync(resolvedPath);
+	if (stat.isDirectory()) {
+		const outboxPath = path.join(resolvedPath, 'outbox.json');
+		assert(fs.existsSync(outboxPath), `outbox.json not found in directory: ${resolvedPath}`);
+		const items = parseOutboxJson(fs.readFileSync(outboxPath, 'utf-8'));
+		return {
+			items,
+			archiveDir: resolvedPath,
+		};
+	}
+
+	if (resolvedPath.endsWith('.tar.gz') || resolvedPath.endsWith('.tgz')) {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mastodon-archive-'));
+		try {
+			await execFileAsync('tar', ['-zxf', resolvedPath, '-C', tempDir]);
+			const outboxPath = path.join(tempDir, 'outbox.json');
+			assert(fs.existsSync(outboxPath), `outbox.json not found in archive: ${resolvedPath}`);
+			const items = parseOutboxJson(fs.readFileSync(outboxPath, 'utf-8'));
+			return {
+				items,
+				archiveDir: tempDir,
+				cleanup: () => {
+					fs.rmSync(tempDir, { recursive: true, force: true });
+				},
+			};
+		} catch (err) {
+			fs.rmSync(tempDir, { recursive: true, force: true });
+			throw err;
+		}
+	}
+
+	if (resolvedPath.endsWith('.json')) {
+		const items = parseOutboxJson(fs.readFileSync(resolvedPath, 'utf-8'));
+		const parentDir = path.dirname(resolvedPath);
+		const hasMediaDir = fs.existsSync(path.join(parentDir, 'media_attachments'));
+		return {
+			items,
+			archiveDir: hasMediaDir ? parentDir : undefined,
+		};
+	}
+
+	throw new Error(`Unsupported archive format: ${resolvedPath}`);
 };
