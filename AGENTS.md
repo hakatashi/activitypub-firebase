@@ -22,7 +22,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 | pawoo.net からの引っ越しをどう実行・監視するか | [`docs/runbooks/account-migration.md`](docs/runbooks/account-migration.md) |
 
 `third_party/` には仕様書と参考実装が submodule として置かれている
-(`activitypub` = W3C 仕様、`mastodon` / `mastodon_documentation` = Mastodon 本体とドキュメント、
+(`activitystreams` / `activitypub` = W3C 仕様、`mastodon` / `mastodon_documentation` = Mastodon 本体とドキュメント、
 `misskey` = Misskey 本体、
 `minidon` / `minipub` = サーバーレス寄りの軽量実装、`elk` / `phanpy` = フロントエンドとして使うクライアントのソース、`rfc/` = WebFinger と acct URI の RFC)。
 **仕様の確認は推測ではなくこれらを読んで行うこと。**

@@ -25,3 +25,6 @@
 [submodule "third_party/misskey"]
 	path = third_party/misskey
 	url = https://github.com/misskey-dev/misskey.git
+[submodule "third_party/activitystreams"]
+	path = third_party/activitystreams
+	url = https://github.com/w3c/activitystreams.git
