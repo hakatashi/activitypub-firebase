@@ -211,6 +211,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
 | `_meta.hashtags` | `objects` | `string[]` | タグ検索用に、`tag` の `Hashtag` の `name` を正規化(NFKC・先頭の `#` を除く・小文字化・使えない文字を除く。`functions/src/hashtags.ts`)した名前の配列。`getNotes` が `array-contains-any` で引く。タグが無ければキーを持たない。`Store#saveObject` / `updateObject` が書き、既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md))。 |
 | `_meta.actor` / `_meta.published` | `streams` (Announce) | `string` | タイムライン検索用に、Announce アクティビティの actor と published を文字列に正規化した写し。`Store#saveActivity` で保存時に非正規化して書く。既存データは `functions/bin/backfillActivityQueryMeta.ts` (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。 |
+| `_meta.legacyUri` | `objects` (Note) / `streams` (Announce) | `string` | Mastodon アーカイブからインポートされた投稿・ブーストに記録する移行元インスタンスの旧 URI (`functions/src/social/archive.ts`、→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
 
@@ -280,6 +281,9 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `remoteActorCounts.ts` | リモート actor の件数・最終投稿日の取得と `_meta` への保存、古いときの取得依頼(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | `remoteActorResolution.ts` | 手元にないリモート actor の取得依頼(Account の組み立て・inbox での `Create` / `Announce` 受信時)とタスクでの取得(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
+| `archive.ts` | Mastodon アーカイブ (`outbox.json`) からの投稿履歴 (`Create`・`Announce`) インポート (配送抑止、自リプライスレッド結合、公開範囲維持、Snowflake ID からのミリ秒・Mastodon ID 復元。→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md)) |
+| `import.ts` | Mastodon エクスポート CSV からのフォロー関係・ブックマークのインポート (→ [ADR-0124](adr/0124-import-following-and-bookmarks-from-csv.md)) |
+| `migration.ts` | pawoo.net からのアカウント移行進捗突き合わせと事前 `Update(Person)` 配送 (→ [ADR-0125](adr/0125-migration-progress-reconciliation-and-pre-delivery.md)) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
 フォロー関係は射影(→ [ADR-0083](adr/0083-read-follow-relations-from-projection.md))から読み、この層は Mastodon API ルーターモジュールを読み込まない。

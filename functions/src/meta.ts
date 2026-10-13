@@ -43,6 +43,8 @@ declare module './apex/types.js' {
 		hashtags?: string[];
 		// streams の検索用に、配列にもスカラーにもなりうる actor を正規化した写し (→ ADR-0096)。
 		actor?: string;
+		// アーカイブインポート時に記録する移行元 URI (→ ADR-0126)。objects / streams コレクション。
+		legacyUri?: string;
 	}
 }
 
