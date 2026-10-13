@@ -1,5 +1,5 @@
 import type { mastodon } from 'masto';
-import { escapeFirestoreKey, mastodonDomain } from '../firebase.js';
+import { domain, escapeFirestoreKey, mastodonDomain } from '../firebase.js';
 import {
 	LOCAL_ADMIN_EMAIL,
 	LOCAL_DISPLAY_NAME,
@@ -19,6 +19,11 @@ export type ExtendedInstanceV2 = Omit<CamelToSnake<mastodon.v2.Instance>, 'confi
 		mastodon: number;
 		[key: string]: number | undefined;
 	};
+	/**
+	 * GoToSocial 拡張。acct のドメイン部が API のドメインと異なることをクライアントに伝える
+	 * (→ ADR-0128)。
+	 */
+	account_domain: string;
 	configuration: Omit<CamelToSnake<mastodon.v2.Instance>['configuration'], 'urls'> & {
 		urls: {
 			streaming: string;
@@ -34,6 +39,7 @@ export const MAX_MEDIA_ATTACHMENTS = 4;
 
 const instanceV2: ExtendedInstanceV2 = {
 	domain: mastodonDomain,
+	account_domain: domain,
 	title: 'HakataFediverse',
 	description: 'HakataFediverse is the only instance created for hakatashi',
 	version: '4.3.0',
