@@ -19,6 +19,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 | 連合が動くことをどう確認するか | [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md) |
 | Elk などのクライアントで動くことをどう確認するか | [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) |
 | 本番のデータ・設定・ログをどう点検するか(移行前) | [`docs/runbooks/production-preflight-check.md`](docs/runbooks/production-preflight-check.md) |
+| pawoo.net からの引っ越しをどう実行・監視するか | [`docs/runbooks/account-migration.md`](docs/runbooks/account-migration.md) |
 
 `third_party/` には仕様書と参考実装が submodule として置かれている
 (`activitypub` = W3C 仕様、`mastodon` / `mastodon_documentation` = Mastodon 本体とドキュメント、
