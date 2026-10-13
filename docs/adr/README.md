@@ -154,6 +154,6 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0125](0125-migration-progress-reconciliation-and-pre-delivery.md) | 引っ越しのフォロワー進捗突き合わせと事前の Update(Person) 配送 | Accepted |
 | [0126](0126-import-post-history-from-mastodon-archive.md) | Mastodon アーカイブから投稿履歴を配送せずにインポートする | Accepted (添付メディアは ADR-0127 で Superseded) |
 | [0127](0127-import-archive-media-attachments.md) | インポートした投稿の添付メディアを Cloud Storage に取り込む | Accepted |
-
 | [0128](0128-instance-account-domain.md) | インスタンス情報で account_domain を返し、acct のドメインを ActivityPub 側に揃える | Accepted |
 | [0129](0129-no-store-for-api-errors.md) | `/api/**` のエラー応答に `Cache-Control: no-store` を付ける | Accepted |
+| [0130](0130-continuous-improvement-after-phase5.md) | Phase 5 の完了後はフェーズを切らず、継続的な機能改善として Issue を管理する | Accepted |

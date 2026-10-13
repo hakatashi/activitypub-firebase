@@ -12,7 +12,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 |---|---|
 | 今どういう構成になっているか | [`docs/architecture.md`](docs/architecture.md) |
 | **なぜそう作られているか** | [`docs/adr/`](docs/adr/README.md) |
-| 次に何をすべきか | [`docs/roadmap.md`](docs/roadmap.md) と各 Epic Issue |
+| 次に何をすべきか | [`docs/roadmap.md`](docs/roadmap.md) と各 Epic Issue(Phase 5 の後は `phase:*` ラベルのないオープンな Issue) |
 | 壊れている箇所・技術的負債 | [`docs/known-issues.md`](docs/known-issues.md) |
 | Mastodon API のどこまで実装したか | [`docs/mastodon-api-coverage.md`](docs/mastodon-api-coverage.md) |
 | ビルド・テスト・デプロイの方法 | [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md) |
@@ -40,6 +40,12 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 
 ### GitHub Issue
 
+**Phase 5 がこのプロジェクトの最後のフェーズである。** Phase 5 の後は継続的な機能改善とし、
+フェーズによる管理は行わない(→ [ADR-0130](docs/adr/0130-continuous-improvement-after-phase5.md))。
+以下のうち「フェーズの Issue」のルールは Phase 0〜5 の Issue にだけ適用する。
+
+#### フェーズの Issue(Phase 0〜5)
+
 - 各フェーズに Epic Issue が1本あり、子 Issue をタスクリストで束ねている。
 - **子 Issue はそのフェーズに着手する時点で作る。** 全フェーズ分を先に作らない。
 - ラベルは `phase:N` と `area:*` を付ける。着手前に ADR が必要なら `needs-adr` を付ける。
@@ -50,6 +56,14 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
   3. Epic Issue の本文のタスクリストに追記する(どの Issue で見つけたかを括弧書きで添える)。
   4. Relationship を整理する。他の Issue の前提になる・他の Issue を待つ場合は
      GitHub の blocked by / blocking を設定し、Epic 本文の依存関係の記述とも食い違わないようにする。
+
+#### 継続改善の Issue(Phase 5 の後の作業)
+
+- **思いついた時点で起票してよい**(Phase 5 の完了前でもよい)。
+- `phase:*` ラベル・Milestone・Epic の sub-issue は付けない。`area:*` と `enhancement` / `bug` を付け、
+  着手前に ADR が必要なら `needs-adr` を付ける。
+- 他の Issue の前提になる・他の Issue を待つ場合は、GitHub の blocked by / blocking を設定する。
+- 連合を壊さないこと(配送・受信・WebFinger)を機能追加より常に優先する。
 
 ### プルリクエスト
 
@@ -122,3 +136,5 @@ Store がアクティビティを書き換えるのと同じトランザクシ�
 次は **Phase 5(pawoo.net からの引っ越し、Epic
 [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))**(→ [`docs/roadmap.md`](docs/roadmap.md))。
 移行はやり直せないため、着手時に Epic の前提条件と完了条件を読み直すこと。
+Phase 5 の完了をもってフェーズによる管理は終わり、以後は継続改善の Issue を順に片付ける
+(→ [ADR-0130](docs/adr/0130-continuous-improvement-after-phase5.md))。
