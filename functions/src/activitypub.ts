@@ -56,9 +56,19 @@ const nodeinfoCors = cors({
 
 app.use((req, res, next) => {
 	// Default express.json() parser doesn't properly work with cloud functions
+	// functions-framework は JSON-LD の本文を raw (Buffer) として渡すが、本文のない要求
+	// (Bridgy Fed の GET など) では body-parser が req.body に {} を残すので、
+	// Buffer か文字列のときだけ解析する (#311)
 	const contentType = req.headers['content-type'];
-	if (contentType !== undefined && apex.consts.jsonldTypes.includes(contentType) && req.body) {
-		req.body = JSON.parse(req.body);
+	const rawBody: unknown = req.body;
+	const bodyText = Buffer.isBuffer(rawBody) ? rawBody.toString('utf-8') : rawBody;
+	if (
+		contentType !== undefined &&
+		apex.consts.jsonldTypes.includes(contentType) &&
+		typeof bodyText === 'string' &&
+		bodyText !== ''
+	) {
+		req.body = JSON.parse(bodyText);
 	}
 
 	logger.info({
