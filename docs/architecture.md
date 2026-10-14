@@ -365,6 +365,7 @@ unfavourite / unreblog は射影に載っている Like / Announce をすべて 
 
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
 未定義のルートは 404 にフォールバックする(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md))。
+4xx / 5xx 応答には `Cache-Control: no-store` を付け、CDN やブラウザに残さない(→ [ADR-0129](adr/0129-no-store-for-api-errors.md))。
 
 ## デプロイ
 
