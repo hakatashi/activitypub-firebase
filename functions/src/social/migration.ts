@@ -5,7 +5,7 @@ import { apex } from '../apex.js';
 import type { APObject } from '../apex/index.js';
 import { escapeFirestoreKey } from '../firebase.js';
 import { Deliveries, FollowRelations, Objects, Streams } from '../schema.js';
-import { isAPActor, toIdArray } from '../utils.js';
+import { firstOf, isAPActor, toIdArray } from '../utils.js';
 import { fetchWebfinger } from '../webfinger.js';
 import { hostOf, resolveRemoteActor } from './remoteResolution.js';
 
@@ -191,16 +191,19 @@ export const fetchRemoteFollowers = async (
 	return followers;
 };
 
+// endpoints は plain object (resolveRemoteActor / 生の JSON) と、
+// apex が Firestore に保存した配列形式 ([{ sharedInbox: [...] }]) の両方がありうる (#301)。
 export const getActorSharedInboxOrInbox = (actor: APObject): string | undefined => {
-	const endpoints = actor.endpoints as { sharedInbox?: unknown } | undefined;
-	if (typeof endpoints?.sharedInbox === 'string' && endpoints.sharedInbox) {
-		return endpoints.sharedInbox;
-	}
-	if (typeof (actor as { sharedInbox?: unknown }).sharedInbox === 'string') {
-		const shared = (actor as { sharedInbox?: string }).sharedInbox;
-		if (shared) {
-			return shared;
+	const endpoints = firstOf(actor.endpoints as unknown);
+	if (endpoints !== null && typeof endpoints === 'object') {
+		const sharedInbox = toIdArray((endpoints as { sharedInbox?: unknown }).sharedInbox)[0];
+		if (sharedInbox) {
+			return sharedInbox;
 		}
+	}
+	const sharedInbox = toIdArray((actor as { sharedInbox?: unknown }).sharedInbox)[0];
+	if (sharedInbox) {
+		return sharedInbox;
 	}
 	const inbox = toIdArray(actor.inbox)[0];
 	return inbox || undefined;
