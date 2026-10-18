@@ -53,7 +53,8 @@ npm --prefix functions ci
   | `misskey-test.hakatashi.com` | `Authorization: Bearer` | 連合相手の Misskey(`admin`)用 |
 
 - runbook の手順には `$HAKATASHI_TOKEN` や `$REMOTE_TOKEN` を直接参照するものがあるため、
-  同じ値が環境変数にも入っていることがある(空でもプロキシ経由の認証は通る)。**トークンの値を echo・ログ・コミット・PR 本文に出さない。**
+  同じ値が環境変数にも入っていることがある(空でもプロキシ経由の認証は通る)。
+  **トークンの値を echo・ログ・コミット・PR 本文に出さない。**
   有無を確かめるときは長さだけを見る(`echo ${#REMOTE_TOKEN}`)。
 - `DEV` / `ACTOR` / `REMOTE` / `MISSKEY_REMOTE` は環境変数で定義済み。
   [`federation-testing.md`](federation-testing.md) の `.env` を作る手順は飛ばしてよい。
@@ -78,4 +79,5 @@ npm --prefix functions ci
 ## GitHub
 
 - `gh` CLI は入っているが認証されていない。Issue・PR の操作は GitHub の MCP ツールで行う。
-- git の fetch / push はセッションの認証で通る。
+- git の fetch / push はセッションの認証で通る。push が 403 で拒否されたら
+  Claude GitHub App の権限の問題なので、ユーザーに伝える。
