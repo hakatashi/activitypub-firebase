@@ -58,7 +58,6 @@ BASH_DEFAULT_TIMEOUT_MS=600000
 BASH_MAX_TIMEOUT_MS=1800000
 
 # --- Node & System Configurations ---
-NODE_ENV=development
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 PATH=/usr/local/bin:/usr/bin:/bin:/opt/node22/bin:/root/.cache/firebase/bin
 
@@ -78,12 +77,16 @@ REMOTE_TOKEN=
 HAKATASHI_TOKEN=
 MASTODON_DEV_TOKEN=
 MISSKEY_REMOTE_TOKEN=
+
+# --- Service Account Key (for GCP / Firebase CLI deployment) ---
+GCP_SA_KEY=
 ```
 
 > [!TIP]
 > - `BASH_DEFAULT_TIMEOUT_MS=600000` (10分): `npm --prefix functions test` (Firestore エミュレータ起動＋全テスト実行) は完了まで数分かかるため、タイムアウトを延長しています。
 > - `GCLOUD_PROJECT=activitypub-firebase-dev`: 本番 (`activitypub-firebase`) への誤操作を防ぎ、常に dev 環境をターゲットとします。
-> - GCP サービスアカウントキーを設定してクラウドセッションから `firebase deploy` 等を行わせたい場合は、`GCP_SA_KEY={"type":"service_account",...}` を追加します。
+> - `NODE_ENV` は設定しないでください。vitest は `NODE_ENV` が未設定のときだけ `test` を入れるため、`development` などを入れるとテスト用の分岐 (`functions/src/webfinger.ts` など) が無効になり、モックサーバーを使うテストが失敗します。
+> - `GCP_SA_KEY` には `activitypub-firebase-dev` のサービスアカウントキー JSON を1行で設定します。クラウドセッションから dev への `firebase deploy` や `gcloud secrets` の参照に使います。
 
 ### 4. Setup script
 `.claude/cloud-environment/setup.sh` の内容をそのまま貼り付けます。
