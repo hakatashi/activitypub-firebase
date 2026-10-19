@@ -70,6 +70,19 @@ npm --prefix functions ci
   gcloud auth application-default print-access-token >/dev/null && echo OK
   ```
 
+- **このキーが指すのは dev (`activitypub-firebase-dev`) のサービスアカウントである。**
+  `claude-cloud-deployer@activitypub-firebase-dev.iam.gserviceaccount.com` として認証される。
+  次を確認済み。
+  - `firebase deploy --only functions,firestore,storage -P activitypub-firebase-dev` が通る
+    (全 Functions・Firestore の rules / indexes・Storage の rules が更新される)。
+  - dev に対する `gcloud secrets versions access`・`gcloud tasks`・`gcloud logging read`・
+    `gcloud run services describe`・`gcloud firestore fields ttls list` が実行できる。
+  - 未確認: `firebase deploy --only hosting`、`gcloud run services update`。
+- **本番 (`activitypub-firebase`) へのアクセス権限は存在しない。** 本番に対する `gcloud` / `firebase`
+  コマンドは権限エラーになる。したがって**本番のログ・Firestore・Cloud Tasks・Secret を読む調査はできない**。
+  本番の障害調査や [`production-preflight-check.md`](production-preflight-check.md) の点検は、
+  ユーザーに依頼するか、dev での再現で代える。権限エラーを回避しようとしない。
+  本番へ反映されるのは `main` への push による CI のみ。
 - 認証できないときは、dev へのデプロイ・`gcloud secrets`・バックフィルスクリプトは実行できない。
   ユーザーにそう伝え、実行したことにしたり結果を推測で埋めたりしない。
 - **`.firebaserc` の `default` は本番(`activitypub-firebase`)である。** 環境変数で

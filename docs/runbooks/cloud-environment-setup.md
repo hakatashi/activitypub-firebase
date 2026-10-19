@@ -86,7 +86,72 @@ GCP_SA_KEY=
 > - `BASH_DEFAULT_TIMEOUT_MS=600000` (10分): `npm --prefix functions test` (Firestore エミュレータ起動＋全テスト実行) は完了まで数分かかるため、タイムアウトを延長しています。
 > - `GCLOUD_PROJECT=activitypub-firebase-dev`: 本番 (`activitypub-firebase`) への誤操作を防ぎ、常に dev 環境をターゲットとします。
 > - `NODE_ENV` は設定しないでください。vitest は `NODE_ENV` が未設定のときだけ `test` を入れるため、`development` などを入れるとテスト用の分岐 (`functions/src/webfinger.ts` など) が無効になり、モックサーバーを使うテストが失敗します。
-> - `GCP_SA_KEY` には `activitypub-firebase-dev` のサービスアカウントキー JSON を1行で設定します。クラウドセッションから dev への `firebase deploy` や `gcloud secrets` の参照に使います。
+> - `GCP_SA_KEY` には `activitypub-firebase-dev` のサービスアカウントキー JSON を1行で設定します。クラウドセッションから dev への `firebase deploy` や `gcloud secrets` の参照に使います。取得手順は後述の「GCP_SA_KEY の用意」を参照してください。
+
+#### GCP_SA_KEY の用意
+
+dev プロジェクト専用のサービスアカウントを作り、そのキー JSON を `GCP_SA_KEY` に設定します。
+**本番 (`activitypub-firebase`) には一切権限を与えません。** 本番へは `main` への push による CI だけがデプロイします
+(→ `deploy-firebase` skill §3)。
+
+1. サービスアカウントを作成します。
+
+   ```bash
+   gcloud iam service-accounts create claude-cloud-deployer \
+     --project=activitypub-firebase-dev \
+     --display-name="Claude Code Cloud deployer"
+   ```
+
+2. 次のロールを `activitypub-firebase-dev` に付与します。
+
+   | ロール | 用途 |
+   |---|---|
+   | `roles/firebase.admin` | Hosting、Firestore の rules / indexes、Storage の rules のデプロイ |
+   | `roles/cloudfunctions.admin` | Functions のデプロイ |
+   | `roles/run.admin` | Functions v2 の実体 (Cloud Run) の更新、`gcloud run services update` |
+   | `roles/cloudbuild.builds.editor` | Functions v2 のビルド |
+   | `roles/artifactregistry.writer` | ビルドしたイメージの push |
+   | `roles/cloudtasks.admin` | `onTaskDispatched` のキュー作成、`gcloud tasks list` |
+   | `roles/cloudscheduler.admin` | `onSchedule` のジョブ作成 |
+   | `roles/secretmanager.admin` | `defineSecret` のバインドと `gcloud secrets` の参照 |
+   | `roles/iam.serviceAccountUser` | ランタイム SA を関数に紐付ける |
+   | `roles/datastore.owner` | バックフィルスクリプトの Firestore 読み書き、`gcloud firestore fields ttls list` |
+   | `roles/storage.objectAdmin` | メディア関連スクリプトでの Storage 操作 |
+   | `roles/logging.viewer` | `gcloud logging read` |
+   | `roles/serviceusage.serviceUsageConsumer` | firebase CLI の API 利用 |
+
+   ```bash
+   SA=claude-cloud-deployer@activitypub-firebase-dev.iam.gserviceaccount.com
+   for role in roles/firebase.admin roles/cloudfunctions.admin roles/run.admin \
+     roles/cloudbuild.builds.editor roles/artifactregistry.writer \
+     roles/cloudtasks.admin roles/cloudscheduler.admin roles/secretmanager.admin \
+     roles/iam.serviceAccountUser roles/datastore.owner roles/storage.objectAdmin \
+     roles/logging.viewer roles/serviceusage.serviceUsageConsumer; do
+     gcloud projects add-iam-policy-binding activitypub-firebase-dev \
+       --member="serviceAccount:$SA" --role="$role" --condition=None >/dev/null
+   done
+   ```
+
+3. キーを発行し、1行に圧縮します。
+
+   ```bash
+   gcloud iam service-accounts keys create key.json --iam-account="$SA"
+   jq -c . key.json
+   shred -u key.json
+   ```
+
+4. 出力を `GCP_SA_KEY` に設定します。**値は必ずシングルクォートで囲みます**
+   (`GCP_SA_KEY='{"type":"service_account",...}'`)。囲まないと `private_key` 内の `\n` などが
+   解釈されて JSON が壊れ、認証に失敗します。
+
+組織ポリシー `iam.disableServiceAccountKeyCreation` が有効だとキーを作れません。
+キーが漏えいした疑いがあるときは `gcloud iam service-accounts keys delete` で失効させて作り直します。
+
+このロールの組み合わせで、dev への `firebase deploy --only functions,firestore,storage`
+(全 Functions・rules・indexes の更新)が通ることを確認済みです。`gcloud secrets` / `gcloud tasks` /
+`gcloud logging read` / `gcloud run services describe` / `gcloud firestore fields ttls list` も実行でき、
+本番 `activitypub-firebase` に対する操作は権限エラーになります。
+`firebase deploy --only hosting` と `gcloud run services update` は未確認です。
 
 ### 4. Setup script
 `.claude/cloud-environment/setup.sh` の内容をそのまま貼り付けます。
