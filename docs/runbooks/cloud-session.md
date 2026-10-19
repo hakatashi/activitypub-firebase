@@ -61,8 +61,11 @@ npm --prefix functions ci
 
 ## GCP / Firebase
 
-- サービスアカウントキー(環境変数 `GCP_SA_KEY`)が設定されていれば、セットアップスクリプトが
-  ADC(`/root/.config/gcloud/application_default_credentials.json`)と `gcloud` に登録する。
+- サービスアカウントキー(環境変数 `GCP_SA_KEY`)が設定されていれば、セットアップスクリプトと
+  `SessionStart` hook(毎回)が ADC(`/root/.config/gcloud/application_default_credentials.json`)と
+  `gcloud` に登録する。
+- 環境変数 `CLOUDSDK_AUTH_ACCESS_TOKEN` が設定されていると、`gcloud` は登録したアカウントよりそちらを優先する。
+  `UNAUTHENTICATED` になったら、そのコマンドだけ `env -u CLOUDSDK_AUTH_ACCESS_TOKEN gcloud ...` で実行する。
   使えるかどうかは次で確かめる。
 
   ```bash

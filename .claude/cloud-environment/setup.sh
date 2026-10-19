@@ -25,6 +25,19 @@ else
   echo "gcloud CLI is already installed: $(gcloud --version 2>/dev/null | head -n 1)"
 fi
 
+# 1b. Configure Google Cloud ADC if service account key is provided.
+#    Runs right after gcloud is installed so that the time limit cannot cut it off. scripts/cloud_session_start.sh repeats it on every session start.
+if [ -n "${GCP_SA_KEY:-}" ]; then
+  echo "=== [Setup] Configuring Google Cloud Service Account ==="
+  ADC=/root/.config/gcloud/application_default_credentials.json
+  mkdir -p /root/.config/gcloud
+  (umask 077 && printf '%s' "$GCP_SA_KEY" > "$ADC")
+  if command -v gcloud &> /dev/null; then
+    gcloud auth activate-service-account --key-file="$ADC" --quiet \
+      || echo "Warning: gcloud auth activate-service-account failed (check GCP_SA_KEY)."
+  fi
+fi
+
 # 2. Install firebase-tools globally
 echo "=== [Setup] Checking firebase-tools ==="
 if ! command -v firebase &> /dev/null; then
@@ -74,17 +87,6 @@ echo "=== [Setup] Pre-building functions ==="
 if [ -d "$TARGET_DIR/functions" ]; then
   cd "$TARGET_DIR/functions"
   npm run build || echo "Warning: initial build failed. Continuing..."
-fi
-
-# 7. Configure Google Cloud ADC if service account key is provided
-if [ -n "${GCP_SA_KEY:-}" ]; then
-  echo "=== [Setup] Configuring Google Cloud Service Account ==="
-  mkdir -p /root/.config/gcloud
-  echo "$GCP_SA_KEY" > /root/.config/gcloud/application_default_credentials.json
-  export GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
-  if command -v gcloud &> /dev/null; then
-    gcloud auth activate-service-account --key-file=/root/.config/gcloud/application_default_credentials.json 2>/dev/null || true
-  fi
 fi
 
 elapsed=$(( $(date +%s) - start_time ))
