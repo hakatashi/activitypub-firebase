@@ -60,7 +60,7 @@ jobs:
       - name: Install dependencies
         run: npm --prefix functions ci
       - name: Deploy to Firebase
-        uses: w9jds/firebase-action@v15.33.0
+        uses: w9jds/firebase-action@v15.34.0
         with:
           args: deploy --only functions,firestore,storage
         env:
