@@ -107,7 +107,7 @@ const dedupeBoosts = (items: TimelineItem[]): TimelineItem[] => {
 
 // Note と Announce を混ぜて 1 ページ分集める (→ ADR-0096)。
 // 各情報源のカーソルを独立して進め、可視性チェックを通過した有効なアイテムを Mastodon ID 順にマージする。
-// `filterNotes` は可視性チェックの後の Note (ブーストは含まない) をさらに絞る (リストの replies_policy。→ ADR-0133)。
+// `filterNotes` は可視性チェックの後の Note (ブーストは含まない) をさらに絞る (リストの replies_policy。→ ADR-0134)。
 export const collectTimelineItems = async ({
 	actors,
 	page,
@@ -451,7 +451,7 @@ const collectAuthorsTimelineItems = async ({
 };
 
 // ホームタイムラインのアイテム (Note + Announce)。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
-// `exclusive` なリストのメンバーの投稿/ブーストは載せない (→ ADR-0133 決定5)。
+// `exclusive` なリストのメンバーの投稿/ブーストは載せない (→ ADR-0134 決定5)。
 export const getHomeTimelineItems = async (
 	viewer: APActor,
 	page: PageParams,
@@ -469,7 +469,7 @@ export const getHomeTimelineItems = async (
 	return collectAuthorsTimelineItems({ authors, page, viewer, viewerFollowing });
 };
 
-// リストの replies_policy で、他人への返信を絞る (Mastodon の `FeedManager#filter_from_list?`。→ ADR-0133 決定4)。
+// リストの replies_policy で、他人への返信を絞る (Mastodon の `FeedManager#filter_from_list?`。→ ADR-0134 決定4)。
 // 返信先の作者は返信先の Note から決め、手元に無ければ出さない。
 const filterRepliesByListPolicy =
 	(ownerId: string, list: ListRecord, viewerFollowing: Set<string>) =>
@@ -507,7 +507,7 @@ const filterRepliesByListPolicy =
 	};
 
 // リストのタイムラインのアイテム (Note + Announce)。メンバーのうちフォロー中 (承認済み) の相手と自分の投稿/ブーストを、
-// ホームタイムラインと同じ規則で集める (→ ADR-0133 決定3)。
+// ホームタイムラインと同じ規則で集める (→ ADR-0134 決定3)。
 export const getListTimelineItems = async (
 	viewer: APActor,
 	list: ListRecord,

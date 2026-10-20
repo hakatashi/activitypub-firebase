@@ -29,7 +29,7 @@ import {
 } from '../presenters/list.js';
 import { STATUS_PAGE_LIMITS, getListTimeline } from '../presenters/status.js';
 
-// リスト (→ ADR-0133)。リストは認証ユーザー自身のものだけを扱い、他人のリストは存在しないものとして 404 を返す。
+// リスト (→ ADR-0134)。リストは認証ユーザー自身のものだけを扱い、他人のリストは存在しないものとして 404 を返す。
 const router = express.Router();
 
 const listBodySchema = z.object({

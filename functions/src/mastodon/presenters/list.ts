@@ -30,7 +30,7 @@ export interface ListAccountsPageParams {
 // ローカルのアカウント ID (`1` など) とリモートの Mastodon ID (20 桁) を同じ大小で比べられるよう、桁数をそろえる。
 const toSortKey = (accountId: string) => accountId.padStart(MASTODON_ID_LENGTH, '0');
 
-// Mastodon と同じくアカウント ID の降順に並べ、アカウント ID をカーソルにする (→ ADR-0133 決定6)。
+// Mastodon と同じくアカウント ID の降順に並べ、アカウント ID をカーソルにする (→ ADR-0134 決定6)。
 // 返す `cursorIds` は `accounts` と同じ並び。
 export const getListAccountsPage = async (
 	list: ListRecord,

@@ -73,15 +73,15 @@
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|
 | GET | `/api/v1/timelines/public` | ✅ | public のみ。ページネーション対応 |
-| GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ブースト表示・重複ブースト排除対応。ページネーション対応。リモートの Note (`attributedTo` が配列) も含む。`exclusive` なリストのメンバー(自分を除く)は載せない (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)、[ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)、[ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md)) |
-| GET | `/api/v1/timelines/list/:list_id` | ✅ | `read:lists` 必須。メンバーのうちフォロー中(承認済み)の相手と自分の投稿・ブーストを、ホームと同じ規則・ページングで返す。他人への返信は `replies_policy` で絞る(返信先が手元に無ければ出さない) (→ [ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md)) |
+| GET | `/api/v1/timelines/home` | ✅ | 自分 + フォロー中、閲覧可能なもののみ。ブースト表示・重複ブースト排除対応。ページネーション対応。リモートの Note (`attributedTo` が配列) も含む。`exclusive` なリストのメンバー(自分を除く)は載せない (→ [ADR-0072](adr/0072-match-array-attributed-to-in-note-queries.md)、[ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)、[ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
+| GET | `/api/v1/timelines/list/:list_id` | ✅ | `read:lists` 必須。メンバーのうちフォロー中(承認済み)の相手と自分の投稿・ブーストを、ホームと同じ規則・ページングで返す。他人への返信は `replies_policy` で絞る(返信先が手元に無ければ出さない) (→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
 | GET | `/api/v1/timelines/tag/:hashtag` | ✅ | public のみ。大文字小文字・全角半角を区別しない。`any[]`(`array-contains-any` で同じクエリに足す)・`all[]` / `none[]`・`local` / `remote` / `only_media`(取得後に絞る)対応。ブーストは載せない。ページネーション対応 (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | GET | `/api/v1/tags/:name` | ✅ | 手元に Note が無くても Tag を返す(`history` は空、`following` は false)。名前が不正なら 404。`follow` / `unfollow` は未実装(404) (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | — | ページネーション + `Link` ヘッダ | ✅ | `max_id`/`since_id`/`min_id`/`limit`、`Access-Control-Expose-Headers: Link`(→ [ADR-0062](adr/0062-cursor-pagination-by-mastodon-id.md)) |
 
 ## リスト
 
-`userInfos/{actor}/lists` に保存する。他人のリストは 404(→ [ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md))。
+`userInfos/{actor}/lists` に保存する。他人のリストは 404(→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md))。
 
 | メソッド | パス | 状態 | 備考 |
 |---|---|---|---|

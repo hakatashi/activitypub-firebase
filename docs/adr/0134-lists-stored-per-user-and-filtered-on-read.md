@@ -1,4 +1,4 @@
-# ADR-0133: リストは `userInfos/{actor}/lists` に直接保存し、リストのタイムラインは読み出し時に絞り込む
+# ADR-0134: リストは `userInfos/{actor}/lists` に直接保存し、リストのタイムラインは読み出し時に絞り込む
 
 - **Status:** Accepted
 - **Date:** 2026-10-21

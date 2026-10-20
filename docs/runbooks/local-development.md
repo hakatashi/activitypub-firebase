@@ -205,7 +205,7 @@ streams の Follow から組み立て直す(→ [ADR-0082](../adr/0082-project-f
 ## Mastodon エクスポートデータのインポート
 
 pawoo.net などからエクスポートした CSV を読み込み、フォロー関係・ブックマーク・リストを再登録する
-ワンショットスクリプトがある (→ [ADR-0124](../adr/0124-import-following-and-bookmarks-from-csv.md)、[ADR-0133](../adr/0133-lists-stored-per-user-and-filtered-on-read.md))。
+ワンショットスクリプトがある (→ [ADR-0124](../adr/0124-import-following-and-bookmarks-from-csv.md)、[ADR-0134](../adr/0134-lists-stored-per-user-and-filtered-on-read.md))。
 冪等であり、中断しても再実行可能。
 
 ```bash

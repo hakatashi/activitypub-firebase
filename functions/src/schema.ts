@@ -107,7 +107,7 @@ export interface Bookmark {
 export const Bookmarks = (userInfoKey: FirestoreKey) =>
 	UserInfos.doc(userInfoKey).collection('bookmarks') as CollectionReference<Bookmark>;
 
-// リスト (→ ADR-0133)。`userInfos/{ローカル actor}/lists/{リスト ID}`。
+// リスト (→ ADR-0134)。`userInfos/{ローカル actor}/lists/{リスト ID}`。
 export type ListRepliesPolicy = 'followed' | 'list' | 'none';
 
 export interface ListRecord {

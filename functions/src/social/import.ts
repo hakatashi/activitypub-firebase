@@ -411,7 +411,7 @@ export type ImportListsStatus =
 export interface ImportListsOptions {
 	dryRun?: boolean;
 	intervalMs?: number;
-	// 偽なら、フォローしていない相手をフォローせずに飛ばす (→ ADR-0133 決定7)
+	// 偽なら、フォローしていない相手をフォローせずに飛ばす (→ ADR-0134 決定7)
 	follow?: boolean;
 	onProgress?: (info: {
 		index: number;
@@ -490,7 +490,7 @@ export const parseListsCsv = (csvContent: string): ListCsvRow[] => {
 	return rows;
 };
 
-// lists.csv からリストとメンバーをインポートする (→ ADR-0133 決定7)。
+// lists.csv からリストとメンバーをインポートする (→ ADR-0134 決定7)。
 // Mastodon の `BulkImportRowService` と同じく、同名のリストが無ければ作り、フォローしていない相手はフォローしてから足す。
 export const importLists = async (
 	viewer: APActor,

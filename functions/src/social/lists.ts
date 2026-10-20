@@ -10,7 +10,7 @@ import { Lists } from '../schema.js';
 import type { ListRecord, ListRepliesPolicy } from '../schema.js';
 import { getFollowFlags } from './follows.js';
 
-// リストは AP に対応物がないので、`userInfos/{actor}/lists/{リスト ID}` に直接保存する (→ ADR-0133)。
+// リストは AP に対応物がないので、`userInfos/{actor}/lists/{リスト ID}` に直接保存する (→ ADR-0134)。
 
 // Mastodon の `List::PER_ACCOUNT_LIMIT` / `TITLE_LENGTH_LIMIT` と同じ。
 export const MAX_LISTS_PER_ACCOUNT = 50;
@@ -157,7 +157,7 @@ export const getListsContaining = async (
 		.map((doc) => doc.data())
 		.sort((a, b) => a.id.localeCompare(b.id));
 
-// `exclusive` なリストのメンバー。ホームタイムラインから外す (→ ADR-0133 決定5)。
+// `exclusive` なリストのメンバー。ホームタイムラインから外す (→ ADR-0134 決定5)。
 export const getExclusiveListMembers = async (actorId: string): Promise<Set<string>> =>
 	new Set(
 		(await listsOf(actorId).where('exclusive', '==', true).get()).docs.flatMap(

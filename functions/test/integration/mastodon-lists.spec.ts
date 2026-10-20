@@ -34,7 +34,7 @@ const getLinkPath = (link: string | undefined, rel: 'next' | 'prev') => {
 	return `${url.pathname}${url.search}`;
 };
 
-describe('Mastodon lists API (Issue #306, ADR-0133)', () => {
+describe('Mastodon lists API (Issue #306, ADR-0134)', () => {
 	let me: LocalActor;
 	let accountIds: Map<string, string>;
 	let n = 0;
@@ -269,7 +269,7 @@ describe('Mastodon lists API (Issue #306, ADR-0133)', () => {
 
 			expect(await getTimeline(`/api/v1/timelines/list/${list.id}`)).toEqual([mine, a1]);
 
-			// フォローを外した相手は、メンバーのままでもタイムラインに出さない (→ ADR-0133 決定2)
+			// フォローを外した相手は、メンバーのままでもタイムラインに出さない (→ ADR-0134 決定2)
 			await apex.store.removeActivity(
 				{ id: `${me.id}/follows/${encodeURIComponent(REMOTE_A)}` } as APObject,
 				me.id,

@@ -42,7 +42,7 @@ if (!fs.existsSync(resolvedPath)) {
 	process.exit(1);
 }
 
-// Mastodon からエクスポートした lists.csv のリストとメンバーをインポートする (→ ADR-0133)。
+// Mastodon からエクスポートした lists.csv のリストとメンバーをインポートする (→ ADR-0134)。
 // フォローしていない相手はフォローしてから足す。`--no-follow` ならフォローせずに飛ばす。
 const main = async () => {
 	console.log(`Loading local actor: ${actorId} (project: ${projectId})`);
