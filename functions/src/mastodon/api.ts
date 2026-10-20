@@ -3,6 +3,7 @@ import { mastodonCors, mastodonErrorHandler, noStoreErrors } from './http/middle
 import accountsRouter from './routes/accounts.js';
 import appsRouter from './routes/apps.js';
 import instanceRouter from './routes/instance.js';
+import listsRouter from './routes/lists.js';
 import markersRouter from './routes/markers.js';
 import noteCollectionsRouter from './routes/noteCollections.js';
 import notificationsRouter from './routes/notifications.js';
@@ -35,6 +36,7 @@ router.use(tagsRouter);
 router.use(statusesRouter);
 router.use(statusActionsRouter);
 router.use(noteCollectionsRouter);
+router.use(listsRouter);
 router.use(notificationsRouter);
 router.use(appsRouter);
 

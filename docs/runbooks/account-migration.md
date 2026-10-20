@@ -306,7 +306,8 @@ gcloud tasks list --queue=deliveryTask --location=asia-northeast1 --project=$GCL
 - **相手側で新アカウントへのフォローがリクエスト中のまま止まっているフォロワーは移らない。** Mastodon の `FollowService#call` は、
   `requested?` なら `change_follow_request_options!` だけを行い、Follow を送り直さない。こちらに Follow が届いていない場合は
   `migrationStatus.ts` には `not_followed` としか出ず、区別できない。Accept の失敗による停滞は、チェックリストの `deliveries/failed` で Move の前に潰す。
-- **リスト・ミュート・ブロック・お気に入りは移らない**(このプロジェクトに機能がない。→ Epic #10 のスコープ外)。
+- **リスト・ミュート・ブロック・お気に入りは移らない**(→ Epic #10 のスコープ外)。リストはエクスポートした `lists.csv` を
+  `functions/bin/importLists.ts` で取り込める([ADR-0133](../adr/0133-lists-stored-per-user-and-filtered-on-read.md))。ほかはこのプロジェクトに機能がない。
 - **自分の actor にも `Move` が届く。** dev の `@hakatashi@activitypub-dev.hakatashi.com` と本番の `@hakatashi@hakatashi.com` は、どちらも旧アカウントをフォローしているため。
   こちらは `Move` を 2xx で受け取って捨てる(#260、[ADR-0115](../adr/0115-inbox-4xx-only-for-sender-faults.md))。
 - **旧アカウントへのブロックは移行先に引き継がれる。** Mastodon は Move を受けると、旧アカウントをブロックしていた人のブロックを移行先にも作り、`Block` が届く(「5. 問題が起きたときの対処」)。

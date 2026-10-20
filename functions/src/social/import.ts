@@ -3,10 +3,18 @@ import { setTimeout } from 'node:timers/promises';
 import type { APActor } from 'activitypub-types';
 import { escapeFirestoreKey } from '../firebase.js';
 import { Bookmarks, Objects } from '../schema.js';
+import type { ListRecord } from '../schema.js';
 import { isAPActor, isAPNote, toIdArray } from '../utils.js';
 import { fetchWebfinger } from '../webfinger.js';
 import { addBookmark } from './bookmarks.js';
 import { followActor, getFollowFlags } from './follows.js';
+import {
+	DEFAULT_LIST_REPLIES_POLICY,
+	addListAccounts,
+	createList,
+	getList,
+	getLists,
+} from './lists.js';
 import { hostOf, parseUrl, resolveRemoteActor } from './remoteResolution.js';
 import { resolveUrl } from './search.js';
 
@@ -381,6 +389,233 @@ export const importBookmarks = async (
 			const reason = error instanceof Error ? error.message : String(error);
 			result.failed.push({ url, reason });
 			onProgress?.({ index: i + 1, total: urls.length, url, status: 'failed', detail: reason });
+		}
+	}
+
+	return result;
+};
+
+export interface ListCsvRow {
+	listName: string;
+	acct: string;
+}
+
+export type ImportListsStatus =
+	| 'added'
+	| 'followed_and_added'
+	| 'already_member'
+	| 'not_following'
+	| 'moved'
+	| 'failed';
+
+export interface ImportListsOptions {
+	dryRun?: boolean;
+	intervalMs?: number;
+	// 偽なら、フォローしていない相手をフォローせずに飛ばす (→ ADR-0133 決定7)
+	follow?: boolean;
+	onProgress?: (info: {
+		index: number;
+		total: number;
+		listName: string;
+		acct: string;
+		status: ImportListsStatus;
+		detail?: string;
+	}) => void;
+}
+
+export interface ImportListsResult {
+	total: number;
+	createdLists: string[];
+	added: ListCsvRow[];
+	followedAndAdded: ListCsvRow[];
+	alreadyMember: ListCsvRow[];
+	notFollowing: ListCsvRow[];
+	moved: Array<ListCsvRow & { movedTo: string }>;
+	failed: Array<ListCsvRow & { reason: string }>;
+}
+
+// CSV の1行をカラムに分ける (RFC 4180 のクォート `"..."` と `""` のエスケープに対応)。
+const splitCsvLine = (line: string): string[] => {
+	const columns: string[] = [];
+	let current = '';
+	let quoted = false;
+	for (let i = 0; i < line.length; i++) {
+		const char = line[i]!;
+		if (quoted) {
+			if (char === '"' && line[i + 1] === '"') {
+				current += '"';
+				i++;
+			} else if (char === '"') {
+				quoted = false;
+			} else {
+				current += char;
+			}
+		} else if (char === '"') {
+			quoted = true;
+		} else if (char === ',') {
+			columns.push(current);
+			current = '';
+		} else {
+			current += char;
+		}
+	}
+	columns.push(current);
+	return columns;
+};
+
+// Mastodon の lists.csv (ヘッダなしの `リスト名,acct`) をパースする。重複行は1つにまとめる。
+export const parseListsCsv = (csvContent: string): ListCsvRow[] => {
+	const rows: ListCsvRow[] = [];
+	const seen = new Set<string>();
+	for (const line of csvContent.split(/\r?\n/)) {
+		if (line.trim() === '') {
+			continue;
+		}
+		const columns = splitCsvLine(line);
+		if (columns.length < 2) {
+			continue;
+		}
+		const listName = columns[0]!.trim();
+		const rawAcct = columns[1]!.trim();
+		const acct = rawAcct.startsWith('@') ? rawAcct.slice(1) : rawAcct;
+		if (listName === '' || !ACCT_PATTERN.test(acct)) {
+			continue;
+		}
+		const key = JSON.stringify([listName, acct.toLowerCase()]);
+		if (!seen.has(key)) {
+			seen.add(key);
+			rows.push({ listName, acct });
+		}
+	}
+	return rows;
+};
+
+// lists.csv からリストとメンバーをインポートする (→ ADR-0133 決定7)。
+// Mastodon の `BulkImportRowService` と同じく、同名のリストが無ければ作り、フォローしていない相手はフォローしてから足す。
+export const importLists = async (
+	viewer: APActor,
+	rows: ListCsvRow[],
+	options: ImportListsOptions = {},
+): Promise<ImportListsResult> => {
+	assert(viewer.id !== undefined, 'viewer.id is undefined');
+	const viewerId = viewer.id;
+
+	const { dryRun = false, intervalMs = 1000, follow = true, onProgress } = options;
+	const result: ImportListsResult = {
+		total: rows.length,
+		createdLists: [],
+		added: [],
+		followedAndAdded: [],
+		alreadyMember: [],
+		notFollowing: [],
+		moved: [],
+		failed: [],
+	};
+
+	// 同名のリストが複数あれば、最初に作られたものに足す (Mastodon の find_or_create_by と同じ)。
+	// dry-run で作らなかったリストは、メンバーが空のものとして扱う。
+	const listsByTitle = new Map<string, ListRecord | undefined>();
+	for (const list of (await getLists(viewerId)).reverse()) {
+		listsByTitle.set(list.title, list);
+	}
+
+	const findOrCreateList = async (title: string) => {
+		if (listsByTitle.has(title)) {
+			return listsByTitle.get(title);
+		}
+		const list = dryRun
+			? undefined
+			: await createList(viewerId, {
+					title,
+					repliesPolicy: DEFAULT_LIST_REPLIES_POLICY,
+					exclusive: false,
+				});
+		if (!dryRun && list === undefined) {
+			throw new Error('Reached the maximum number of lists');
+		}
+		listsByTitle.set(title, list);
+		result.createdLists.push(title);
+		return list;
+	};
+
+	for (let i = 0; i < rows.length; i++) {
+		const row = rows[i]!;
+		const report = (status: ImportListsStatus, detail?: string) =>
+			onProgress?.({
+				index: i + 1,
+				total: rows.length,
+				...row,
+				status,
+				...(detail === undefined ? {} : { detail }),
+			});
+
+		try {
+			const list = await findOrCreateList(row.listName);
+			const { username, host } = ACCT_PATTERN.exec(row.acct)!.groups!;
+			const targetActor = await resolveAccountByAcct(username!, host!);
+			if (targetActor === undefined || targetActor.id === undefined) {
+				result.failed.push({ ...row, reason: 'Failed to resolve actor via WebFinger' });
+				report('failed', 'Unresolvable');
+				continue;
+			}
+			const targetId = targetActor.id;
+
+			// 引っ越し済みの相手はフォローも追加もしない (→ ADR-0124 決定5)
+			const movedTo = toIdArray((targetActor as { movedTo?: unknown }).movedTo)[0];
+			if (movedTo !== undefined) {
+				result.moved.push({ ...row, movedTo });
+				report('moved', movedTo);
+				continue;
+			}
+
+			if (list?.accounts.includes(targetId) === true) {
+				result.alreadyMember.push(row);
+				report('already_member');
+				continue;
+			}
+
+			let followed = false;
+			if (targetId !== viewerId) {
+				const [flags] = await getFollowFlags(viewer, [targetId]);
+				assert(flags !== undefined, 'flags is undefined');
+				if (!flags.following && !flags.requested) {
+					if (!follow) {
+						result.notFollowing.push(row);
+						report('not_following');
+						continue;
+					}
+					if (!dryRun) {
+						await followActor(viewer, targetActor, { skipRequested: true });
+					}
+					followed = true;
+				}
+			}
+
+			if (!dryRun) {
+				assert(list !== undefined, 'list is undefined');
+				const added = await addListAccounts(viewer, list.id, [targetId]);
+				if (!added.ok) {
+					throw new Error(`Failed to add to list: ${added.error}`);
+				}
+				// 次の行の重複判定のため、保存した内容を読み直す
+				listsByTitle.set(row.listName, (await getList(viewerId, list.id)) ?? list);
+			}
+			const dryRunDetail = dryRun ? 'dry-run' : undefined;
+			if (followed) {
+				result.followedAndAdded.push(row);
+				report('followed_and_added', dryRunDetail);
+			} else {
+				result.added.push(row);
+				report('added', dryRunDetail);
+			}
+
+			if (intervalMs > 0 && i < rows.length - 1) {
+				await setTimeout(intervalMs);
+			}
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			result.failed.push({ ...row, reason });
+			report('failed', reason);
 		}
 	}
 

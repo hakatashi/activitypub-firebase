@@ -6,9 +6,12 @@ import { Bookmarks, FollowRelations, Streams } from '../../src/schema.js';
 import {
 	importBookmarks,
 	importFollowing,
+	importLists,
 	parseBookmarksCsv,
 	parseFollowingCsv,
+	parseListsCsv,
 } from '../../src/social/import.js';
+import { getLists } from '../../src/social/lists.js';
 import { createLocalActor, resetFirestore } from '../helpers/index.js';
 import type { LocalActor } from '../helpers/index.js';
 
@@ -305,6 +308,140 @@ https://pawoo.net/users/user1/statuses/100
 			expect(result.failed).toHaveLength(1);
 			expect(result.failed[0]?.url).toBe(unknownUrl);
 			expect(result.bookmarked).toEqual([]);
+		});
+	});
+
+	describe('parseListsCsv', () => {
+		test('parses list names and accounts from Mastodon lists.csv format', () => {
+			const csv = `TSG,hakatashi@pawoo.net
+TSG,azaika@pawoo.net
+"Friends, close",@bob@remote.example
+"He said ""hi""",carol@other.example
+
+TSG,invalid-format
+,dave@third.example
+TSG,azaika@pawoo.net
+TSG,AZAIKA@pawoo.net
+`;
+			expect(parseListsCsv(csv)).toEqual([
+				{ listName: 'TSG', acct: 'hakatashi@pawoo.net' },
+				{ listName: 'TSG', acct: 'azaika@pawoo.net' },
+				{ listName: 'Friends, close', acct: 'bob@remote.example' },
+				{ listName: 'He said "hi"', acct: 'carol@other.example' },
+			]);
+		});
+	});
+
+	describe('importLists', () => {
+		const ALICE_ID = 'https://remote.example/users/alice';
+		const BOB_ID = 'https://remote.example/users/bob';
+		const MOVED_ID = 'https://remote.example/users/moved';
+
+		beforeEach(async () => {
+			for (const [id, name, extra] of [
+				[ALICE_ID, 'alice', {}],
+				[BOB_ID, 'bob', {}],
+				[MOVED_ID, 'moved', { movedTo: 'https://new.example/users/moved' }],
+			] as const) {
+				await apex.store.saveObject({
+					id,
+					type: 'Person',
+					preferredUsername: name,
+					inbox: `${id}/inbox`,
+					outbox: `${id}/outbox`,
+					_meta: { preferredUsername: name },
+					...extra,
+				} as never);
+			}
+			// alice はフォロー済み
+			await FollowRelations(escapeFirestoreKey(me.id), 'following')
+				.doc(escapeFirestoreKey(ALICE_ID))
+				.set({
+					actor: ALICE_ID,
+					followIri: `${ALICE_ID}#follow`,
+					followMastodonId: '100',
+					state: 'accepted',
+					createdAt: new Date() as never,
+					follows: [],
+				});
+		});
+
+		const selfAcct = () => `${LOCAL_USERNAME}@${new URL(me.id).host}`;
+
+		test('creates lists, follows unfollowed accounts and adds members', async () => {
+			const rows = [
+				{ listName: 'TSG', acct: 'alice@remote.example' },
+				{ listName: 'TSG', acct: 'bob@remote.example' },
+				{ listName: 'TSG', acct: selfAcct() },
+				{ listName: 'TSG', acct: 'moved@remote.example' },
+				{ listName: 'Other', acct: 'alice@remote.example' },
+				{ listName: 'TSG', acct: 'nobody@unresolvable.invalid' },
+			];
+			const result = await importLists(me, rows, { intervalMs: 0 });
+
+			expect(result.createdLists).toEqual(['TSG', 'Other']);
+			expect(result.added.map((row) => row.acct)).toEqual([
+				'alice@remote.example',
+				selfAcct(),
+				'alice@remote.example',
+			]);
+			expect(result.followedAndAdded.map((row) => row.acct)).toEqual(['bob@remote.example']);
+			expect(result.moved.map((row) => row.acct)).toEqual(['moved@remote.example']);
+			expect(result.failed.map((row) => row.acct)).toEqual(['nobody@unresolvable.invalid']);
+
+			const lists = await getLists(me.id);
+			expect(lists.map((list) => [list.title, list.accounts])).toEqual([
+				['TSG', [ALICE_ID, BOB_ID, me.id]],
+				['Other', [ALICE_ID]],
+			]);
+
+			// bob にだけ Follow を送る
+			const follows = await Streams.where('type', '==', 'Follow')
+				.where('actor', 'array-contains', me.id)
+				.get();
+			expect(follows.docs.map((doc) => doc.data().object)).toEqual([[BOB_ID]]);
+
+			// 再実行しても重複して足さず、リストも作り直さない
+			const second = await importLists(me, rows, { intervalMs: 0 });
+			expect(second.createdLists).toEqual([]);
+			expect(second.alreadyMember).toHaveLength(4);
+			expect(second.added).toEqual([]);
+			expect(second.followedAndAdded).toEqual([]);
+			expect(await getLists(me.id)).toHaveLength(2);
+		});
+
+		test('skips unfollowed accounts when follow is false', async () => {
+			const result = await importLists(
+				me,
+				[
+					{ listName: 'TSG', acct: 'alice@remote.example' },
+					{ listName: 'TSG', acct: 'bob@remote.example' },
+				],
+				{ intervalMs: 0, follow: false },
+			);
+			expect(result.added.map((row) => row.acct)).toEqual(['alice@remote.example']);
+			expect(result.notFollowing.map((row) => row.acct)).toEqual(['bob@remote.example']);
+			const [list] = await getLists(me.id);
+			expect(list?.accounts).toEqual([ALICE_ID]);
+		});
+
+		test('does not write anything when dryRun is true', async () => {
+			const result = await importLists(
+				me,
+				[
+					{ listName: 'TSG', acct: 'alice@remote.example' },
+					{ listName: 'TSG', acct: 'bob@remote.example' },
+				],
+				{ intervalMs: 0, dryRun: true },
+			);
+			expect(result.createdLists).toEqual(['TSG']);
+			expect(result.added.map((row) => row.acct)).toEqual(['alice@remote.example']);
+			expect(result.followedAndAdded.map((row) => row.acct)).toEqual(['bob@remote.example']);
+			expect(await getLists(me.id)).toEqual([]);
+			const follows = await Streams.where('type', '==', 'Follow')
+				.where('actor', 'array-contains', me.id)
+				.get();
+			expect(follows.empty).toBe(true);
 		});
 	});
 });

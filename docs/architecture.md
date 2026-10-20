@@ -176,6 +176,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。ブックマークは一覧のカーソル `cursorId` を持つ(→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
 | `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
 | `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
+| `userInfos/{actor}/lists` | リスト ID(作成時刻から作る Mastodon ID 形式の値) | リスト。タイトル・`replies_policy`・`exclusive` とメンバーの actor IRI の配列。API が直接書く(→ [ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md)) |
 | `userInfos/{actor}/notifications` | エスケープしたアクティビティ IRI | 通知の射影。受信したアクティビティ(Create / Like / Announce / Follow)を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0088](adr/0088-project-notifications-in-store.md)) |
 | `markers` | `エスケープした actor IRI_タイムライン名` | `/api/v1/markers` の既読位置(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | `mediaAttachments` | Mastodon ID(20 桁の数字) | アップロードされたメディアのメタデータ(→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
@@ -280,7 +281,8 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | ファイル | 役割 |
 |---|---|
 | `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、相手への代表の Follow `getFollowIri`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
-| `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ハッシュタグ・ホームタイムラインの収集(重複ブースト排除・可視性判定を含む) |
+| `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ハッシュタグ・ホーム・リストのタイムラインの収集(重複ブースト排除・可視性判定、ホームからの `exclusive` なリストのメンバーの除外、リストの `replies_policy` を含む。→ [ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md)) |
+| `lists.ts` | リストの作成・更新・削除とメンバーの追加・削除(フォロー中・承認待ちの相手と自分のみ)、アカウントを含むリスト・`exclusive` なリストのメンバーの取得(→ [ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md)) |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
 | `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)、ハッシュタグの完全一致検索と、URL・acct からのリモートの actor / Note の解決(WebFinger と `remoteResolution.ts` による取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | `remoteResolution.ts` | リモートの AP オブジェクト・actor の取得(SSRF セーフな `requestObject`、オリジン検証。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
@@ -288,7 +290,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | `remoteActorResolution.ts` | 手元にないリモート actor の取得依頼(Account の組み立て・inbox での `Create` / `Announce` 受信時)とタスクでの取得(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `archive.ts` | Mastodon アーカイブ (`outbox.json`・`media_attachments/`) からの投稿履歴 (`Create`・`Announce`) および添付メディアの Cloud Storage へのインポート (配送抑止、自リプライスレッド結合、公開範囲維持、Snowflake ID からのミリ秒・Mastodon ID 復元、サムネイル・blurhash 補完。→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md)、[ADR-0127](adr/0127-import-archive-media-attachments.md)) |
-| `import.ts` | Mastodon エクスポート CSV からのフォロー関係・ブックマークのインポート (→ [ADR-0124](adr/0124-import-following-and-bookmarks-from-csv.md)) |
+| `import.ts` | Mastodon エクスポート CSV からのフォロー関係・ブックマーク・リストのインポート (→ [ADR-0124](adr/0124-import-following-and-bookmarks-from-csv.md)、[ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md)) |
 | `migration.ts` | pawoo.net からのアカウント移行進捗突き合わせと事前 `Update(Person)` 配送 (→ [ADR-0125](adr/0125-migration-progress-reconciliation-and-pre-delivery.md)) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
@@ -303,9 +305,10 @@ Follow を書き換える Store の処理と同じトランザクションで差
 |---|---|
 | `index.ts` | express アプリ、`beforeUserCreate` |
 | `api.ts` | `/api/**` のルーター。CORS、`routes/` の各ルーターの登録、404 フォールバックとエラーハンドラ |
-| `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `search` / `accounts` / `timelines` / `tags` / `statuses` / `statusActions` / `apps`) |
+| `routes/*.ts` | リソースごとのルート定義とリクエストの zod スキーマ(`instance` / `stubs` / `markers` / `search` / `accounts` / `timelines` / `tags` / `statuses` / `statusActions` / `lists` / `apps`) |
 | `presenters/account.ts` | AP actor → Account / CredentialAccount / Relationship の変換と、アカウント ID の解決 |
 | `presenters/status.ts` | Note / Announce → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
+| `presenters/list.ts` | リスト → List エンティティの変換と、リストのメンバー一覧のページング(アカウント ID の降順。→ [ADR-0133](adr/0133-lists-stored-per-user-and-filtered-on-read.md)) |
 | `presenters/tag.ts` | タグ名 → Tag エンティティの変換(→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `authIfPresent` / `getOptionalViewer`)と有効なスコープの一覧 |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
@@ -327,7 +330,7 @@ API で露出する Status などの ID は AP IRI とは別に採番した、�
 既存データのバックフィルは `functions/bin/assignMastodonIds.ts`。
 ローカルの Note の Status の `url` は `https://<Mastodon ドメイン>/@hakatashi/<Mastodon ID>`(上記の HTML のページ)、リモートの Note は Note の `url` か IRI(→ [ADR-0107](adr/0107-minimal-html-status-page-for-link-previews.md))。
 
-コレクション系エンドポイント(`timelines/public`・`timelines/home`・`accounts/:id/statuses`・`accounts/:id/followers`・`accounts/:id/following`)は
+コレクション系エンドポイント(`timelines/public`・`timelines/home`・`timelines/list/:list_id`・`accounts/:id/statuses`・`accounts/:id/followers`・`accounts/:id/following`)は
 `max_id` / `since_id` / `min_id` / `limit` でページングし、`Link` ヘッダ(`next` / `prev`)で次のページを示す
 (`Access-Control-Expose-Headers: Link` を付ける)。カーソルは Mastodon ID で、応答は常に新しい順。
 Firestore へは `_meta.published` の範囲と順序で問い合わせ(`type + [_meta.attributedTo +] _meta.published` の昇順・降順、および Announce 用の `type + _meta.actor + _meta.published` 複合インデックス)、

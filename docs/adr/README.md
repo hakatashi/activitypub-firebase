@@ -159,3 +159,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0130](0130-continuous-improvement-after-phase5.md) | Phase 5 の完了後はフェーズを切らず、継続的な機能改善として Issue を管理する | Accepted |
 | [0131](0131-store-activity-actor-as-array.md) | インポートしたアクティビティの `actor` を apex の保存形式(配列)に揃える | Accepted |
 | [0132](0132-serialize-deploys.md) | 本番・dev へのデプロイを直列に実行する | Accepted |
+| [0133](0133-lists-stored-per-user-and-filtered-on-read.md) | リストは `userInfos/{actor}/lists` に直接保存し、リストのタイムラインは読み出し時に絞り込む | Accepted |

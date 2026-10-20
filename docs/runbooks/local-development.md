@@ -204,8 +204,8 @@ streams の Follow から組み立て直す(→ [ADR-0082](../adr/0082-project-f
 
 ## Mastodon エクスポートデータのインポート
 
-pawoo.net などからエクスポートした CSV を読み込み、フォロー関係とブックマークを再登録する
-ワンショットスクリプトがある (→ [ADR-0124](../adr/0124-import-following-and-bookmarks-from-csv.md))。
+pawoo.net などからエクスポートした CSV を読み込み、フォロー関係・ブックマーク・リストを再登録する
+ワンショットスクリプトがある (→ [ADR-0124](../adr/0124-import-following-and-bookmarks-from-csv.md)、[ADR-0133](../adr/0133-lists-stored-per-user-and-filtered-on-read.md))。
 冪等であり、中断しても再実行可能。
 
 ```bash
@@ -216,6 +216,10 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importFollowing.ts
 # ブックマークのインポート
 GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importBookmarks.ts <path-to-bookmarks.csv> --dry-run
 GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importBookmarks.ts <path-to-bookmarks.csv> [--interval-ms=1000]
+
+# リストのインポート (同名のリストが無ければ作る。フォローしていない相手はフォローしてから足す。--no-follow なら飛ばす)
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importLists.ts <path-to-lists.csv> --dry-run
+GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importLists.ts <path-to-lists.csv> [--no-follow] [--interval-ms=1000]
 
 # 投稿履歴・添付メディアのアーカイブインポート (配送なし、ADR-0126・ADR-0127)
 GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/importArchive.ts <path-to-archive.tar.gz|dir|outbox.json> --dry-run

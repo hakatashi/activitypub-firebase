@@ -8,8 +8,10 @@ import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
 import type { PageParams } from '../pagination.js';
 import { isAscending, isIdInRange, lowerBoundId, takePage } from '../pagination.js';
 import { UserInfos } from '../schema.js';
+import type { ListRecord } from '../schema.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toArray, toIdArray } from '../utils.js';
 import { getFollowing } from './follows.js';
+import { getExclusiveListMembers } from './lists.js';
 import type { NoteObject } from './types.js';
 import { isNotePublicTimelineEligible, isNoteVisibleTo, noteToVisibility } from './visibility.js';
 import { getObjects } from '../store/objects.js';
@@ -105,18 +107,21 @@ const dedupeBoosts = (items: TimelineItem[]): TimelineItem[] => {
 
 // Note と Announce を混ぜて 1 ページ分集める (→ ADR-0096)。
 // 各情報源のカーソルを独立して進め、可視性チェックを通過した有効なアイテムを Mastodon ID 順にマージする。
+// `filterNotes` は可視性チェックの後の Note (ブーストは含まない) をさらに絞る (リストの replies_policy。→ ADR-0133)。
 export const collectTimelineItems = async ({
 	actors,
 	page,
 	viewer,
 	viewerFollowing,
 	includeAnnounces = true,
+	filterNotes,
 }: {
 	actors?: string[] | undefined;
 	page: PageParams;
 	viewer?: APActor | undefined;
 	viewerFollowing: Set<string>;
 	includeAnnounces?: boolean;
+	filterNotes?: ((notes: NoteObject[]) => Promise<NoteObject[]>) | undefined;
 }): Promise<TimelineItem[]> => {
 	const ascending = isAscending(page);
 	const lowerId = lowerBoundId(page);
@@ -151,12 +156,14 @@ export const collectTimelineItems = async ({
 			upper,
 			cursor: noteCursor,
 		});
-		const visible = rows
+		const visibleToViewer = rows
 			.filter(isAPNote)
 			.filter(
 				(note) =>
 					getAttributedTo(note) !== undefined && isNoteVisibleTo(note, viewer?.id, viewerFollowing),
 			);
+		const visible =
+			filterNotes === undefined ? visibleToViewer : await filterNotes(visibleToViewer);
 		const ids = await getMastodonIds(
 			visible.map((note) => ({ iri: note.id, published: note.published })),
 		);
@@ -413,14 +420,20 @@ export const getHashtagTimelineNotes = async (
 export const hasPublicHashtagNotes = async (hashtag: string): Promise<boolean> =>
 	(await getHashtagTimelineNotes({ hashtag }, { limit: 1 })).length > 0;
 
-// ホームタイムラインのアイテム (Note + Announce)。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
-export const getHomeTimelineItems = async (
-	viewer: APActor,
-	page: PageParams,
-): Promise<TimelineItem[]> => {
-	assert(viewer.id !== undefined, 'viewer.id is undefined');
-	const viewerFollowing = new Set(await getFollowing(viewer));
-	const authors = [viewer.id, ...viewerFollowing];
+// `authors` の投稿/ブーストのうち閲覧権限のあるものを、FIRESTORE_IN_QUERY_LIMIT 人ずつに分けて集めてマージする。
+const collectAuthorsTimelineItems = async ({
+	authors,
+	page,
+	viewer,
+	viewerFollowing,
+	filterNotes,
+}: {
+	authors: string[];
+	page: PageParams;
+	viewer: APActor;
+	viewerFollowing: Set<string>;
+	filterNotes?: ((notes: NoteObject[]) => Promise<NoteObject[]>) | undefined;
+}): Promise<TimelineItem[]> => {
 	const chunkedResults = await Promise.all(
 		chunk(authors, FIRESTORE_IN_QUERY_LIMIT).map((actors) =>
 			collectTimelineItems({
@@ -429,9 +442,91 @@ export const getHomeTimelineItems = async (
 				viewer,
 				viewerFollowing,
 				includeAnnounces: true,
+				filterNotes,
 			}),
 		),
 	);
 	const deduplicated = dedupeBoosts(chunkedResults.flat());
 	return takePage(deduplicated, (entry) => entry.id, page);
+};
+
+// ホームタイムラインのアイテム (Note + Announce)。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
+// `exclusive` なリストのメンバーの投稿/ブーストは載せない (→ ADR-0133 決定5)。
+export const getHomeTimelineItems = async (
+	viewer: APActor,
+	page: PageParams,
+): Promise<TimelineItem[]> => {
+	assert(viewer.id !== undefined, 'viewer.id is undefined');
+	const [following, exclusiveMembers] = await Promise.all([
+		getFollowing(viewer),
+		getExclusiveListMembers(viewer.id),
+	]);
+	const viewerFollowing = new Set(following);
+	const authors = [
+		viewer.id,
+		...[...viewerFollowing].filter((actor) => !exclusiveMembers.has(actor)),
+	];
+	return collectAuthorsTimelineItems({ authors, page, viewer, viewerFollowing });
+};
+
+// リストの replies_policy で、他人への返信を絞る (Mastodon の `FeedManager#filter_from_list?`。→ ADR-0133 決定4)。
+// 返信先の作者は返信先の Note から決め、手元に無ければ出さない。
+const filterRepliesByListPolicy =
+	(ownerId: string, list: ListRecord, viewerFollowing: Set<string>) =>
+	async (notes: NoteObject[]): Promise<NoteObject[]> => {
+		const parentIris = uniq(notes.flatMap((note) => toIdArray(note.inReplyTo).slice(0, 1)));
+		const parents = await getObjects(parentIris);
+		const parentAuthors = new Map(
+			parents.flatMap((parent) => {
+				const author = getAttributedTo(parent);
+				return typeof parent.id === 'string' && author !== undefined ? [[parent.id, author]] : [];
+			}),
+		);
+		const members = new Set(list.accounts);
+		return notes.filter((note) => {
+			const parentIri = toIdArray(note.inReplyTo)[0];
+			if (parentIri === undefined) {
+				return true;
+			}
+			const parentAuthor = parentAuthors.get(parentIri);
+			if (parentAuthor === undefined) {
+				return false;
+			}
+			if (parentAuthor === getAttributedTo(note) || parentAuthor === ownerId) {
+				return true;
+			}
+			switch (list.repliesPolicy) {
+				case 'followed':
+					return viewerFollowing.has(parentAuthor);
+				case 'list':
+					return members.has(parentAuthor);
+				default:
+					return false;
+			}
+		});
+	};
+
+// リストのタイムラインのアイテム (Note + Announce)。メンバーのうちフォロー中 (承認済み) の相手と自分の投稿/ブーストを、
+// ホームタイムラインと同じ規則で集める (→ ADR-0133 決定3)。
+export const getListTimelineItems = async (
+	viewer: APActor,
+	list: ListRecord,
+	page: PageParams,
+): Promise<TimelineItem[]> => {
+	assert(viewer.id !== undefined, 'viewer.id is undefined');
+	const viewerId = viewer.id;
+	const viewerFollowing = new Set(await getFollowing(viewer));
+	const authors = uniq(list.accounts).filter(
+		(actor) => actor === viewerId || viewerFollowing.has(actor),
+	);
+	if (authors.length === 0) {
+		return [];
+	}
+	return collectAuthorsTimelineItems({
+		authors,
+		page,
+		viewer,
+		viewerFollowing,
+		filterNotes: filterRepliesByListPolicy(viewerId, list, viewerFollowing),
+	});
 };
