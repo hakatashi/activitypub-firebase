@@ -146,9 +146,9 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
   設定した値になっていることを見る。
 - 確認後は既定の公開範囲を `public` に戻す。
 
-## Phase 4 の機能をまとめて確かめる(#231)
+## 通知・メディア・検索などをまとめて確かめる(#231)
 
-`run.mjs` が巡回しない、機能をまたいだ流れ。Phase 4 の機能に手を入れたときや、フェーズの終わりに行う(2026-10-10 に実施)。
+`run.mjs` が巡回しない、機能をまたいだ流れ。通知・メディア・検索・ブーストの表示など、ここで挙げる機能に手を入れたときに行う(2026-10-10 に実施)。
 相手は自前の `admin@mastodon-test.hakatashi.com` を使い、相手側の操作は `REMOTE_TOKEN` で Mastodon API を叩く
 ([`federation-testing.md`](federation-testing.md))。UI の操作は Playwright で、ログイン状態の作り方は `run.mjs` と同じ。
 

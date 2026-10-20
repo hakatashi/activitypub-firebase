@@ -98,6 +98,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   リダイレクトを含む**各ホップ**で名前解決した IP が unicast であることを検証する。
   DNS rebinding を防ぐため、検証済みの IP に固定した undici の `Agent` で接続する。
   レスポンスサイズ(5MB)・リダイレクト回数(5回)・タイムアウトにも上限を設ける。
+  タイムアウトは apex の `requestTimeout`(既定の 5 秒。`functions/src/apex.ts` では上書きしていない)で、
+  署名者・オブジェクト・`@context` の取得、WebFinger、配送のすべてが同じ値を使う。
   外部 `@context` の取得(`jsonldContextLoader`)と配送(`apex.deliver`)も同じ検証と IP 固定を通る。
   配送のレスポンス本文は読まずに破棄する。
 - **inbox は送信側の不正が確定したときだけ 4xx を返し、一時的な失敗では 5xx を返す**
@@ -105,9 +107,12 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   タイムアウト・DNS 解決の失敗・相手の 5xx / 408 / 429 は `TransientFetchError`
   (`functions/src/apex/pub/fetchErrors.ts`)になり、`@context` の取得がこれで失敗したら 503、
   それ以外の `@context` の取得失敗・JSON-LD 展開エラーは 400 を返す
-  (→ [ADR-0054](adr/0054-ssrf-safe-jsonld-context-loader.md))。署名検証では、キャッシュ済みの
-  署名者に公開鍵がなければ取り直してから判定する。inbox の処理中の例外は末尾のエラーハンドラ
-  (`responders.serverError`)が常に 500 にする。
+  (→ [ADR-0054](adr/0054-ssrf-safe-jsonld-context-loader.md))。`@context` のうち security/v1・activitystreams・
+  webfinger は `functions/src/apex/pub/utils.ts` の `coreContexts` に同梱しており取得しない。それ以外は
+  Firestore の `contexts` コレクションにキャッシュする。署名検証では、キャッシュ済みの
+  署名者に公開鍵がなければ取り直してから判定する。署名者の取得の失敗は、一時的か恒久的かによらず 500 を返す。
+  inbox の処理中の例外は末尾のエラーハンドラ(`responders.serverError`)が常に 500 にする
+  (恒久的な失敗まで 500 になる問題は [`known-issues.md`](known-issues.md))。
 - 受信時の参照解決(`resolveReferences`)は訪問済み IRI で循環を検出し、解決総数(既定 10 件)・
   並行度(既定 2)・再帰深さ(既定 5)に上限を設ける。`Hashtag` は解決しない
   (→ [ADR-0055](adr/0055-resolve-references-limits-and-cycle-detection.md))。

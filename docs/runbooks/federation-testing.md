@@ -68,8 +68,8 @@ export ACTOR=$DEV/activitypub/u/hakatashi
 
 相手は自前ホストの `mastodon-test.hakatashi.com` を使う
 (→ [ADR-0014](../adr/0014-self-hosted-federation-test-instance.md))。
-**pawoo.net や mstdn.jp を検証に使わないこと。** pawoo.net は Phase 5 の引っ越し元であり、
-テストでアカウントやドメインが制限されると引っ越し自体ができなくなる。
+**pawoo.net や mstdn.jp を検証に使わないこと。** どちらも本番のフォロワーが多くいるサーバー(pawoo.net は引っ越し元)であり、
+テストでアカウントやドメインが制限されると、本番のフォロワーとの連合が切れる。
 
 まだ構築していなければ、構築手順と現在の状態は `~/docs/mastodon-test-instance.md`(HakataMatrix 側)を参照。
 
@@ -516,7 +516,7 @@ functions/bin/loadTestFollowRush.sh metrics [開始UTC時刻]
 
 ## 14. アカウント別名 (alsoKnownAs) と移行前検証
 
-アカウント引っ越し(Phase 5)の前提として、移行先(dev)の actor に旧アカウントの URI が
+アカウント引っ越しの前提として、移行先(dev)の actor に旧アカウントの URI が
 `alsoKnownAs` として設定されている必要がある(→ [ADR-0121](../adr/0121-actor-aliases-via-also-known-as.md))。
 テスト用インスタンス(`mastodon-test.hakatashi.com`)のアカウントを別名に設定し、
 移行元の Mastodon 側から検証を通せることを確認する。
