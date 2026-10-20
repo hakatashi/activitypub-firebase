@@ -212,7 +212,7 @@ describe('social/archive (ADR-0126)', () => {
 			expect(converted.visibility).toBe('public');
 			expect(converted.activity.id).toBe(apex.utils.activityIdToIRI('100700785027565134'));
 			expect(converted.activity.type).toBe('Announce');
-			expect(converted.activity.actor).toBe(me.id);
+			expect(converted.activity.actor).toEqual([me.id]);
 			expect(converted.activity.object).toBe(targetNoteIri);
 			expect(converted.activity._meta?.collection).toEqual(toIdArray(me.outbox));
 		});
@@ -680,6 +680,12 @@ describe('social/archive (ADR-0126)', () => {
 			);
 
 			const updatedActivity = await apex.store.getActivity(activity.id);
+			// actor は apex の保存形式 (配列) なので array-contains で引ける (#323)
+			expect(updatedActivity?.actor).toEqual([me.id]);
+			const byActor = await Streams.where('actor', 'array-contains', me.id)
+				.where('type', '==', 'Create')
+				.get();
+			expect(byActor.docs).toHaveLength(1);
 			const embeddedNote = (updatedActivity?.object as Record<string, unknown> | undefined) ?? {};
 			const embeddedAttachments = (embeddedNote.attachment ?? []) as Array<Record<string, unknown>>;
 			expect(embeddedAttachments[0]?.url).toBe(
