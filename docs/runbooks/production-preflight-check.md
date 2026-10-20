@@ -31,7 +31,7 @@ dev(`activitypub-firebase-dev`)に向けても同じように動くので、ス�
 
 | 項目 | 正常 |
 |---|---|
-| `backfill*.ts --dry-run`(射影・`_meta`・返信数) | `written` / `deleted` / `updated` がすべて 0 |
+| `backfill*.ts --dry-run`(射影・`_meta`・返信数・`actor` の配列化) | `written` / `deleted` / `updated` がすべて 0 |
 | `assignMastodonIds.ts --dry-run` | `unassigned: 0` |
 | `backfillNotificationProjection.ts --dry-run` | `unassigned: 0`(未採番のアクティビティがない) |
 | `reconcilePendingFollows.ts --dry-run` | `pendingFollows` が空(承認漏れの Follow がない、ADR-0075) |

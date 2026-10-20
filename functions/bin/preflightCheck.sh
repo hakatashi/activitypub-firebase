@@ -49,6 +49,7 @@ if [[ " $SECTIONS " == *" data "* ]]; then
 		backfillObjectQueryMeta \
 		backfillActivityQueryMeta \
 		backfillPublishedMeta \
+		backfillActivityActorArray \
 		backfillBookmarkCursor \
 		assignMastodonIds \
 		reconcilePendingFollows; do

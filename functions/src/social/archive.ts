@@ -274,7 +274,7 @@ export const convertArchiveAnnounce = (
 	const activity: APObject = {
 		id: activityId,
 		type: 'Announce',
-		actor: localActor.id,
+		actor: [localActor.id],
 		published,
 		to,
 		cc,
@@ -324,7 +324,7 @@ export const buildArchiveCreateActivity = (
 	const activity: APObject = {
 		id: activityId,
 		type: 'Create',
-		actor: localActor.id,
+		actor: [localActor.id],
 		published: note.published,
 		to: note.to,
 		cc: note.cc,
