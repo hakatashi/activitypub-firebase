@@ -1,7 +1,8 @@
 # アカウントの引っ越し(pawoo.net → hakatashi.com)
 
 `@hakatashi@pawoo.net` から `@hakatashi@hakatashi.com` へ引っ越す手順(Epic [#10](https://github.com/hakatashi/activitypub-firebase/issues/10))。
-リハーサル(#272)と本番(#273)の両方でこの手順書どおりに実行し、リハーサルで見つかった抜けを書き足してから本番に臨む。
+リハーサル(#272)と本番(#273)の両方でこの手順書どおりに実行した。本番は 2026-10-17 15:43:45Z に Move を実行し、
+本番で起きたことは各手順に書き足したうえで「7. 本番の記録」にまとめてある。もう一度引っ越すときも、この手順書を土台にする。
 
 **引っ越しはやり直せない。** 当日に判断を迷わないよう、判断の基準はすべてここに書く。ここにない判断が必要になったら、手を止めて Issue に書く。
 
@@ -82,9 +83,15 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
 - [ ] 旧アカウントで、移行フォームの本人確認を通れることを確かめた。
   pawoo.net の `@hakatashi` は pixiv の OAuth 連携でログインしており、パスワードがない。
   Mastodon 4.1.18 の移行フォームは、パスワードが設定されていなければ**現在のユーザー名**(`hakatashi`)の入力を求める(`AccountMigration#save_with_challenge`)。
-  フォームを開いて入力欄が「現在のユーザー名」になっていることだけを確かめ、送信しない
+  フォームを開いて入力欄が「現在のユーザー名」になっていることだけを確かめ、送信しない。
+  (2026-10-15 に pawoo.net で開いたときは本人確認の入力欄が表示されなかったが、10/17 の送信は一度で成功した。
+  エラーが出ても、本人確認で弾かれた場合は何も実行されていない)
 - [ ] 旧アカウントのフォロー(`following_accounts.csv`)とブックマーク(`bookmarks.csv`)の CSV を保存した(pawoo.net の「設定 > インポート・エクスポート > データのエクスポート」)
 - [ ] 旧アカウントのフォロワー一覧を保存した(手順4。Move の後は旧アカウントのフォロワーが減っていくので、**Move の前に**保存したものを基準にする)
+- [ ] **旧サーバーの応答を計測し、actor の取得と移行フォームが安定して 10 秒未満で返る**(手順9。方法と基準は下記)。
+  旧サーバーのローカルのフォロワーの移行(旧サーバーの Sidekiq が Follow を送る)、こちらの署名の検証(旧サーバーから actor を取る)、
+  `Accept` の配送(旧サーバーの inbox)が、どれも旧サーバーの応答に依存するため。
+  2026-10-16・17 朝は pawoo.net の actor の取得の半分以上がタイムアウトし、移行フォームも 504 になったので延期した
 - [ ] 当日、Move の実行から少なくとも3時間は張り付いて監視できる
 
 ## 3. 実行の手順
@@ -140,10 +147,30 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
 ### 3.3. 当日
 
 9. **Go / No-Go を判定する。** チェックリストを上から確かめ、すべて満たしたら Go。
+   前回の点検から日が空いたら、preflight を取り直し、旧アカウントのフォロワー数が変わっていれば手順5と手順8を取り直す。
+
+   **旧サーバーの応答の計測。** 次の4つのエンドポイントを、各 60 秒でタイムアウトさせて巡回し、応答時間を記録する
+   (`curl -s -o /dev/null -m 60 -w '%{http_code} %{time_total}\n'`)。
+   まず 20 秒おきに 8 巡、良さそうなら 1 分おきに 30 巡を、Move の直前まで続ける。
+
+   | エンドポイント | 備考 |
+   |---|---|
+   | actor `https://pawoo.net/users/hakatashi`(`Accept: application/activity+json`) | 署名の検証で、相手のサーバーが取りに来るもの |
+   | `https://pawoo.net/api/v1/accounts/lookup?acct=hakatashi` | |
+   | 移行フォーム `https://pawoo.net/settings/migration` | 未ログインなので 302 |
+   | プロフィール `https://pawoo.net/@hakatashi` | |
+
+   - **Go の基準:** 60 秒のタイムアウトと 30 秒前後の応答がなく、actor の取得と移行フォームが**安定して 10 秒未満**で返る。
+     満たさなければ延期する(延期しても失うものはない。別名は無害で、事前配送の効果は数日なら残る)。
+   - 10 秒未満でも、こちらの `requestTimeout`(5 秒)を超える応答が混じるなら、Move の直後に署名の検証の一部が失敗し、
+     inbox が旧サーバーに 5xx を返すことを見込んでおく(「5. 問題が起きたときの対処」)。
+     2026-10-17 は actor の取得が 2〜6 秒中心(最大 7.7 秒)の状態で Go とした。
+   - 張り付いて監視できる時間から逆算して Move の期限を決め、それまでに基準を満たさなければ延期する。
 10. **Move を実行する。** pawoo.net の「設定 > アカウント > 別のアカウントへの引っ越し」で、
     引っ越し先に `hakatashi@hakatashi.com`、本人確認に現在のユーザー名を入力して送信する。
     - エラー「not an alias of this account」(この引っ越し先は別名に含まれていない)が出た場合、**このエラーでは何も実行されていない。**
       手順6のコマンドで `alsoKnownAs` を確かめ、直してから再試行してよい。
+    - 送信がエラー(504 など)になったら、**もう一度送信する前に**、旧アカウントの `moved` / `movedTo` とこちらの inbox に `Move` が届いたかを見て、実行されたかを確かめる。
     - 送信が成功した時刻を記録する。
 11. 監視する(「4. 監視」)。
 
@@ -169,10 +196,12 @@ Move の実行直後・1時間後・24時間後・72時間後に、次をすべ�
 - 接続のタイムアウト・証明書のエラーなど: サーバーは残っているが今は応答しない(同時点で mstdn.poyo.me、mastodon.nara.jp など)。
   一時的な障害の可能性があるので除かず、72時間後も残れば個別に連絡する候補にする
 
-WARNING とは別に、次のフォロワーは移ってこないことが分かっているので、移らなかった人数から除いて数える。
+WARNING とは別に、次のフォロワーは移ってくるかどうかが移行の成否と関係ないので、移れるはずのフォロワーの人数から除いて数える。
 
-- `activitypub-dev.hakatashi.com` の1人(dev の actor)。dev は旧アカウントをフォローしているので一覧に入るが、Move を捨てる(「6. 既知の制約」)ので
-  `not_followed`(`ALL PENDING`)のまま残る。
+- **自分の actor 2人**(`activitypub-dev.hakatashi.com` と `hakatashi.com`)。どちらも旧アカウントをフォローしているので一覧に入るが、
+  `Move` を 2xx で受け取って捨てる(「6. 既知の制約」)ので `not_followed`(`ALL PENDING`)のまま残る。
+- **旧サーバーで凍結されたアカウント**(actor が 410)。旧サーバーは凍結されたアカウントのフォローを移さず、こちらも署名者を取れない(2026-10-17 は pawoo.net の1人)。
+- **検証用インスタンス**(`mastodon-test.hakatashi.com`)のアカウント。移ってくるが、本番のフォロワーではない。
 
 2回目以降は `--skip-remote` を付けると、未達のフォロワーの WebFinger の解決を省いて速く終わる。
 
@@ -236,6 +265,9 @@ gcloud tasks list --queue=deliveryTask --location=asia-northeast1 --project=$GCL
 | `accept_delivery_failed`、相手で follow_request のまま | `deliveries/resend` で Accept を再送する。原因(相手の 5xx、署名)を `deliveries/failed` の `statusCode` / `error` で見る |
 | `follow_received_not_projected` | `reconcilePendingFollows.ts` で承認し直す。`activitypub` Function の ERROR ログで承認が失敗した原因を見る |
 | inbox が 5xx を返している | 相手は再送してくるので、慌てない。原因を特定し、直してデプロイする(下記の凍結の例外)。2026-10-13 のリハーサルでは、inbox が18分間 503 を返す最中に Move しても、復旧後に全員が移ってきた(Mastodon は復旧から約10分、Misskey は約30分以内) |
+| 旧サーバーのフォロワーの Follow に inbox が 500(`Headers Timeout Error` / `TransientFetchError`) | 旧サーバーが遅く、actor をキャッシュしていないフォロワーの署名者の取得が `requestTimeout`(5 秒)を超えている。**相手の再送で回収できるので、何もしない。** 2026-10-17 は Move の直後に pawoo.net へ 500 を 84 件返したが、約1時間で全員が移ってきた(→ [#326](https://github.com/hakatashi/activitypub-firebase/issues/326)) |
+| Follow に inbox が 503(`Dereferencing a URL did not result in a valid JSON-LD object`) | `@context` に `https://w3id.org/identity/v1` が入っている(GoToSocial 系)。#325 を直すまでは取得できずに 503 が続く。本番の Firestore の `contexts` には 2026-10-17 に Misskey が同梱しているもの(`third_party/misskey/packages/backend/src/core/activitypub/misc/contexts.ts` の `id_v1`)を手で入れてあるので、本番では起きないはず。別の context で同じことが起きたら、ユーザーの承認を得て同じ形式(`Store#saveContext`)で入れる(→ [#325](https://github.com/hakatashi/activitypub-firebase/issues/325)) |
+| フォロワーではない相手の `Block` に inbox が 500 | 旧アカウントをブロックしていた人のブロックが、Mastodon の Move の処理で移行先に引き継がれて届いている。署名者が取れない(相手が 401 を返す、旧サーバーで削除・凍結済みで 410)と 500 になる。フォロワーではないので、引っ越しには影響しない(→ [#327](https://github.com/hakatashi/activitypub-firebase/issues/327)) |
 | inbox が 4xx を返している | そのフォロワーは失われた可能性が高い。`userAgent` と時刻からサーバーを特定し、個別に連絡する候補にする。原因は直してデプロイする(凍結の例外) |
 | 特定のサーバーから誰も来ない(`ALL PENDING`) | そのサーバーで Move が捨てられた可能性(移行先の actor の取得が HTTP エラーになった、`UnavailableDomain` だった、Move に対応していない)。72時間待っても来なければ、個別に連絡する候補として一覧にする |
 | 移行フォームで「not an alias」 | 何も実行されていない。手順6で `alsoKnownAs` を確かめて再試行する |
@@ -257,17 +289,47 @@ gcloud tasks list --queue=deliveryTask --location=asia-northeast1 --project=$GCL
 
 **知らせ方。**
 
-- Move の直後: 新アカウントから引っ越しの完了を投稿する(旧アカウントは Move の後は投稿できないので、予告は手順1で済ませる)
+- Move の直後: 新アカウントから引っ越しの完了を投稿する(旧アカウントは Move の後は投稿できないので、予告は手順1で済ませる)。
+  **投稿の配送が、旧サーバーの不調で尽きることがある。** 1時間ほど後に `deliveries/failed`(「4. 監視」)で旧サーバーの sharedInbox への `Create` を探し、
+  残っていれば `deliveries/resend` で再送する(2026-10-17 は pawoo.net への5回の試行がすべて `Headers Timeout Error` で、翌日の再送で届いた)
 - 移らなかったフォロワー: 72時間後の突き合わせで `not_followed` に残った相手に、新アカウントからメンション(公開範囲はダイレクト)で、フォローし直してほしいと連絡する。
   連絡した相手と日時を #273 に記録する
 
 ## 6. 既知の制約
 
-- **Bridgy Fed(`bsky.brid.gy`)経由の Bluesky のフォロワー**(6人、2026-10-10 時点)が Move に追従するかは未確認。リハーサルでは確かめられない。
-  移行後に状態を見て、必要なら新アカウントで Bridgy Fed を有効にし直す。
+- **Bridgy Fed(`bsky.brid.gy`)経由の Bluesky のフォロワーは Move に追従しない。** 2026-10-17 は6人のうち5人が移らなかった。
+  必要なら新アカウントで Bridgy Fed を有効にし直す。
+- **旧サーバーをブロックしているサーバーのフォロワーは移らない。** Move がそもそも届かない。misskey.io は pawoo.net をブロック・凍結している
+  (`federation/show-instance` の `isBlocked` / `isSuspended`)ので、misskey.io の 18 人は Move の前から新アカウントをフォローしていた1人を除いて移らなかった。
+  個別に連絡する対象として、ほかの「移らなかった」とは分けて数える。
 - **Move に対応していないソフトウェアのフォロワーは移らない。**
 - **相手側で新アカウントへのフォローがリクエスト中のまま止まっているフォロワーは移らない。** Mastodon の `FollowService#call` は、
   `requested?` なら `change_follow_request_options!` だけを行い、Follow を送り直さない。こちらに Follow が届いていない場合は
   `migrationStatus.ts` には `not_followed` としか出ず、区別できない。Accept の失敗による停滞は、チェックリストの `deliveries/failed` で Move の前に潰す。
 - **リスト・ミュート・ブロック・お気に入りは移らない**(このプロジェクトに機能がない。→ Epic #10 のスコープ外)。
-- **dev にも `Move` が届く。** dev の `@hakatashi@activitypub-dev.hakatashi.com` は旧アカウントをフォローしているため。こちらは `Move` を 2xx で受け取って捨てる(#260、[ADR-0115](../adr/0115-inbox-4xx-only-for-sender-faults.md))。
+- **自分の actor にも `Move` が届く。** dev の `@hakatashi@activitypub-dev.hakatashi.com` と本番の `@hakatashi@hakatashi.com` は、どちらも旧アカウントをフォローしているため。
+  こちらは `Move` を 2xx で受け取って捨てる(#260、[ADR-0115](../adr/0115-inbox-4xx-only-for-sender-faults.md))。
+- **旧アカウントへのブロックは移行先に引き継がれる。** Mastodon は Move を受けると、旧アカウントをブロックしていた人のブロックを移行先にも作り、`Block` が届く(「5. 問題が起きたときの対処」)。
+
+## 7. 本番の記録(2026-10-17)
+
+詳細は [#273](https://github.com/hakatashi/activitypub-firebase/issues/273) のコメントにある。時刻は UTC。
+
+- 10/16 と 10/17 朝は Go / No-Go の他の項目をすべて満たしていたが、pawoo.net の応答が遅く(actor の取得の半分以上が 60 秒でタイムアウト、移行フォームが 504)延期した。
+  10/17 13:47Z から計測し直し、15:36Z に基準を満たしたので Go とし、15:43:45Z に Move を実行した。
+- フォロワーの移行は Move から約1時間でほぼ終わり、24 時間後・72 時間後には変化がなかった。
+
+| 72 時間後の内訳 | 人数 |
+|---|---|
+| 旧アカウントのフォロワー | 216 |
+| 除いて数える: 消えたサーバー(DNS で引けない、13 ドメイン) | 15 |
+| 除いて数える: 消えたアカウント(friends.nico 8、mstdn-workers.com 1)・サービスを終えたサーバー(qiitadon.com 1) | 10 |
+| 除いて数える: 旧サーバーで凍結されたアカウント | 1 |
+| 除いて数える: 自分の actor 2人と検証用インスタンス | 3 |
+| **移れるはずのフォロワー** | **187** |
+| **移った** | **152(81%)** |
+| 移らなかった: 旧サーバーをブロックしている(misskey.io) | 17 |
+| 移らなかった: そのほか(bsky.brid.gy 5、Move の時点で応答していなかった mstdn.poyo.me 3、証明書のエラー 4 など) | 18 |
+
+- 引っ越しの Follow に inbox が 4xx を返したことは一度もなく、承認漏れ・Accept の配送の失敗も 0 だった。
+- 起きた問題と対処は「5. 問題が起きたときの対処」の表に書き足した(署名者の取得のタイムアウト、identity/v1 の 503、`Block` の 500、引っ越しのお知らせの配送の失敗)。

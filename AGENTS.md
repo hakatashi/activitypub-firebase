@@ -12,7 +12,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 |---|---|
 | 今どういう構成になっているか | [`docs/architecture.md`](docs/architecture.md) |
 | **なぜそう作られているか** | [`docs/adr/`](docs/adr/README.md) |
-| 次に何をすべきか | [`docs/roadmap.md`](docs/roadmap.md) と各 Epic Issue(Phase 5 の後は `phase:*` ラベルのないオープンな Issue) |
+| 次に何をすべきか | オープンな GitHub Issue(進め方は [`docs/roadmap.md`](docs/roadmap.md)) |
 | 壊れている箇所・技術的負債 | [`docs/known-issues.md`](docs/known-issues.md) |
 | Mastodon API のどこまで実装したか | [`docs/mastodon-api-coverage.md`](docs/mastodon-api-coverage.md) |
 | ビルド・テスト・デプロイの方法 | [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md) |
@@ -41,30 +41,30 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 
 ### GitHub Issue
 
-**Phase 5 がこのプロジェクトの最後のフェーズである。** Phase 5 の後は継続的な機能改善とし、
-フェーズによる管理は行わない(→ [ADR-0130](docs/adr/0130-continuous-improvement-after-phase5.md))。
-以下のうち「フェーズの Issue」のルールは Phase 0〜5 の Issue にだけ適用する。
-
-#### フェーズの Issue(Phase 0〜5)
-
-- 各フェーズに Epic Issue が1本あり、子 Issue をタスクリストで束ねている。
-- **子 Issue はそのフェーズに着手する時点で作る。** 全フェーズ分を先に作らない。
-- ラベルは `phase:N` と `area:*` を付ける。着手前に ADR が必要なら `needs-adr` を付ける。
-- **Issue を新たに起票したら、作業中に見つけた follow-up も含めて、必ず次をすべて行う。**
-  1. そのフェーズの Milestone(例: `Phase 5: 引っ越し`)に追加する。
-  2. そのフェーズの Epic Issue の sub-issue に追加する
-     (`gh api -X POST repos/{owner}/{repo}/issues/{epic}/sub_issues -F sub_issue_id=<Issue の数値 id>`)。
-  3. Epic Issue の本文のタスクリストに追記する(どの Issue で見つけたかを括弧書きで添える)。
-  4. Relationship を整理する。他の Issue の前提になる・他の Issue を待つ場合は
-     GitHub の blocked by / blocking を設定し、Epic 本文の依存関係の記述とも食い違わないようにする。
-
-#### 継続改善の Issue(Phase 5 の後の作業)
-
-- **思いついた時点で起票してよい**(Phase 5 の完了前でもよい)。
-- `phase:*` ラベル・Milestone・Epic の sub-issue は付けない。`area:*` と `enhancement` / `bug` を付け、
-  着手前に ADR が必要なら `needs-adr` を付ける。
+- **思いついた時点で起票してよい。** `area:*` と、種別として `enhancement` / `bug` を付ける。
+  着手前に ADR が必要なら `needs-adr` を付ける(→ [ADR-0130](docs/adr/0130-continuous-improvement-after-phase5.md))。
+- `phase:*` ラベル・フェーズの Milestone・Epic の sub-issue は付けない(下記「過去のフェーズ」)。
 - 他の Issue の前提になる・他の Issue を待つ場合は、GitHub の blocked by / blocking を設定する。
+- 大きな機能で複数の Issue を束ねたくなったら、その機能単位の親 Issue に sub-issue をぶら下げてよい。
 - 連合を壊さないこと(配送・受信・WebFinger)を機能追加より常に優先する。
+
+#### 過去のフェーズ
+
+このプロジェクトは 2026-10 の pawoo.net からの引っ越しの完了まで、**Phase 0〜5 のフェーズに分けて進めていた。**
+各フェーズに Epic Issue と Milestone があり、Issue には `phase:N` ラベルが付いている。
+古い ADR・Issue・PR・レポートに出てくる「Phase N」はこれを指す。今はフェーズによる管理を行わない
+(→ [ADR-0130](docs/adr/0130-continuous-improvement-after-phase5.md))。
+
+| Phase | 内容 | Epic |
+|---|---|---|
+| 0 | 開発基盤 | [#5](https://github.com/hakatashi/activitypub-firebase/issues/5) |
+| 1 | 配送 | [#6](https://github.com/hakatashi/activitypub-firebase/issues/6) |
+| 2 | 受信と AP 準拠 | [#7](https://github.com/hakatashi/activitypub-firebase/issues/7) |
+| 2.5 | apex フォーク | [#103](https://github.com/hakatashi/activitypub-firebase/issues/103) |
+| 3 | Mastodon API | [#8](https://github.com/hakatashi/activitypub-firebase/issues/8) |
+| 3.5 | リファクタリング | [#181](https://github.com/hakatashi/activitypub-firebase/issues/181) |
+| 4 | 通知・メディア・検索など | [#9](https://github.com/hakatashi/activitypub-firebase/issues/9) |
+| 5 | pawoo.net からの引っ越し | [#10](https://github.com/hakatashi/activitypub-firebase/issues/10) |
 
 ### プルリクエスト
 
@@ -111,31 +111,27 @@ npm --prefix functions test           # Firestore エミュレータ + vitest
 npm --prefix functions run test:changed # 変更に関係するテストのみ実行
 ```
 
-## 現在の最優先事項
+## 現在の状態と優先事項
 
-**Phase 1(配送)・Phase 2(受信と AP 準拠)・Phase 2.5(apex フォーク)・Phase 3(Mastodon API)・
-Phase 3.5(リファクタリング)・Phase 4(通知・メディア・検索など)は完了した。**
-配送は Cloud Tasks 経由で動作し、dev 環境から実在の Mastodon インスタンスへ
-Follow / Accept / Create が届き、Like / Announce / Undo / Inbox Forwarding の受信も実地で確認済み
-(→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md)、
-[`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md))。
-apex は `functions/src/apex/` にフォークして TypeScript で保守しており、
-本体側にあった apex の回避コードはすべてフォーク内へ移して撤去済み
+**ロードマップの最終目的はすべて達成した**(→ [`docs/roadmap.md`](docs/roadmap.md))。
+2026-10-17 に pawoo.net で `Move` を実行し、`@hakatashi@hakatashi.com` が本番のアカウントになった
+(手順と本番で起きたことは [`docs/runbooks/account-migration.md`](docs/runbooks/account-migration.md))。
+**本番には実在のフォロワーがいる。** 連合を壊す変更は、そのままフォロワーを失うことにつながる。
+
+配送は Cloud Tasks 経由で動作し(→ [ADR-0003](docs/adr/0003-delivery-via-cloud-tasks.md))、
+Follow / Accept / Create / Like / Announce / Undo / Inbox Forwarding を実在のインスタンスとの間で確認済み
+(→ [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md))。
+apex は `functions/src/apex/` にフォークして TypeScript で保守している
 (→ [ADR-0040](docs/adr/0040-fork-activitypub-express.md)、
 [ADR-0042](docs/adr/0042-apex-fork-responsibility-boundary.md))。
 **apex の不具合はフォーク側で直す。本体側に回避コードを書かない。**
 
-Mastodon API は Elk / Phanpy から投稿・閲覧・タイムラインのページングが一通りでき、
-時系列順の Mastodon ID(→ [ADR-0006](docs/adr/0006-mastodon-api-id-scheme.md))で
-ページネーションしている。Phase 4 で通知・メディア添付・お気に入り / ブックマーク一覧・
-タイムラインへのブーストの表示・検索(アカウントと URL の解決、ハッシュタグ)・アバター / ヘッダーの変更が揃い、
-Elk / Phanpy と実在インスタンスの間で一通り確認した。通知などのユーザー別のデータは、
-Store がアクティビティを書き換えるのと同じトランザクションで `userInfos/{actor}` のサブコレクションに射影する
-(→ [ADR-0082](docs/adr/0082-project-follow-relations-in-store.md)、[ADR-0088](docs/adr/0088-project-notifications-in-store.md))。クライアントでの確認は
-[`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) の手順で行う。
+Mastodon API は Elk / Phanpy から投稿・閲覧・タイムライン・通知・メディア添付・検索などが一通りでき、
+時系列順の Mastodon ID(→ [ADR-0006](docs/adr/0006-mastodon-api-id-scheme.md))でページネーションしている。
+通知などのユーザー別のデータは、Store がアクティビティを書き換えるのと同じトランザクションで
+`userInfos/{actor}` のサブコレクションに射影する
+(→ [ADR-0082](docs/adr/0082-project-follow-relations-in-store.md)、[ADR-0088](docs/adr/0088-project-notifications-in-store.md))。
+クライアントでの確認は [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) の手順で行う。
 
-次は **Phase 5(pawoo.net からの引っ越し、Epic
-[#10](https://github.com/hakatashi/activitypub-firebase/issues/10))**(→ [`docs/roadmap.md`](docs/roadmap.md))。
-移行はやり直せないため、着手時に Epic の前提条件と完了条件を読み直すこと。
-Phase 5 の完了をもってフェーズによる管理は終わり、以後は継続改善の Issue を順に片付ける
-(→ [ADR-0130](docs/adr/0130-continuous-improvement-after-phase5.md))。
+以後は継続改善の Issue を順に片付ける(→ [ADR-0130](docs/adr/0130-continuous-improvement-after-phase5.md))。
+引っ越しで見つかった問題(inbox が恒久的な失敗にも 5xx を返すなど)は [`docs/known-issues.md`](docs/known-issues.md) にある。

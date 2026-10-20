@@ -141,5 +141,5 @@ jobs:
           if [ -n "$EXISTING_ISSUE" ]; then
             gh issue comment "$EXISTING_ISSUE" --repo "$REPO" --body "$BODY"
           else
-            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label "area:infra,phase:5"
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" --label "area:infra,bug"
           fi

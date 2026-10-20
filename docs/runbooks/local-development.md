@@ -234,7 +234,7 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/deleteLocalStatuse
 
 ## アカウント移行の進捗確認と事前配送 (migrationStatus)
 
-pawoo.net からの引っ越し (Phase 5) で、フォロワーの移行進捗の可視化と相手サーバーへの事前配送を行うスクリプトがある (→ [ADR-0125](../adr/0125-migration-progress-reconciliation-and-pre-delivery.md))。
+pawoo.net からの引っ越し ([account-migration.md](account-migration.md)) で、フォロワーの移行進捗の可視化と相手サーバーへの事前配送を行うスクリプトがある (→ [ADR-0125](../adr/0125-migration-progress-reconciliation-and-pre-delivery.md))。
 
 ```bash
 # 1. 旧アカウントのフォロワー一覧を取得して保存 (Move の前に必ず実行)
