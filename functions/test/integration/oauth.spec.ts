@@ -156,6 +156,8 @@ describe('oauth', () => {
 				});
 				expect(response.status).toBe(200);
 				expect(response.text).toContain('name="client_id" id="client_id" value="client-id"');
+				expect(response.text).toContain('name="viewport"');
+				expect(response.text).toContain('<li>read</li>');
 			} finally {
 				credentialSpy.mockRestore();
 			}

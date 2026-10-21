@@ -190,7 +190,17 @@ router.get('/authorize', async (req, res) => {
 					<head>
 						<meta charset="utf-8">
 						<meta name="firebaseConfig" content="${JSON.stringify(config)}">
+						<meta name="viewport" content="width=device-width, initial-scale=1">
 						<title>Authorize</title>
+						<style>
+							body { font-family: system-ui, sans-serif; font-size: 16px; line-height: 1.6; max-width: 32rem; margin: 0 auto; padding: 1rem; }
+							h1 { font-size: 1.25rem; }
+							dl { margin: 1rem 0; }
+							dt { font-weight: bold; margin-top: 0.75rem; }
+							dd { margin: 0; overflow-wrap: anywhere; }
+							ul { margin: 0; padding-left: 1.25rem; }
+							button { display: block; width: 100%; min-height: 3rem; margin-top: 1.5rem; font-size: 1.125rem; font-weight: bold; }
+						</style>
 						<script defer src="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.js"></script>
 						<script defer src="https://www.gstatic.com/firebasejs/10.1.0/firebase-app-compat.js"></script>
 						<script defer src="https://www.gstatic.com/firebasejs/10.1.0/firebase-auth-compat.js"></script>
@@ -229,7 +239,15 @@ router.get('/authorize', async (req, res) => {
 					<body>
 						<div id="firebaseui-auth-container"></div>
 						<div id="authenticated" style="display: none;">
-							<pre>${JSON.stringify(req.query, null, '  ')}</pre>
+							<h1>アクセスの承認</h1>
+							<dl>
+								<dt>クライアント ID</dt>
+								<dd>${clientId}</dd>
+								<dt>リダイレクト先</dt>
+								<dd>${redirectUri}</dd>
+								<dt>要求する権限</dt>
+								<dd><ul><!-- SCOPES --></ul></dd>
+							</dl>
 							<form action="/oauth/authorize" accept-charset="UTF-8" method="post">
 								<input type="hidden" name="client_id" id="client_id" value="${clientId}" autocomplete="off">
 								<input type="hidden" name="redirect_uri" id="redirect_uri" value="${redirectUri}" autocomplete="off">
@@ -244,10 +262,17 @@ router.get('/authorize', async (req, res) => {
 				</html>
 			`;
 
-	const renderedHtml =
+	const scopeItems = scope
+		.split(/\s+/)
+		.filter((item) => item !== '')
+		.map((item) => `<li>${htmlEscape(item)}</li>`)
+		.join('');
+
+	const renderedHtml = (
 		extraInputs.length > 0
 			? baseHtml.replace('<!-- EXTRA_INPUTS -->', extraInputs.join('\n\t\t\t\t\t\t\t\t'))
-			: baseHtml.replace('<!-- EXTRA_INPUTS -->\n', '');
+			: baseHtml.replace('<!-- EXTRA_INPUTS -->\n', '')
+	).replace('<!-- SCOPES -->', () => scopeItems);
 
 	res.status(200).contentType('text/html').send(renderedHtml);
 });
