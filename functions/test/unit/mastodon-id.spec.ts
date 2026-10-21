@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import {
 	buildMastodonId,
+	clearMastodonIdCache,
+	findMastodonIds,
 	getIriByMastodonId,
 	getMastodonIds,
 	getOrAssignMastodonId,
@@ -12,7 +14,7 @@ import {
 	toPublishedSortKey,
 } from '../../src/mastodonId.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
-import { MastodonIds } from '../../src/schema.js';
+import { MastodonIds, MastodonIdsByIri } from '../../src/schema.js';
 import Store from '../../src/store/index.js';
 import { resetFirestore } from '../helpers/index.js';
 
@@ -172,6 +174,35 @@ describe('Mastodon ID mapping (Firestore)', () => {
 		const newId = result.get('https://example.com/objects/new');
 		expect(newId).toBeDefined();
 		expect(compareIds(existing, newId ?? '')).toBeLessThan(0);
+	});
+
+	test('caches mappings in both directions without reading Firestore again', async () => {
+		const iri = 'https://example.com/objects/cached';
+		const id = await getOrAssignMastodonId(iri, '2023-06-01T00:00:00.000Z');
+		// 採番した直後から両方向をキャッシュしているので、Firestore 側を消しても返る。
+		await MastodonIds.doc(escapeFirestoreKey(id)).delete();
+		await MastodonIdsByIri.doc(escapeFirestoreKey(iri)).delete();
+		expect(await findMastodonIds([iri, iri])).toEqual(new Map([[iri, id]]));
+		expect(await getIriByMastodonId(id)).toBe(iri);
+
+		clearMastodonIdCache();
+		expect(await findMastodonIds([iri])).toEqual(new Map());
+		expect(await getIriByMastodonId(id)).toBeUndefined();
+	});
+
+	test('caches mappings read from Firestore, but not missing ones', async () => {
+		const iri = 'https://example.com/objects/read';
+		const id = await getOrAssignMastodonId(iri, '2023-06-01T00:00:00.000Z');
+		clearMastodonIdCache();
+		expect(await getIriByMastodonId(id)).toBe(iri);
+		await MastodonIdsByIri.doc(escapeFirestoreKey(iri)).delete();
+		// ID → IRI を読んだときに IRI → ID も覚えている。
+		expect(await findMastodonIds([iri])).toEqual(new Map([[iri, id]]));
+
+		const laterIri = 'https://example.com/objects/later';
+		expect(await findMastodonIds([laterIri])).toEqual(new Map());
+		const laterId = await getOrAssignMastodonId(laterIri, '2023-06-01T00:00:00.000Z');
+		expect(await findMastodonIds([laterIri])).toEqual(new Map([[laterIri, laterId]]));
 	});
 
 	test('Store#saveObject and Store#saveActivity assign ids', async () => {

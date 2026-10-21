@@ -163,3 +163,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0134](0134-lists-stored-per-user-and-filtered-on-read.md) | リストは `userInfos/{actor}/lists` に直接保存し、リストのタイムラインは読み出し時に絞り込む | Accepted (決定 3 は ADR-0136 で Superseded) |
 | [0135](0135-cache-following-by-projection-version.md) | フォロー中の一覧を、射影のバージョンを見てインスタンス内にキャッシュする | Accepted |
 | [0136](0136-fan-out-home-and-list-timelines-on-write.md) | ホーム・リストのタイムラインを書き込み時に射影し(fan-out on write)、読み出し時に検証する | Accepted |
+| [0137](0137-cache-mastodon-id-mapping-in-instance.md) | IRI と Mastodon ID の対応をインスタンス内にキャッシュする | Accepted |

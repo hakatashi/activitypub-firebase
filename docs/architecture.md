@@ -343,6 +343,8 @@ API で露出する Status などの ID は AP IRI とは別に採番した、�
 [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md))。`functions/src/mastodonId.ts` が採番と相互変換を担い、
 `Store#saveObject` / `Store#saveActivity` が保存と同じトランザクションで `published` を基準に採番する。
 読み出し時(`getMastodonIds`)に未採番の IRI があればその場で採番する。
+対応は採番後に変わらないので、トランザクションの外での読み取り(`findMastodonIds` / `getIriByMastodonId`)は
+インスタンス内の LRU キャッシュを先に見る(→ [ADR-0137](adr/0137-cache-mastodon-id-mapping-in-instance.md))。
 既存データのバックフィルは `functions/bin/assignMastodonIds.ts`。
 ローカルの Note の Status の `url` は `https://<Mastodon ドメイン>/@hakatashi/<Mastodon ID>`(上記の HTML のページ)、リモートの Note は Note の `url` か IRI(→ [ADR-0107](adr/0107-minimal-html-status-page-for-link-previews.md))。
 
