@@ -15,6 +15,7 @@ import {
 	metaIndexPath,
 } from '../meta.js';
 import { prepareProjectionUpdates } from '../projections/index.js';
+import { prepareTimelineFeedUpdate } from '../projections/timelineFeeds.js';
 import { Contexts, Objects, Streams } from '../schema.js';
 import { isAPAnnounce, toIdArray } from '../utils.js';
 import { enqueueDeliveryTasks } from './deliveries.js';
@@ -115,11 +116,18 @@ export default class Store extends IApexStore implements ApexStore {
 			if (replies.meta !== undefined) {
 				objectWithId._meta = { ...objectWithId._meta, ...replies.meta };
 			}
+			// 新規の Note はホーム・リストのタイムラインの射影にも書く (→ ADR-0136)。
+			const commitFeed = await prepareTimelineFeedUpdate(transaction, doc.data(), objectWithId);
 			// 新規・既存を問わず Mastodon ID のマッピングを保証する (→ ADR-0058)。
 			// 読み取りを伴うため、トランザクション内の書き込みより前に呼ぶ。
-			await getOrAssignMastodonIdInTransaction(transaction, objectId, objectWithId.published);
+			const mastodonId = await getOrAssignMastodonIdInTransaction(
+				transaction,
+				objectId,
+				objectWithId.published,
+			);
 			transaction.set(docRef, objectWithId);
 			replies.commit();
+			commitFeed?.(mastodonId);
 		});
 		return true;
 	}

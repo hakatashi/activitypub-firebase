@@ -160,5 +160,6 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0131](0131-store-activity-actor-as-array.md) | インポートしたアクティビティの `actor` を apex の保存形式(配列)に揃える | Accepted |
 | [0132](0132-serialize-deploys.md) | 本番・dev へのデプロイを直列に実行する | Accepted |
 | [0133](0133-non-expiring-access-tokens.md) | アクセストークンを無期限にする | Accepted |
-| [0134](0134-lists-stored-per-user-and-filtered-on-read.md) | リストは `userInfos/{actor}/lists` に直接保存し、リストのタイムラインは読み出し時に絞り込む | Accepted |
+| [0134](0134-lists-stored-per-user-and-filtered-on-read.md) | リストは `userInfos/{actor}/lists` に直接保存し、リストのタイムラインは読み出し時に絞り込む | Accepted (決定 3 は ADR-0136 で Superseded) |
 | [0135](0135-cache-following-by-projection-version.md) | フォロー中の一覧を、射影のバージョンを見てインスタンス内にキャッシュする | Accepted |
+| [0136](0136-fan-out-home-and-list-timelines-on-write.md) | ホーム・リストのタイムラインを書き込み時に射影し(fan-out on write)、読み出し時に検証する | Accepted |

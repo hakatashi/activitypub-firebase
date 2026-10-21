@@ -175,9 +175,10 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。ブックマークは一覧のカーソル `cursorId` を持つ(→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
 | `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
-| `userInfos/{actor}/projectionVersions` | 射影の名前(`following`) | 射影のバージョン。`updateTime` を読み取り側のキャッシュの無効化に使う(→ [ADR-0135](adr/0135-cache-following-by-projection-version.md)) |
+| `userInfos/{actor}/projectionVersions` | 射影の名前(`following` / `timelineFeeds`) | 射影のバージョン。`updateTime` を読み取り側のキャッシュの無効化に使う(→ [ADR-0135](adr/0135-cache-following-by-projection-version.md))。`timelineFeeds` はタイムラインの射影から読むためのマーカー(→ [ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md)) |
 | `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | `userInfos/{actor}/lists` | リスト ID(作成時刻から作る Mastodon ID 形式の値) | リスト。タイトル・`replies_policy`・`exclusive` とメンバーの actor IRI の配列。API が直接書く(→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
+| `userInfos/{actor}/homeFeed` / `userInfos/{actor}/lists/{リスト ID}/feed` | Note / Announce の Mastodon ID | ホーム・リストのタイムラインの射影。Note / Announce の新規保存と同じトランザクションで書く候補で、読み出し時に判定し直す(→ [ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md)) |
 | `userInfos/{actor}/notifications` | エスケープしたアクティビティ IRI | 通知の射影。受信したアクティビティ(Create / Like / Announce / Follow)を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0088](adr/0088-project-notifications-in-store.md)) |
 | `markers` | `エスケープした actor IRI_タイムライン名` | `/api/v1/markers` の既読位置(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md)) |
 | `mediaAttachments` | Mastodon ID(20 桁の数字) | アップロードされたメディアのメタデータ(→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
@@ -278,6 +279,17 @@ Follow を書き換える Store の処理と同じトランザクションで差
 取り消し(Undo)による `Store#removeActivity` で元のアクティビティが消えたとき、同じトランザクションで通知も消す。
 既存データからの組み立て直しには `functions/bin/backfillNotificationProjection.ts` を使う。
 
+ホーム・リストのタイムラインは `userInfos/{actor}/homeFeed/{Mastodon ID}` と
+`userInfos/{actor}/lists/{リスト ID}/feed/{Mastodon ID}` に射影している(fan-out on write。
+`functions/src/projections/timelineFeeds.ts`、→ [ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md))。
+`Store#saveObject` が Note を、`Store#saveActivity` が Announce を新規に保存するとき、作者がローカル actor か
+following の射影(承認待ちを含む)にあれば、同じトランザクションでホームと、作者をメンバーに含むリストへ書く。
+射影は候補で、読み出し時に作者・可視性・ブースト先・`replies_policy`・重複ブーストを従来と同じ規則で判定し直すので、
+フォロー解除や削除では消さない。フォロー時(`followActor`)とリストへの追加時は相手の最新の Note / Announce を
+各 200 件まで射影へ入れ、リストの削除ではリストの射影ごと消す。
+`userInfos/{actor}/projectionVersions/timelineFeeds` がある間だけ射影から読み、無ければ従来どおり `objects` /
+`streams` を作者で絞って読む。射影の組み立て直しとこのマーカーの書き込みは `functions/bin/backfillTimelineFeeds.ts` で行う。
+
 ## ソーシャル・タイムライン層 (social/)
 
 `functions/src/social/` 以下。Mastodon API 表現や HTTP ルーティングから独立した、純粋なソーシャルグラフ探索・タイムライン収集・スレッド走査のドメイン層(→ [ADR-0080](adr/0080-social-domain-layer-and-dependency-direction.md))。
@@ -285,7 +297,7 @@ Follow を書き換える Store の処理と同じトランザクションで差
 | ファイル | 役割 |
 |---|---|
 | `follows.ts` | 射影からのフォロー関係の読み取り(フォロー中・承認待ち・フォロワー、相手ごとの関係 `getFollowFlags`、相手への代表の Follow `getFollowIri`、一覧のページング)、および古い重複 Follow の削除(`removeSupersededFollows`) |
-| `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ハッシュタグ・ホーム・リストのタイムラインの収集(重複ブースト排除・可視性判定、ホームからの `exclusive` なリストのメンバーの除外、リストの `replies_policy` を含む。→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
+| `timelines.ts` | Note・Announce コレクションのカーソル走査(`collectVisibleNotes` / `collectTimelineItems`)、アカウント投稿・公開・ハッシュタグ・ホーム・リストのタイムラインの収集(射影からの読み出し、重複ブースト排除・可視性判定、ホームからの `exclusive` なリストのメンバーの除外、リストの `replies_policy` を含む。→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)、[ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md)) |
 | `lists.ts` | リストの作成・更新・削除とメンバーの追加・削除(フォロー中・承認待ちの相手と自分のみ)、アカウントを含むリスト・`exclusive` なリストのメンバーの取得(→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
 | `threads.ts` | Note のスレッド祖先・子孫探索(`getThreadAncestors`, `getThreadDescendants`) |
 | `search.ts` | アカウント検索(`preferredUsername` の前方一致・acct)、ハッシュタグの完全一致検索と、URL・acct からのリモートの actor / Note の解決(WebFinger と `remoteResolution.ts` による取得。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |

@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import type { CollectionReference, QueryDocumentSnapshot } from '@google-cloud/firestore';
 import { chunk, uniq } from 'lodash-es';
 import type { APActor } from 'activitypub-types';
 import type { APObject } from '../apex/index.js';
@@ -7,8 +8,9 @@ import { getObjectHashtags } from '../hashtags.js';
 import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
 import type { PageParams } from '../pagination.js';
 import { isAscending, isIdInRange, lowerBoundId, takePage } from '../pagination.js';
-import { UserInfos } from '../schema.js';
-import type { ListRecord } from '../schema.js';
+import { timelineFeedsMarkerRef } from '../projections/timelineFeeds.js';
+import { HomeFeed, ListFeed, UserInfos } from '../schema.js';
+import type { ListRecord, TimelineFeedEntry } from '../schema.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toArray, toIdArray } from '../utils.js';
 import { getFollowing } from './follows.js';
 import { getExclusiveListMembers } from './lists.js';
@@ -17,7 +19,7 @@ import { isNotePublicTimelineEligible, isNoteVisibleTo, noteToVisibility } from 
 import { getObjects } from '../store/objects.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../store/limits.js';
 import { getNotes } from '../store/notes.js';
-import { getAnnounces } from '../store/activities.js';
+import { getActivities, getAnnounces } from '../store/activities.js';
 
 // 可視性で落ちる分を見込んで、1回の Firestore クエリではこの倍数だけ多めに読む。
 const TIMELINE_FETCH_FACTOR = 3;
@@ -103,6 +105,22 @@ const dedupeBoosts = (items: TimelineItem[]): TimelineItem[] => {
 		}
 	}
 	return items.filter((item) => item.type === 'note' || keptAnnounceIds.has(item.id));
+};
+
+// ブースト先の Note が手元にあり、public / unlisted で、viewer に見えるか (→ ADR-0096 決定4)。
+const isVisibleBoostTarget = (
+	targetNote: NoteObject | undefined,
+	viewer: APActor | undefined,
+	viewerFollowing: Set<string>,
+): targetNote is NoteObject => {
+	if (targetNote === undefined) {
+		return false;
+	}
+	const targetVis = noteToVisibility(targetNote);
+	return (
+		(targetVis === 'public' || targetVis === 'unlisted') &&
+		isNoteVisibleTo(targetNote, viewer?.id, viewerFollowing)
+	);
 };
 
 // Note と Announce を混ぜて 1 ページ分集める (→ ADR-0096)。
@@ -221,17 +239,9 @@ export const collectTimelineItems = async ({
 		for (const activity of validAnnounces) {
 			const targetIri = toIdArray(activity.object)[0] as string;
 			const targetNote = targetNotesMap.get(targetIri);
-			if (targetNote === undefined) {
-				continue;
+			if (isVisibleBoostTarget(targetNote, viewer, viewerFollowing)) {
+				eligibleAnnounces.push({ activity, targetNote });
 			}
-			const targetVis = noteToVisibility(targetNote);
-			if (targetVis !== 'public' && targetVis !== 'unlisted') {
-				continue;
-			}
-			if (!isNoteVisibleTo(targetNote, viewer?.id, viewerFollowing)) {
-				continue;
-			}
-			eligibleAnnounces.push({ activity, targetNote });
 		}
 
 		const ids = await getMastodonIds(
@@ -420,6 +430,125 @@ export const getHashtagTimelineNotes = async (
 export const hasPublicHashtagNotes = async (hashtag: string): Promise<boolean> =>
 	(await getHashtagTimelineNotes({ hashtag }, { limit: 1 })).length > 0;
 
+// タイムラインの射影 (→ ADR-0136) を読むとき、判定で落ちる分を見込んで limit より多めに読む。
+const MIN_FEED_FETCH_SIZE = 20;
+
+// タイムラインの射影から読めるか (→ ADR-0136 決定5)。マーカーが無ければ従来の方式で読む。
+const isTimelineFeedReady = async (actorId: string) =>
+	(await timelineFeedsMarkerRef(escapeFirestoreKey(actorId)).get()).exists;
+
+// 射影のエントリの本体を引き、従来の読み出しと同じ判定を通ったものだけをタイムラインのアイテムにする (→ ADR-0136 決定3)。
+const resolveFeedEntries = async ({
+	entries,
+	viewer,
+	viewerFollowing,
+	filterNotes,
+}: {
+	entries: TimelineFeedEntry[];
+	viewer: APActor;
+	viewerFollowing: Set<string>;
+	filterNotes?: ((notes: NoteObject[]) => Promise<NoteObject[]>) | undefined;
+}): Promise<TimelineItem[]> => {
+	const announceEntries = entries.filter((entry) => entry.type === 'announce');
+	const [objects, activities] = await Promise.all([
+		// Status の件数に使う `_meta` 付きで読む (→ ADR-0102)。
+		getObjects(
+			entries
+				.flatMap((entry) => (entry.type === 'note' ? [entry.iri] : []))
+				.concat(
+					announceEntries.flatMap((entry) => (entry.objectIri === null ? [] : [entry.objectIri])),
+				),
+			true,
+		),
+		getActivities(announceEntries.map((entry) => entry.iri)),
+	]);
+	const notesByIri = new Map(objects.filter(isAPNote).map((note) => [note.id, note]));
+	const announcesByIri = new Map(activities.filter(isAPAnnounce).map((row) => [row.id, row]));
+
+	const visibleNotes = entries.flatMap((entry) => {
+		const note = entry.type === 'note' ? notesByIri.get(entry.iri) : undefined;
+		return note !== undefined &&
+			getAttributedTo(note) !== undefined &&
+			isNoteVisibleTo(note, viewer.id, viewerFollowing)
+			? [note]
+			: [];
+	});
+	const keptNoteIris = new Set(
+		(filterNotes === undefined ? visibleNotes : await filterNotes(visibleNotes)).map(
+			(note) => note.id,
+		),
+	);
+
+	return entries.flatMap((entry): TimelineItem[] => {
+		if (entry.type === 'note') {
+			const note = notesByIri.get(entry.iri);
+			return note !== undefined && keptNoteIris.has(note.id)
+				? [{ type: 'note', id: entry.id, note }]
+				: [];
+		}
+		const activity = announcesByIri.get(entry.iri);
+		if (activity === undefined || !isNoteVisibleTo(activity, viewer.id, viewerFollowing)) {
+			return [];
+		}
+		const targetNote = notesByIri.get(toIdArray(activity.object)[0] ?? '');
+		return isVisibleBoostTarget(targetNote, viewer, viewerFollowing)
+			? [{ type: 'announce', id: entry.id, activity, targetNote }]
+			: [];
+	});
+};
+
+// タイムラインの射影を Mastodon ID 順に読み、`isAuthorIncluded` と可視性などの判定を通ったものを
+// limit 件集める (→ ADR-0136)。足りなければカーソルを進めて読み足す。
+const collectFeedItems = async ({
+	feed,
+	page,
+	viewer,
+	viewerFollowing,
+	isAuthorIncluded,
+	filterNotes,
+}: {
+	feed: CollectionReference<TimelineFeedEntry>;
+	page: PageParams;
+	viewer: APActor;
+	viewerFollowing: Set<string>;
+	isAuthorIncluded: (actor: string) => boolean;
+	filterNotes?: ((notes: NoteObject[]) => Promise<NoteObject[]>) | undefined;
+}): Promise<TimelineItem[]> => {
+	const lowerId = lowerBoundId(page);
+	const fetchSize = Math.max(page.limit + Math.ceil(page.limit / 2), MIN_FEED_FETCH_SIZE);
+	// ドキュメント ID の降順の走査はできないので、同じ値を持つ `id` で並べる。
+	let query = feed.orderBy('id', isAscending(page) ? 'asc' : 'desc');
+	if (page.maxId !== undefined) {
+		query = query.where('id', '<', page.maxId);
+	}
+	if (lowerId !== undefined) {
+		query = query.where('id', '>', lowerId);
+	}
+
+	const collected: TimelineItem[] = [];
+	let cursor: QueryDocumentSnapshot<TimelineFeedEntry> | undefined;
+	for (
+		let round = 0;
+		round < MAX_TIMELINE_FETCH_ROUNDS && dedupeBoosts(collected).length < page.limit;
+		round++
+	) {
+		const snapshot = await (cursor === undefined ? query : query.startAfter(cursor))
+			.limit(fetchSize)
+			.get();
+		const entries = snapshot.docs
+			.map((doc) => doc.data())
+			.filter((entry) => isAuthorIncluded(entry.actor));
+		collected.push(
+			...(await resolveFeedEntries({ entries, viewer, viewerFollowing, filterNotes })),
+		);
+		cursor = snapshot.docs.at(-1);
+		if (snapshot.docs.length < fetchSize) {
+			break;
+		}
+	}
+	return takePage(dedupeBoosts(collected), (entry) => entry.id, page);
+};
+
 // `authors` の投稿/ブーストのうち閲覧権限のあるものを、FIRESTORE_IN_QUERY_LIMIT 人ずつに分けて集めてマージする。
 const collectAuthorsTimelineItems = async ({
 	authors,
@@ -451,17 +580,29 @@ const collectAuthorsTimelineItems = async ({
 };
 
 // ホームタイムラインのアイテム (Note + Announce)。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
-// `exclusive` なリストのメンバーの投稿/ブーストは載せない (→ ADR-0134 決定5)。
+// `exclusive` なリストのメンバーの投稿/ブーストは載せない (→ ADR-0134 決定5)。射影があればそこから読む (→ ADR-0136)。
 export const getHomeTimelineItems = async (
 	viewer: APActor,
 	page: PageParams,
 ): Promise<TimelineItem[]> => {
 	assert(viewer.id !== undefined, 'viewer.id is undefined');
-	const [following, exclusiveMembers] = await Promise.all([
+	const viewerId = viewer.id;
+	const [following, exclusiveMembers, feedReady] = await Promise.all([
 		getFollowing(viewer),
-		getExclusiveListMembers(viewer.id),
+		getExclusiveListMembers(viewerId),
+		isTimelineFeedReady(viewerId),
 	]);
 	const viewerFollowing = new Set(following);
+	if (feedReady) {
+		return collectFeedItems({
+			feed: HomeFeed(escapeFirestoreKey(viewerId)),
+			page,
+			viewer,
+			viewerFollowing,
+			isAuthorIncluded: (actor) =>
+				actor === viewerId || (viewerFollowing.has(actor) && !exclusiveMembers.has(actor)),
+		});
+	}
 	const authors = [
 		viewer.id,
 		...[...viewerFollowing].filter((actor) => !exclusiveMembers.has(actor)),
@@ -507,7 +648,7 @@ const filterRepliesByListPolicy =
 	};
 
 // リストのタイムラインのアイテム (Note + Announce)。メンバーのうちフォロー中 (承認済み) の相手と自分の投稿/ブーストを、
-// ホームタイムラインと同じ規則で集める (→ ADR-0134 決定3)。
+// ホームタイムラインと同じ規則で集める。射影があればそこから読む (→ ADR-0136)。
 export const getListTimelineItems = async (
 	viewer: APActor,
 	list: ListRecord,
@@ -515,18 +656,28 @@ export const getListTimelineItems = async (
 ): Promise<TimelineItem[]> => {
 	assert(viewer.id !== undefined, 'viewer.id is undefined');
 	const viewerId = viewer.id;
-	const viewerFollowing = new Set(await getFollowing(viewer));
+	const [following, feedReady] = await Promise.all([
+		getFollowing(viewer),
+		isTimelineFeedReady(viewerId),
+	]);
+	const viewerFollowing = new Set(following);
 	const authors = uniq(list.accounts).filter(
 		(actor) => actor === viewerId || viewerFollowing.has(actor),
 	);
 	if (authors.length === 0) {
 		return [];
 	}
-	return collectAuthorsTimelineItems({
-		authors,
-		page,
-		viewer,
-		viewerFollowing,
-		filterNotes: filterRepliesByListPolicy(viewerId, list, viewerFollowing),
-	});
+	const filterNotes = filterRepliesByListPolicy(viewerId, list, viewerFollowing);
+	if (feedReady) {
+		const authorSet = new Set(authors);
+		return collectFeedItems({
+			feed: ListFeed(escapeFirestoreKey(viewerId), toFirestoreKey(list.id)),
+			page,
+			viewer,
+			viewerFollowing,
+			isAuthorIncluded: (actor) => authorSet.has(actor),
+			filterNotes,
+		});
+	}
+	return collectAuthorsTimelineItems({ authors, page, viewer, viewerFollowing, filterNotes });
 };
