@@ -7,6 +7,7 @@ import { apex } from '../apex.js';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { localActorId, localFollowersId, localInboxId } from '../localActor.js';
 import { metaIndexPath } from '../meta.js';
+import { followingVersionRef } from '../projections/follows.js';
 import type { PageParams } from '../pagination.js';
 import { isAscending, lowerBoundId } from '../pagination.js';
 import { FollowRelations, Streams } from '../schema.js';
@@ -47,9 +48,45 @@ const relations = (actor: APActor, side: FollowRelationSide) => {
 
 const toActorIris = (docs: { data: () => FollowRelation }[]) => docs.map((doc) => doc.data().actor);
 
+interface FollowingCacheEntry {
+	version: string;
+	fetchedAt: number;
+	following: string[];
+}
+
+// フォロー中の一覧のインスタンス内キャッシュ (→ ADR-0135)。キーはローカル actor の IRI。
+const followingCache = new Map<string, FollowingCacheEntry>();
+
+// バージョンを見落とす書き込み (コンソールでの手直しなど) に備えた上限。
+const FOLLOWING_CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+
 // viewer がフォロー中 (相手が Accept 済み) の actor IRI の配列を返す。
-export const getFollowing = async (actor: APActor): Promise<string[]> =>
-	toActorIris((await relations(actor, 'following').where('state', '==', 'accepted').get()).docs);
+// 射影のバージョン (1 回の読み取り) が前回と同じなら、全件を読み直さずキャッシュを返す (→ ADR-0135)。
+export const getFollowing = async (actor: APActor): Promise<string[]> => {
+	assert(actor.id !== undefined, 'actor.id is undefined');
+	// 一覧より先にバージョンを読む。逆順だと、間に挟まった書き込みの前の一覧を新しいバージョンで覚えてしまう。
+	const versionDoc = await followingVersionRef(escapeFirestoreKey(actor.id)).get();
+	const version = versionDoc.updateTime?.valueOf();
+	const cached = followingCache.get(actor.id);
+	if (
+		version !== undefined &&
+		cached?.version === version &&
+		Date.now() - cached.fetchedAt < FOLLOWING_CACHE_MAX_AGE_MS
+	) {
+		return [...cached.following];
+	}
+	const fetchedAt = Date.now();
+	const following = toActorIris(
+		(await relations(actor, 'following').where('state', '==', 'accepted').get()).docs,
+	);
+	// バージョンのドキュメントがまだ無い (射影が一度も差分更新されていない) 間はキャッシュしない。
+	if (version === undefined) {
+		followingCache.delete(actor.id);
+	} else {
+		followingCache.set(actor.id, { version, fetchedAt, following });
+	}
+	return [...following];
+};
 
 // 送信した Follow のうち、相手が未 Accept の対象 actor IRI の集合を返す。
 export const getPendingFollowTargetIris = async (actor: APActor): Promise<Set<string>> =>
