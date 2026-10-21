@@ -7,6 +7,7 @@ import { deleteStorageFileByUrl } from '../../storage/media.js';
 import { getImageUrl } from '../../utils.js';
 import { authRequired, getAuthActorId, scopeRequired } from '../http/auth.js';
 import { loadViewer } from '../http/loaders.js';
+import { touchesTimelineView } from '../http/middlewares.js';
 import { accountToCredentialAccount, actorObjectToAccount } from '../presenters/account.js';
 
 const router = express.Router();
@@ -15,6 +16,7 @@ router.delete(
 	'/v1/profile/avatar',
 	authRequired,
 	scopeRequired('write:accounts'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actorId = getAuthActorId(res);
 		const actor = await loadViewer(res);
@@ -47,6 +49,7 @@ router.delete(
 	'/v1/profile/header',
 	authRequired,
 	scopeRequired('write:accounts'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actorId = getAuthActorId(res);
 		const actor = await loadViewer(res);

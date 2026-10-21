@@ -12,6 +12,7 @@ import { getAttributedTo, toIdArray } from '../../utils.js';
 import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
+import { touchesTimelineView } from '../http/middlewares.js';
 import {
 	FOLLOWERS_PAGE_LIMITS,
 	getReactedByPage,
@@ -33,6 +34,7 @@ router.post(
 	'/v1/statuses/:id/favourite',
 	authRequired,
 	scopeRequired('write:favourites'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { id, note } = await loadVisibleStatus(req.params.id, actor);
@@ -56,6 +58,7 @@ router.post(
 	'/v1/statuses/:id/unfavourite',
 	authRequired,
 	scopeRequired('write:favourites'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { id, note } = await loadVisibleStatus(req.params.id, actor);
@@ -72,6 +75,7 @@ router.post(
 	'/v1/statuses/:id/reblog',
 	authRequired,
 	scopeRequired('write:statuses'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { note } = await loadVisibleStatus(req.params.id, actor);
@@ -129,6 +133,7 @@ router.post(
 	'/v1/statuses/:id/unreblog',
 	authRequired,
 	scopeRequired('write:statuses'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { note } = await loadVisibleStatus(req.params.id, actor);
@@ -145,6 +150,7 @@ router.post(
 	'/v1/statuses/:id/bookmark',
 	authRequired,
 	scopeRequired('write:bookmarks'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { id, note } = await loadVisibleStatus(req.params.id, actor);
@@ -161,6 +167,7 @@ router.post(
 	'/v1/statuses/:id/unbookmark',
 	authRequired,
 	scopeRequired('write:bookmarks'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { id, note } = await loadVisibleStatus(req.params.id, actor);
@@ -177,6 +184,7 @@ router.post(
 	'/v1/statuses/:id/pin',
 	authRequired,
 	scopeRequired('write:accounts'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { id, note, isAnnounce } = await loadVisibleStatus(req.params.id, actor);
@@ -217,6 +225,7 @@ router.post(
 	'/v1/statuses/:id/unpin',
 	authRequired,
 	scopeRequired('write:accounts'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const { id, note, isAnnounce } = await loadVisibleStatus(req.params.id, actor);

@@ -83,7 +83,8 @@ export const FollowRelations = (userInfoKey: FirestoreKey, side: FollowRelationS
 // 射影のバージョン (→ ADR-0135)。`userInfos/{ローカル actor}/projectionVersions/{射影}`。
 // 射影を書き換えるたびに同じトランザクションで書き直し、読み取り側は `updateTime` をバージョンとして使う。
 // `timelineFeeds` はタイムラインの射影が使えることを示すマーカーで、ある間だけ射影から読む (→ ADR-0136)。
-export type ProjectionVersionKind = 'following' | 'timelineFeeds';
+// `timelineView` は射影ではなく、閲覧者の操作で書き直すタイムラインのキャッシュのバージョン (→ ADR-0139)。
+export type ProjectionVersionKind = 'following' | 'timelineFeeds' | 'timelineView';
 
 export interface ProjectionVersion {
 	updatedAt: Timestamp;

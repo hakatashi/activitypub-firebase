@@ -19,6 +19,7 @@ import { getAttributedTo, isAPAnnounce, isAPNote, toError, toIdArray } from '../
 import { authRequired, getAuthUserInfo, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
+import { touchesTimelineView } from '../http/middlewares.js';
 import { isPresent, toBoolean } from '../http/params.js';
 import { isNoteVisibleTo } from '../statusAttributes.js';
 import { getValidBody, validate } from '../http/validation.js';
@@ -55,6 +56,7 @@ router.post(
 	'/v1/statuses',
 	authRequired,
 	scopeRequired('write:statuses'),
+	touchesTimelineView,
 	validate({ body: createStatusBodySchema }),
 	async (req, res) => {
 		const body = getValidBody(res, createStatusBodySchema);
@@ -269,6 +271,7 @@ router.delete(
 	'/v1/statuses/:id',
 	authRequired,
 	scopeRequired('write:statuses'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actor = await loadViewer(res);
 		const id = req.params.id;

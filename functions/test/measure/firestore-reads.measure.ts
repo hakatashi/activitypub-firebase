@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/apex.js';
 import { db } from '../../src/firebase.js';
+import { clearTimelineHeadCache } from '../../src/mastodon/presenters/timelineHeadCache.js';
 import { clearMastodonIdCache } from '../../src/mastodonId.js';
 import { rebuildTimelineFeeds } from '../../src/projections/timelineFeeds.js';
 import { addListAccounts, createList } from '../../src/social/lists.js';
@@ -31,6 +32,20 @@ const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
 const TIMELINE_REQUESTS_PER_MONTH = SECONDS_PER_MONTH / 15;
 const NOTIFICATION_POLLS_PER_MONTH = SECONDS_PER_MONTH / 20;
 const NOTIFICATION_RELOADS_PER_MONTH = 30 * 30;
+// タイムラインの先頭ページのキャッシュ (ADR-0139) は 15 分で組み立て直すので、15 秒ごとのリクエストの
+// 60 回に 1 回が組み立て直し、残りがキャッシュの検証か新着分の組み立てになる。
+const TIMELINE_POLL_SECONDS = 15;
+const TIMELINE_REQUESTS_PER_REBUILD = (15 * 60) / TIMELINE_POLL_SECONDS;
+// 1 日あたりのタイムラインの射影の新着の件数。新着があるリクエストは新着分を組み立てる (ADR-0139 決定4)。
+// 環境変数で上書きできる。ホームの既定値は本番の homeFeed の直近 3 日 (2026-10-18〜21) の 1,075 件の平均。
+// リストは本番を数えていないので、ホームの件数をフォロー中の人数に対するメンバーの割合で割り引く。
+const HOME_ENTRIES_PER_DAY = Number(process.env.MEASURE_HOME_ENTRIES_PER_DAY ?? 1075 / 3);
+const NEW_ENTRIES_PER_DAY = {
+	home: HOME_ENTRIES_PER_DAY,
+	list: Number(
+		process.env.MEASURE_LIST_ENTRIES_PER_DAY ?? (HOME_ENTRIES_PER_DAY * LIST_MEMBERS) / FOLLOWS,
+	),
+};
 // 東京リージョンの読み取りの単価 (USD / 1 回) と、無料枠 (1 日 5 万回)。
 const READ_PRICE = 0.038 / 100_000;
 const FREE_READS_PER_MONTH = 50_000 * 30;
@@ -209,22 +224,55 @@ describe('Firestore reads per request', () => {
 			return res.body as { id: string }[];
 		};
 
-		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138) が空の状態、2 回目は効いた状態。
-		for (const [label, path] of [
-			['home', '/api/v1/timelines/home?limit=20'],
-			['list', `/api/v1/timelines/list/${list!.id}?limit=20`],
-			['notifications', '/api/v1/notifications?limit=80'],
-		] as const) {
+		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138、ADR-0139) が空の状態、2 回目は効いた状態。
+		// タイムラインは、先頭ページのキャッシュ (ADR-0139) だけを捨てて組み立て直す回 (rebuild) も測る。
+		const timelinePaths = {
+			home: '/api/v1/timelines/home?limit=20',
+			list: `/api/v1/timelines/list/${list!.id}?limit=20`,
+		};
+		for (const [label, path] of Object.entries(timelinePaths)) {
 			clearMastodonIdCache();
+			clearTimelineHeadCache();
 			await measure(`${label} (cold)`, path);
+			clearTimelineHeadCache();
+			await measure(`${label} (rebuild)`, path);
 			await measure(label, path);
+			// 新着が 1 件あるとき (ADR-0139 決定4)。リストのメンバーの Note なので、ホームとリストの両方に載る。
+			await apex.store.saveObject({
+				id: `${remotes[0]}/notes/new-${label}`,
+				type: 'Note',
+				attributedTo: remotes[0],
+				content: '<p>new</p>',
+				published: new Date().toISOString(),
+				to: [PUBLIC],
+				cc: [`${remotes[0]}/followers`],
+			} as unknown as APObject);
+			await measure(`${label} (new entry)`, path);
 		}
-		const [latest] = await measure('notifications', '/api/v1/notifications?limit=80');
+		const notificationsPath = '/api/v1/notifications?limit=80';
+		clearMastodonIdCache();
+		await measure('notifications (cold)', notificationsPath);
+		await measure('notifications', notificationsPath);
+		const [latest] = await measure('notifications', notificationsPath);
 		await measure('notifications poll', `/api/v1/notifications?limit=1&since_id=${latest!.id}`);
 
+		// 新着がポアソン過程で届くとして、1 回のリクエストの間に 1 件以上届く確率を求める。
+		const timelineMonthlyReads = (label: 'home' | 'list') => {
+			const newEntryRatio =
+				1 - Math.exp((-NEW_ENTRIES_PER_DAY[label] * TIMELINE_POLL_SECONDS) / 86_400);
+			const cachedReads =
+				results[label]!.total * (1 - newEntryRatio) +
+				results[`${label} (new entry)`]!.total * newEntryRatio;
+			return Math.round(
+				((results[`${label} (rebuild)`]!.total +
+					cachedReads * (TIMELINE_REQUESTS_PER_REBUILD - 1)) /
+					TIMELINE_REQUESTS_PER_REBUILD) *
+					TIMELINE_REQUESTS_PER_MONTH,
+			);
+		};
 		const monthly = {
-			home: results.home!.total * TIMELINE_REQUESTS_PER_MONTH,
-			list: results.list!.total * TIMELINE_REQUESTS_PER_MONTH,
+			home: timelineMonthlyReads('home'),
+			list: timelineMonthlyReads('list'),
 			notifications:
 				results['notifications poll']!.total * NOTIFICATION_POLLS_PER_MONTH +
 				results.notifications!.total * NOTIFICATION_RELOADS_PER_MONTH,
@@ -247,6 +295,7 @@ describe('Firestore reads per request', () => {
 						.join(', ')} |`,
 			),
 			'',
+			`new entries per day: home ${NEW_ENTRIES_PER_DAY.home}, list ${NEW_ENTRIES_PER_DAY.list}`,
 			`monthly reads: home ${monthly.home}, list ${monthly.list}, notifications ${monthly.notifications}, total ${monthlyReads}`,
 			`monthly cost: $${estimate.monthlyUsd}`,
 		];

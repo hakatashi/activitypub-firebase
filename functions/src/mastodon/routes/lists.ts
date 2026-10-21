@@ -18,6 +18,7 @@ import type { ListAttributes } from '../../social/lists.js';
 import { authRequired, getAuthActorId, scopeRequired } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadAccount, loadViewer } from '../http/loaders.js';
+import { touchesTimelineView } from '../http/middlewares.js';
 import { toBoolean } from '../http/params.js';
 import { respondWithStatuses } from '../http/responses.js';
 import { parsePageParams } from '../pagination.js';
@@ -116,24 +117,36 @@ router.get('/v1/lists/:id', authRequired, scopeRequired('read:lists'), async (re
 	res.json(listToEntity(await loadOwnList(getAuthActorId(res), req.params.id)));
 });
 
-router.put('/v1/lists/:id', authRequired, scopeRequired('write:lists'), async (req, res) => {
-	const actorId = getAuthActorId(res);
-	const { id } = await loadOwnList(actorId, req.params.id);
-	const list = await updateList(actorId, id, parseListAttributes(req.body, false));
-	if (list === undefined) {
-		throw new NotFoundError();
-	}
-	res.json(listToEntity(list));
-});
+router.put(
+	'/v1/lists/:id',
+	authRequired,
+	scopeRequired('write:lists'),
+	touchesTimelineView,
+	async (req, res) => {
+		const actorId = getAuthActorId(res);
+		const { id } = await loadOwnList(actorId, req.params.id);
+		const list = await updateList(actorId, id, parseListAttributes(req.body, false));
+		if (list === undefined) {
+			throw new NotFoundError();
+		}
+		res.json(listToEntity(list));
+	},
+);
 
-router.delete('/v1/lists/:id', authRequired, scopeRequired('write:lists'), async (req, res) => {
-	const actorId = getAuthActorId(res);
-	const { id } = await loadOwnList(actorId, req.params.id);
-	if (!(await deleteList(actorId, id))) {
-		throw new NotFoundError();
-	}
-	res.json({});
-});
+router.delete(
+	'/v1/lists/:id',
+	authRequired,
+	scopeRequired('write:lists'),
+	touchesTimelineView,
+	async (req, res) => {
+		const actorId = getAuthActorId(res);
+		const { id } = await loadOwnList(actorId, req.params.id);
+		if (!(await deleteList(actorId, id))) {
+			throw new NotFoundError();
+		}
+		res.json({});
+	},
+);
 
 const accountIdPattern = /^\d+$/;
 const toCursor = (value: unknown) =>
@@ -178,6 +191,7 @@ router.post(
 	'/v1/lists/:id/accounts',
 	authRequired,
 	scopeRequired('write:lists'),
+	touchesTimelineView,
 	async (req, res) => {
 		const viewer = await loadViewer(res);
 		const actorId = getAuthActorId(res);
@@ -207,6 +221,7 @@ router.delete(
 	'/v1/lists/:id/accounts',
 	authRequired,
 	scopeRequired('write:lists'),
+	touchesTimelineView,
 	async (req, res) => {
 		const actorId = getAuthActorId(res);
 		const { id } = await loadOwnList(actorId, req.params.id);
