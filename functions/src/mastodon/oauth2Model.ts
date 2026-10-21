@@ -14,6 +14,11 @@ import { AccessTokens, AuthorizationCodes, Clients, RefreshTokens, Users } from 
 
 export type { MastodonClient } from '../schema.js';
 
+// アクセストークンは本家 Mastodon と同様に無期限として扱う(ADR-0133)。
+// oauth2-server の Token が accessTokenExpiresAt を要求するため、無期限はこの日付で表す。
+// 実データにも同じ値を保存する。
+export const ACCESS_TOKEN_NEVER_EXPIRES_AT = new Date('9999-12-31T00:00:00.000Z');
+
 const toDate = (timestamp: unknown): Date | undefined => {
 	if (timestamp instanceof Date) {
 		return timestamp;
@@ -53,7 +58,8 @@ export class Oauth2Model
 		return {
 			...accessTokenData,
 			user: accessTokenData.user ?? {},
-			accessTokenExpiresAt: toDate(accessTokenData.accessTokenExpiresAt),
+			accessTokenExpiresAt:
+				toDate(accessTokenData.accessTokenExpiresAt) ?? ACCESS_TOKEN_NEVER_EXPIRES_AT,
 			refreshTokenExpiresAt: toDate(accessTokenData.refreshTokenExpiresAt),
 		};
 	}
@@ -143,6 +149,7 @@ export class Oauth2Model
 	async saveToken(token: Token, client: Client, user: User): Promise<Token | false> {
 		const accessToken = {
 			...token,
+			accessTokenExpiresAt: ACCESS_TOKEN_NEVER_EXPIRES_AT,
 			client,
 			user,
 		};

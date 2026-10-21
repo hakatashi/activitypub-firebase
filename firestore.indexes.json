@@ -239,12 +239,6 @@
       "indexes": []
     },
     {
-      "collectionGroup": "accessTokens",
-      "fieldPath": "accessTokenExpiresAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
       "collectionGroup": "refreshTokens",
       "fieldPath": "refreshTokenExpiresAt",
       "ttl": true,
