@@ -37,16 +37,6 @@ identity/v1 は配信元(web-payments.org)が消えていて取得できず、`j
 inbox は 5xx を返して相手の再送に、配送は `deliveryTask` の再試行に頼る
 → [#326](https://github.com/hakatashi/activitypub-firebase/issues/326)。
 
-## データ
-
-### 投稿履歴のインポートで保存したアクティビティの `actor` が文字列
-
-`functions/src/social/archive.ts` は `actor: localActor.id`(文字列)のまま保存するので、
-apex が配列に正規化して保存したほかのアクティビティと違い、`where('actor', 'array-contains', ...)` のクエリから漏れる。
-本番にはインポート済みの `Create` / `Announce` がこの形で約 6,900 件あり、`backfillReactionProjection` を本実行すると、
-インポートしたブースト(60 件)の射影が消える。直すまで本実行しない
-→ [#323](https://github.com/hakatashi/activitypub-firebase/issues/323)。
-
 ## Mastodon API
 
 ### 期限切れの OAuth トークンが残り続ける

@@ -14,9 +14,10 @@ import { AccessTokens, AuthorizationCodes, Clients, RefreshTokens, Users } from 
 
 export type { MastodonClient } from '../schema.js';
 
-// アクセストークンは本家 Mastodon と同様に無期限として扱う(ADR-0132)。
-// ライブラリが accessTokenExpiresAt を Date で要求するため、保存されていないときはこの日付を補う。
-const ACCESS_TOKEN_NEVER_EXPIRES_AT = new Date('9999-12-31T00:00:00.000Z');
+// アクセストークンは本家 Mastodon と同様に無期限として扱う(ADR-0133)。
+// oauth2-server の Token が accessTokenExpiresAt を要求するため、無期限はこの日付で表す。
+// 実データにも同じ値を保存する。
+export const ACCESS_TOKEN_NEVER_EXPIRES_AT = new Date('9999-12-31T00:00:00.000Z');
 
 const toDate = (timestamp: unknown): Date | undefined => {
 	if (timestamp instanceof Date) {
@@ -146,11 +147,13 @@ export class Oauth2Model
 	}
 
 	async saveToken(token: Token, client: Client, user: User): Promise<Token | false> {
-		// accessTokenExpiresAt は保存しない。TTL ポリシーの対象から外して、トークンを無期限にする。
-		const storedToken: Partial<Token> = { ...token };
-		delete storedToken.accessTokenExpiresAt;
-		await AccessTokens.add({ ...storedToken, client, user } as Token);
-		const accessToken = { ...token, client, user };
+		const accessToken = {
+			...token,
+			accessTokenExpiresAt: ACCESS_TOKEN_NEVER_EXPIRES_AT,
+			client,
+			user,
+		};
+		await AccessTokens.add(accessToken);
 
 		if (token.refreshToken !== undefined) {
 			const refreshToken = {

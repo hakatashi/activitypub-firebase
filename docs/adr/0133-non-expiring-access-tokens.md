@@ -1,4 +1,4 @@
-# ADR-0132: アクセストークンを無期限にする
+# ADR-0133: アクセストークンを無期限にする
 
 - **Status:** Accepted
 - **Date:** 2026-10-21
@@ -12,9 +12,10 @@
 
 ## 決定
 
-- `saveToken` は `accessTokenExpiresAt` を Firestore に保存しない。TTL の対象から外れ、トークンは削除されない。
-- `getAccessToken` は `accessTokenExpiresAt` が無いとき `9999-12-31` を補う(ライブラリが `Date` を要求するため)。
-  保存されている旧トークンの期限はそのまま尊重する。
+- `saveToken` は `accessTokenExpiresAt` に `9999-12-31` を保存する。oauth2-server の `Token` が
+  `Date` の `accessTokenExpiresAt` を要求するため、実データも実際の挙動(無期限)と一致させる。
+  TTL ポリシーは外すので、この値でもドキュメントは削除されない。
+- `getAccessToken` は保存されている期限をそのまま返す(欠けている場合のみ同じ日付を補う)。
 - `firestore.indexes.json` から `accessTokens.accessTokenExpiresAt` の TTL ポリシーを外す。
 - `POST /oauth/revoke` による失効、認可コード・refresh token の TTL は変えない。
 - `/oauth/token` の `accessTokenLifetime` はライブラリが必須とするため残す(レスポンスの `expires_in` にのみ影響)。

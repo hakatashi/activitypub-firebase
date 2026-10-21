@@ -91,7 +91,7 @@ describe('Oauth2Model', () => {
 			expect((fetched as Token).user).toEqual(user);
 		});
 
-		test('does not store accessTokenExpiresAt and treats the token as non-expiring', async () => {
+		test('stores accessTokenExpiresAt as 9999-12-31 so the token never expires', async () => {
 			const token = {
 				accessToken: 'eternal-token',
 				accessTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -101,12 +101,10 @@ describe('Oauth2Model', () => {
 			await model.saveToken(token, client, user);
 
 			const raw = (await AccessTokens.where('accessToken', '==', 'eternal-token').get()).docs[0];
-			expect(raw?.data()).not.toHaveProperty('accessTokenExpiresAt');
+			expect(raw?.data().accessTokenExpiresAt).toEqual(new Date('9999-12-31T00:00:00.000Z'));
 
 			const fetched = (await model.getAccessToken('eternal-token')) as Token;
-			expect(fetched.accessTokenExpiresAt?.getTime()).toBeGreaterThan(
-				Date.now() + 50 * 365 * 24 * 3600 * 1000,
-			);
+			expect(fetched.accessTokenExpiresAt).toEqual(new Date('9999-12-31T00:00:00.000Z'));
 
 			expect(await model.revokeToken(fetched)).toBe(true);
 			expect(await model.getAccessToken('eternal-token')).toBe(false);
