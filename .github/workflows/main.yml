@@ -4,6 +4,11 @@ name: Deploy
     branches:
       - main
   pull_request:
+# main への push によるデプロイは同時に 1 つしか走らせない(ADR-0132)。
+# PR の実行はデプロイしないので、ref ごとのグループに分けて互いに干渉させない。
+concurrency:
+  group: ${{ github.event_name == 'push' && 'deploy-main' || format('pr-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
     name: Test
@@ -46,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         project:
           - id: activitypub-firebase
@@ -73,6 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         project:
           - id: activitypub-firebase
