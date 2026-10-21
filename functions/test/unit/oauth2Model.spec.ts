@@ -1,4 +1,5 @@
 import type { AuthorizationCode, Client, Token, User } from '@node-oauth/oauth2-server';
+import type { Timestamp } from 'firebase-admin/firestore';
 import { describe, expect, test, afterEach } from 'vitest';
 import { Oauth2Model } from '../../src/mastodon/oauth2Model.js';
 import { AccessTokens, Clients, RefreshTokens, Users } from '../../src/schema.js';
@@ -101,7 +102,9 @@ describe('Oauth2Model', () => {
 			await model.saveToken(token, client, user);
 
 			const raw = (await AccessTokens.where('accessToken', '==', 'eternal-token').get()).docs[0];
-			expect(raw?.data().accessTokenExpiresAt).toEqual(new Date('9999-12-31T00:00:00.000Z'));
+			expect((raw!.data().accessTokenExpiresAt as unknown as Timestamp).toDate()).toEqual(
+				new Date('9999-12-31T00:00:00.000Z'),
+			);
 
 			const fetched = (await model.getAccessToken('eternal-token')) as Token;
 			expect(fetched.accessTokenExpiresAt).toEqual(new Date('9999-12-31T00:00:00.000Z'));
