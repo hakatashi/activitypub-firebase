@@ -1,7 +1,9 @@
 import type { APActor } from 'activitypub-types';
+import firebase from 'firebase-admin';
+import { chunk, uniq } from 'lodash-es';
 import { apex } from '../apex.js';
 import type { APObject } from '../apex/index.js';
-import { db, escapeFirestoreKey } from '../firebase.js';
+import { escapeFirestoreKey } from '../firebase.js';
 import { getMastodonIds } from '../mastodonId.js';
 import { metaIndexPath } from '../meta.js';
 import type { PageParams } from '../pagination.js';
@@ -9,6 +11,7 @@ import { isIdInRange, takePage } from '../pagination.js';
 import { forgetReactionActivity } from '../projections/reactions.js';
 import { ReactionRelations, Streams } from '../schema.js';
 import type { ReactionKind } from '../schema.js';
+import { FIRESTORE_IN_QUERY_LIMIT } from '../store/limits.js';
 import { toIdArray } from '../utils.js';
 import type { NoteObject } from './types.js';
 import { noteToVisibility } from './visibility.js';
@@ -29,8 +32,16 @@ export const getReactedNoteIris = async (
 	if (noteIris.length === 0) {
 		return new Set();
 	}
-	const docs = await db.getAll(...relationRefs(actorId, kind, noteIris));
-	return new Set(docs.flatMap((doc) => (doc.exists ? [doc.get('object') as string] : [])));
+	// getAll は存在しないドキュメントも 1 回の読み取りとして課金されるので、ほとんどが空振りになる
+	// この判定では、返った件数 (0 件なら 1 回) だけ課金される `in` クエリで読む (#348)。
+	const collection = ReactionRelations(escapeFirestoreKey(actorId), kind);
+	const idChunks = chunk(uniq(noteIris).map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
+	const snaps = await Promise.all(
+		idChunks.map((idChunk) =>
+			collection.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+		),
+	);
+	return new Set(snaps.flatMap((snap) => snap.docs.map((doc) => doc.get('object') as string)));
 };
 
 // actor が noteIri に送った、生きている Like / Announce の IRI の一覧を返す。
