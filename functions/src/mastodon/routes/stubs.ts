@@ -20,10 +20,6 @@ router.get('/v1/announcements', authRequired, scopeRequired('read:statuses'), (r
 	res.json([]);
 });
 
-router.get('/v1/lists', authRequired, scopeRequired('read:lists'), (req, res) => {
-	res.json([]);
-});
-
 router.get('/v1/followed_tags', authRequired, scopeRequired('read:follows'), (req, res) => {
 	res.json([]);
 });

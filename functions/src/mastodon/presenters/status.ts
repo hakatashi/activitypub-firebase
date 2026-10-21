@@ -11,6 +11,7 @@ import { getThreadAncestors, getThreadDescendants } from '../../social/threads.j
 import {
 	getAccountTimelineItems,
 	getHomeTimelineItems,
+	getListTimelineItems,
 	getPublicTimelineNotes,
 	getHashtagTimelineNotes,
 } from '../../social/timelines.js';
@@ -25,6 +26,7 @@ import {
 import { localStatusPageUrl } from '../../localActor.js';
 import { getIriByMastodonId, getMastodonIds } from '../../mastodonId.js';
 import { Bookmarks, UserInfos } from '../../schema.js';
+import type { ListRecord } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toIdArray, toStringValue } from '../../utils.js';
@@ -441,6 +443,9 @@ export const getHashtagTimeline = async (
 // ホームタイムライン。自分の投稿/ブースト + フォロー中の相手の投稿/ブーストのうち、閲覧権限のあるもの。
 export const getHomeTimeline = async (viewer: APActor, page: PageParams) =>
 	timelineItemsToStatuses(await getHomeTimelineItems(viewer, page), viewer);
+
+export const getListTimeline = async (viewer: APActor, list: ListRecord, page: PageParams) =>
+	timelineItemsToStatuses(await getListTimelineItems(viewer, list, page), viewer);
 
 // 作成・重複時の応答に使う。Note でなければ (まだ保存されていなければ) undefined。
 export const getStatusByIri = async (iri: string, viewer?: APActor | undefined) => {

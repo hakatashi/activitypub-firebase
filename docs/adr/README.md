@@ -160,3 +160,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0131](0131-store-activity-actor-as-array.md) | インポートしたアクティビティの `actor` を apex の保存形式(配列)に揃える | Accepted |
 | [0132](0132-serialize-deploys.md) | 本番・dev へのデプロイを直列に実行する | Accepted |
 | [0133](0133-non-expiring-access-tokens.md) | アクセストークンを無期限にする | Accepted |
+| [0134](0134-lists-stored-per-user-and-filtered-on-read.md) | リストは `userInfos/{actor}/lists` に直接保存し、リストのタイムラインは読み出し時に絞り込む | Accepted |

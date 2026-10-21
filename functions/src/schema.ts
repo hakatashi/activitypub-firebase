@@ -107,6 +107,23 @@ export interface Bookmark {
 export const Bookmarks = (userInfoKey: FirestoreKey) =>
 	UserInfos.doc(userInfoKey).collection('bookmarks') as CollectionReference<Bookmark>;
 
+// リスト (→ ADR-0134)。`userInfos/{ローカル actor}/lists/{リスト ID}`。
+export type ListRepliesPolicy = 'followed' | 'list' | 'none';
+
+export interface ListRecord {
+	// リスト ID。作成時刻から作る Mastodon ID 形式の値 (`mastodonIds` には登録しない)
+	id: string;
+	title: string;
+	repliesPolicy: ListRepliesPolicy;
+	exclusive: boolean;
+	// メンバーの actor IRI。追加した順
+	accounts: string[];
+	createdAt: Timestamp;
+}
+
+export const Lists = (userInfoKey: FirestoreKey) =>
+	UserInfos.doc(userInfoKey).collection('lists') as CollectionReference<ListRecord>;
+
 // 通知の射影 (→ ADR-0088)。`userInfos/{ローカル actor}/notifications/{アクティビティ IRI}`。
 export type NotificationType = 'mention' | 'favourite' | 'reblog' | 'follow';
 

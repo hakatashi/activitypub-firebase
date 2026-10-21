@@ -135,6 +135,21 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
 - 自前の `admin@mastodon-test.hakatashi.com` からタグ付きで投稿し、dev のタグのタイムラインに出ることも確かめる
   (受信した Note の `Hashtag` は `as:Hashtag` で保存される。→ [ADR-0103](../adr/0103-hashtag-timeline-and-search.md))。
 
+## リスト(`/api/v1/lists`・`timelines/list`)の確認
+
+`run.mjs` は巡回しない。変えたときは、Playwright で次を確かめる(2026-10-21 に実施)。
+
+- Elk の `/lists` で「List title」に入力して「Create」を押すと `POST /api/v1/lists` が走る。
+  フォロー中の相手(自前の `admin@mastodon-test.hakatashi.com`)のプロフィールで「Modify lists with account」
+  (フォロー中の相手にだけ出る)を押し、作ったリストの追加ボタンを押すと `POST /api/v1/lists/:id/accounts` が走る。
+- `/lists` からリストを押すと `lists/:id` → `timelines/list/:id` を呼び、続けて `max_id` 付きの取得が走る。
+  「Accounts」タブは `lists/:id/accounts?limit=1000`(最大 80 件に丸められる)でメンバーを出す。
+- **Elk はリストのページを URL で直接開くと「Cannot read properties of undefined (reading 'title')」になる。**
+  Elk 自身の SSR が 500 を返し、dev の API は呼ばれない(dev とは無関係)。`/lists` からクリックで遷移すること。
+- Phanpy は `/#/l` の「New list」ボタンでタイトル・`replies_policy` を入力して作成し、プロフィールの「More」→
+  「Add/Remove from Lists」で追加する。`/#/l/:id` でタイムラインが出る。
+- 自前の `admin@mastodon-test.hakatashi.com` から投稿し、そのアカウントを入れたリストのタイムラインに届くことも確かめる。
+
 ## 既定の公開範囲(`source` / `preferences`)の確認
 
 `run.mjs` は巡回しない。変えたときは、Playwright で次を確かめる(2026-10-09 に実施)。
