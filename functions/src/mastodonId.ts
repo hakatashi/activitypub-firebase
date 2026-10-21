@@ -17,7 +17,7 @@ const MAX_TIMESTAMP = 2 ** 48 - 1;
 // 空きシーケンスを探すとき、1回の getAll でまとめて読む候補の数。
 const PROBE_BATCH_SIZE = 16;
 
-// IRI ⇔ Mastodon ID の対応のインスタンス内キャッシュ (→ ADR-0137)。対応は採番後に変わらないので無効化しない。
+// IRI ⇔ Mastodon ID の対応のインスタンス内キャッシュ (→ ADR-0138)。対応は採番後に変わらないので無効化しない。
 // Map の挿入順を使った LRU で、参照したものを末尾に移し、上限を超えたら先頭から捨てる。
 const MAPPING_CACHE_MAX_ENTRIES = 20_000;
 const mastodonIdByIriCache = new Map<string, string>();
@@ -182,7 +182,7 @@ export const getOrAssignMastodonId = async (iri: string, published: unknown) => 
 
 // IRI → Mastodon ID をまとめて引く。採番はしない (未採番の IRI は結果に含まれない)。
 // バックフィルの `--dry-run` など、書き込んではならない場面で使う。
-// キャッシュに無いものだけを読む (→ ADR-0137)。トランザクションの中では使わないこと。
+// キャッシュに無いものだけを読む (→ ADR-0138)。トランザクションの中では使わないこと。
 export const findMastodonIds = async (iris: string[]) => {
 	const result = new Map<string, string>();
 	const missing: string[] = [];
@@ -222,7 +222,7 @@ export const getMastodonIds = async (entries: { iri: string; published: unknown 
 	return result;
 };
 
-// Mastodon ID → IRI。形式が不正な ID や未知の ID には undefined を返す。キャッシュを先に見る (→ ADR-0137)。
+// Mastodon ID → IRI。形式が不正な ID や未知の ID には undefined を返す。キャッシュを先に見る (→ ADR-0138)。
 export const getIriByMastodonId = async (mastodonId: string) => {
 	if (!isMastodonId(mastodonId)) {
 		return undefined;

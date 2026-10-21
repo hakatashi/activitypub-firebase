@@ -23,7 +23,7 @@ export const resetFirestore = async (): Promise<void> => {
 	if (!res.ok) {
 		throw new Error(`Failed to reset Firestore emulator: ${res.status} ${res.statusText}`);
 	}
-	// 消えた対応をキャッシュから返さないようにする (→ ADR-0137)。
+	// 消えた対応をキャッシュから返さないようにする (→ ADR-0138)。
 	clearMastodonIdCache();
 };
 

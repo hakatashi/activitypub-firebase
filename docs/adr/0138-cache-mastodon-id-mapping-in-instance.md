@@ -1,4 +1,4 @@
-# ADR-0137: IRI と Mastodon ID の対応をインスタンス内にキャッシュする
+# ADR-0138: IRI と Mastodon ID の対応をインスタンス内にキャッシュする
 
 - **Status:** Accepted
 - **Date:** 2026-10-21

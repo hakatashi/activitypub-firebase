@@ -209,7 +209,7 @@ describe('Firestore reads per request', () => {
 			return res.body as { id: string }[];
 		};
 
-		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0137) が空の状態、2 回目は効いた状態。
+		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138) が空の状態、2 回目は効いた状態。
 		for (const [label, path] of [
 			['home', '/api/v1/timelines/home?limit=20'],
 			['list', `/api/v1/timelines/list/${list!.id}?limit=20`],
