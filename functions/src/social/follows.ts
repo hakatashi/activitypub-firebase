@@ -8,6 +8,7 @@ import { db, escapeFirestoreKey } from '../firebase.js';
 import { localActorId, localFollowersId, localInboxId } from '../localActor.js';
 import { metaIndexPath } from '../meta.js';
 import { followingVersionRef } from '../projections/follows.js';
+import { mergeIntoTimelineFeeds } from '../projections/timelineFeeds.js';
 import type { PageParams } from '../pagination.js';
 import { isAscending, lowerBoundId } from '../pagination.js';
 import { FollowRelations, Streams } from '../schema.js';
@@ -207,6 +208,12 @@ export const followActor = async (
 		await apex.addToOutbox(actor as unknown as APObject, activity);
 		// following コレクションを匿名にも公開するため (→ ADR-0035, ADR-0075)。
 		await markActivityPublic(activity);
+		// 相手の最近の投稿をタイムラインの射影に入れる (→ ADR-0136 決定4)。失敗してもフォローは成功させる。
+		if (actor.id === localActorId) {
+			await mergeIntoTimelineFeeds(targetActor.id).catch((error: unknown) => {
+				logger.error({ type: 'mergeIntoTimelineFeeds', author: targetActor.id, error });
+			});
+		}
 		return { flags, followed: true };
 	}
 

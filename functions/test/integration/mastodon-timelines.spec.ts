@@ -8,14 +8,16 @@ import {
 } from '../../src/mastodon/presenters/status.js';
 import { getFollowing } from '../../src/social/follows.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
-import { resetFirestore } from '../helpers/index.js';
+import { mergeIntoTimelineFeeds } from '../../src/projections/timelineFeeds.js';
+import { enableTimelineFeeds, resetFirestore } from '../helpers/index.js';
 import type { LocalActor } from '../helpers/index.js';
 
 const PUBLIC = 'https://www.w3.org/ns/activitystreams#Public';
 const REMOTE_A = 'https://remote.example/u/alice';
 const REMOTE_B = 'https://remote.example/u/bob';
 
-describe('Mastodon timelines (Issue #58)', () => {
+// ホーム・リストは従来の読み出し (scan) と射影 (feed。→ ADR-0136) の両方で同じ結果になることを確かめる。
+describe.each(['scan', 'feed'] as const)('Mastodon timelines (Issue #58) [%s]', (mode) => {
 	let me: LocalActor;
 	let n = 0;
 
@@ -82,6 +84,9 @@ describe('Mastodon timelines (Issue #58)', () => {
 			} as unknown as APObject);
 		}
 		n = 0;
+		if (mode === 'feed') {
+			await enableTimelineFeeds(me.id);
+		}
 	});
 
 	afterEach(async () => {
@@ -96,6 +101,10 @@ describe('Mastodon timelines (Issue #58)', () => {
 		await apex.store.saveActivity(activity);
 		if (accepted) {
 			await apex.store.updateActivityMeta(activity, 'collection', `${me.id}/following`, false);
+		}
+		// `followActor` と同じく、フォローした相手の最近の投稿を射影に入れる (→ ADR-0136 決定4)。
+		if (mode === 'feed') {
+			await mergeIntoTimelineFeeds(target);
 		}
 	};
 

@@ -1,6 +1,7 @@
 import { logger } from 'firebase-functions/v2';
+import { chunk } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
-import { escapeFirestoreKey } from '../firebase.js';
+import { db, escapeFirestoreKey } from '../firebase.js';
 import { Streams } from '../schema.js';
 
 // Follow は to/cc を持たないため apex.isPublic() が常に false になり、承認済みでも
@@ -52,4 +53,18 @@ export const getAnnounces = async ({
 	}
 	const docs = await query.limit(limit).get();
 	return docs.docs.map((doc) => doc.data());
+};
+
+// `streams` のアクティビティを IRI でまとめて読む (`_meta` 付き)。無いものは返さない。
+export const getActivities = async (ids: string[]): Promise<APObject[]> => {
+	const uniqueIds = [...new Set(ids)];
+	const snapshots = await Promise.all(
+		chunk(uniqueIds, 500).map((group) =>
+			db.getAll(...group.map((id) => Streams.doc(escapeFirestoreKey(id)))),
+		),
+	);
+	return snapshots.flat().flatMap((doc) => {
+		const data = doc.data() as APObject | undefined;
+		return data === undefined ? [] : [data];
+	});
 };

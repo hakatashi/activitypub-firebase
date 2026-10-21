@@ -3,9 +3,12 @@ import { randomInt } from 'node:crypto';
 import type { Timestamp } from '@google-cloud/firestore';
 import type { APActor } from 'activitypub-types';
 import firebase from 'firebase-admin';
+import { logger } from 'firebase-functions/v2';
 import { uniq } from 'lodash-es';
 import { db, escapeFirestoreKey, toFirestoreKey } from '../firebase.js';
+import { localActorId } from '../localActor.js';
 import { buildMastodonId, isMastodonId, MAX_SEQUENCE } from '../mastodonId.js';
+import { mergeIntoTimelineFeeds } from '../projections/timelineFeeds.js';
 import { Lists } from '../schema.js';
 import type { ListRecord, ListRepliesPolicy } from '../schema.js';
 import { getFollowFlags } from './follows.js';
@@ -89,7 +92,8 @@ export const deleteList = async (actorId: string, listId: string): Promise<boole
 	if (ref === undefined || !(await ref.get()).exists) {
 		return false;
 	}
-	await ref.delete();
+	// タイムラインの射影 (→ ADR-0136) のサブコレクションごと消す。
+	await db.recursiveDelete(ref);
 	return true;
 };
 
@@ -112,7 +116,7 @@ export const addListAccounts = async (
 	if (flags.some((flag) => !flag.following && !flag.requested)) {
 		return { ok: false, error: 'not_following' };
 	}
-	return db.runTransaction(async (transaction) => {
+	const result = await db.runTransaction(async (transaction) => {
 		const current = (await transaction.get(ref)).data();
 		if (current === undefined) {
 			return { ok: false, error: 'not_found' } as const;
@@ -123,6 +127,17 @@ export const addListAccounts = async (
 		transaction.update(ref, { accounts: [...current.accounts, ...iris] });
 		return { ok: true } as const;
 	});
+	// 足した相手の最近の投稿をリストのタイムラインの射影に入れる (→ ADR-0136 決定4)。失敗しても追加は成功させる。
+	if (result.ok && ownerId === localActorId) {
+		for (const iri of iris) {
+			await mergeIntoTimelineFeeds(iri, { home: false, listIds: [listId] }).catch(
+				(error: unknown) => {
+					logger.error({ type: 'mergeIntoTimelineFeeds', author: iri, listId, error });
+				},
+			);
+		}
+	}
+	return result;
 };
 
 // メンバーでない相手は無視する。リストが無ければ false。

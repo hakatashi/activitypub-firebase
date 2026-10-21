@@ -82,7 +82,8 @@ export const FollowRelations = (userInfoKey: FirestoreKey, side: FollowRelationS
 
 // 射影のバージョン (→ ADR-0135)。`userInfos/{ローカル actor}/projectionVersions/{射影}`。
 // 射影を書き換えるたびに同じトランザクションで書き直し、読み取り側は `updateTime` をバージョンとして使う。
-export type ProjectionVersionKind = 'following';
+// `timelineFeeds` はタイムラインの射影が使えることを示すマーカーで、ある間だけ射影から読む (→ ADR-0136)。
+export type ProjectionVersionKind = 'following' | 'timelineFeeds';
 
 export interface ProjectionVersion {
 	updatedAt: Timestamp;
@@ -136,6 +137,29 @@ export interface ListRecord {
 
 export const Lists = (userInfoKey: FirestoreKey) =>
 	UserInfos.doc(userInfoKey).collection('lists') as CollectionReference<ListRecord>;
+
+// ホーム・リストのタイムラインの射影 (→ ADR-0136)。`userInfos/{ローカル actor}/homeFeed/{Mastodon ID}` と
+// `userInfos/{ローカル actor}/lists/{リスト ID}/feed/{Mastodon ID}`。読み出し時に可視性などを判定し直す候補。
+export type TimelineFeedEntryType = 'note' | 'announce';
+
+export interface TimelineFeedEntry {
+	// Note / Announce の Mastodon ID (ドキュメント ID と同じ)
+	id: string;
+	type: TimelineFeedEntryType;
+	// Note / Announce の IRI
+	iri: string;
+	// 作者 (Note) かブーストした actor (Announce)
+	actor: string;
+	// ブースト先の Note IRI (Note なら null)
+	objectIri: string | null;
+	createdAt: Timestamp;
+}
+
+export const HomeFeed = (userInfoKey: FirestoreKey) =>
+	UserInfos.doc(userInfoKey).collection('homeFeed') as CollectionReference<TimelineFeedEntry>;
+
+export const ListFeed = (userInfoKey: FirestoreKey, listKey: FirestoreKey) =>
+	Lists(userInfoKey).doc(listKey).collection('feed') as CollectionReference<TimelineFeedEntry>;
 
 // 通知の射影 (→ ADR-0088)。`userInfos/{ローカル actor}/notifications/{アクティビティ IRI}`。
 export type NotificationType = 'mention' | 'favourite' | 'reblog' | 'follow';
