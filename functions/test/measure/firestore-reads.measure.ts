@@ -219,32 +219,30 @@ describe('Firestore reads per request', () => {
 			home: '/api/v1/timelines/home?limit=20',
 			list: `/api/v1/timelines/list/${list!.id}?limit=20`,
 		};
-		for (const [label, path] of [
-			...Object.entries(timelinePaths),
-			['notifications', '/api/v1/notifications?limit=80'],
-		] as const) {
+		for (const [label, path] of Object.entries(timelinePaths)) {
 			clearMastodonIdCache();
 			clearTimelineHeadCache();
 			await measure(`${label} (cold)`, path);
-			if (label !== 'notifications') {
-				clearTimelineHeadCache();
-				await measure(`${label} (rebuild)`, path);
-			}
+			clearTimelineHeadCache();
+			await measure(`${label} (rebuild)`, path);
 			await measure(label, path);
+			// 新着が 1 件あるとき (ADR-0139 決定4)。リストのメンバーの Note なので、ホームとリストの両方に載る。
+			await apex.store.saveObject({
+				id: `${remotes[0]}/notes/new-${label}`,
+				type: 'Note',
+				attributedTo: remotes[0],
+				content: '<p>new</p>',
+				published: new Date().toISOString(),
+				to: [PUBLIC],
+				cc: [`${remotes[0]}/followers`],
+			} as unknown as APObject);
+			await measure(`${label} (new entry)`, path);
 		}
-		// 新着が 1 件あるとき (ADR-0139 決定4)。リストのメンバーの Note なので、ホームとリストの両方に載る。
-		await apex.store.saveObject({
-			id: `${remotes[0]}/notes/new`,
-			type: 'Note',
-			attributedTo: remotes[0],
-			content: '<p>new</p>',
-			published: new Date().toISOString(),
-			to: [PUBLIC],
-			cc: [`${remotes[0]}/followers`],
-		} as unknown as APObject);
-		await measure('home (new entry)', timelinePaths.home);
-		await measure('list (new entry)', timelinePaths.list);
-		const [latest] = await measure('notifications', '/api/v1/notifications?limit=80');
+		const notificationsPath = '/api/v1/notifications?limit=80';
+		clearMastodonIdCache();
+		await measure('notifications (cold)', notificationsPath);
+		await measure('notifications', notificationsPath);
+		const [latest] = await measure('notifications', notificationsPath);
 		await measure('notifications poll', `/api/v1/notifications?limit=1&since_id=${latest!.id}`);
 
 		const timelineMonthlyReads = (label: 'home' | 'list') =>
