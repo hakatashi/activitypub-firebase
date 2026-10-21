@@ -1,7 +1,7 @@
 import type { AuthorizationCode, Client, Token, User } from '@node-oauth/oauth2-server';
 import { describe, expect, test, afterEach } from 'vitest';
 import { Oauth2Model } from '../../src/mastodon/oauth2Model.js';
-import { Clients, RefreshTokens, Users } from '../../src/schema.js';
+import { AccessTokens, Clients, RefreshTokens, Users } from '../../src/schema.js';
 import { resetFirestore } from '../helpers/index.js';
 
 describe('Oauth2Model', () => {
@@ -69,7 +69,7 @@ describe('Oauth2Model', () => {
 		const client = { id: 'client-1', grants: ['authorization_code'] } as Client;
 		const user = { id: 'user-1' } as User;
 
-		test('round-trips a token, converting Firestore Timestamps back to Date', async () => {
+		test('round-trips a token, converting the refresh token expiry back to Date', async () => {
 			const token = {
 				accessToken: 'access-token',
 				accessTokenExpiresAt: new Date('2023-01-01T00:00:00.000Z'),
@@ -84,12 +84,32 @@ describe('Oauth2Model', () => {
 			const fetched = await model.getAccessToken('access-token');
 			expect(fetched).not.toBe(false);
 			expect((fetched as Token).accessToken).toBe('access-token');
-			expect((fetched as Token).accessTokenExpiresAt).toEqual(new Date('2023-01-01T00:00:00.000Z'));
 			expect((fetched as Token).refreshTokenExpiresAt).toEqual(
 				new Date('2023-02-01T00:00:00.000Z'),
 			);
 			expect((fetched as Token).client).toEqual(client);
 			expect((fetched as Token).user).toEqual(user);
+		});
+
+		test('does not store accessTokenExpiresAt and treats the token as non-expiring', async () => {
+			const token = {
+				accessToken: 'eternal-token',
+				accessTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+				scope: 'read',
+			} as unknown as Token;
+
+			await model.saveToken(token, client, user);
+
+			const raw = (await AccessTokens.where('accessToken', '==', 'eternal-token').get()).docs[0];
+			expect(raw?.data()).not.toHaveProperty('accessTokenExpiresAt');
+
+			const fetched = (await model.getAccessToken('eternal-token')) as Token;
+			expect(fetched.accessTokenExpiresAt?.getTime()).toBeGreaterThan(
+				Date.now() + 50 * 365 * 24 * 3600 * 1000,
+			);
+
+			expect(await model.revokeToken(fetched)).toBe(true);
+			expect(await model.getAccessToken('eternal-token')).toBe(false);
 		});
 
 		test('does not save a refresh token when the token has none', async () => {

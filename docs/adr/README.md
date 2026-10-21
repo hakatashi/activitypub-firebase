@@ -158,3 +158,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0129](0129-no-store-for-api-errors.md) | `/api/**` のエラー応答に `Cache-Control: no-store` を付ける | Accepted |
 | [0130](0130-continuous-improvement-after-phase5.md) | Phase 5 の完了後はフェーズを切らず、継続的な機能改善として Issue を管理する | Accepted |
 | [0131](0131-store-activity-actor-as-array.md) | インポートしたアクティビティの `actor` を apex の保存形式(配列)に揃える | Accepted |
+| [0132](0132-non-expiring-access-tokens.md) | アクセストークンを無期限にする | Accepted |
