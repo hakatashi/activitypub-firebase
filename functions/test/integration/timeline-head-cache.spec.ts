@@ -125,7 +125,7 @@ describe('timeline head cache (Issue #347, ADR-0139)', () => {
 		expect(await home()).toEqual(first);
 
 		const now = Date.now();
-		vi.spyOn(Date, 'now').mockReturnValue(now + 5 * 60 * 1000);
+		vi.spyOn(Date, 'now').mockReturnValue(now + 15 * 60 * 1000);
 		expect((await home())[0]?.content).toBe('edited');
 	});
 

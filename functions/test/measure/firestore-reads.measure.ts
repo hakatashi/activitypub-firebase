@@ -32,9 +32,16 @@ const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
 const TIMELINE_REQUESTS_PER_MONTH = SECONDS_PER_MONTH / 15;
 const NOTIFICATION_POLLS_PER_MONTH = SECONDS_PER_MONTH / 20;
 const NOTIFICATION_RELOADS_PER_MONTH = 30 * 30;
-// タイムラインの先頭ページのキャッシュ (ADR-0139) は 5 分で組み立て直すので、15 秒ごとのリクエストの
-// 20 回に 1 回が組み立て直し、残りがキャッシュの検証だけになる。
-const TIMELINE_REQUESTS_PER_REBUILD = (5 * 60) / 15;
+// タイムラインの先頭ページのキャッシュ (ADR-0139) は 15 分で組み立て直すので、15 秒ごとのリクエストの
+// 60 回に 1 回が組み立て直し、残りがキャッシュの検証か新着分の組み立てになる。
+const TIMELINE_POLL_SECONDS = 15;
+const TIMELINE_REQUESTS_PER_REBUILD = (15 * 60) / TIMELINE_POLL_SECONDS;
+// 1 日あたりのタイムラインの射影の新着の件数。新着があるリクエストは新着分を組み立てる (ADR-0139 決定4)。
+// 環境変数で上書きできる。既定値は本番の直近 3 日の平均 (docs/runbooks/measure-firestore-reads.md)。
+const NEW_ENTRIES_PER_DAY = {
+	home: Number(process.env.MEASURE_HOME_ENTRIES_PER_DAY ?? 0),
+	list: Number(process.env.MEASURE_LIST_ENTRIES_PER_DAY ?? 0),
+};
 // 東京リージョンの読み取りの単価 (USD / 1 回) と、無料枠 (1 日 5 万回)。
 const READ_PRICE = 0.038 / 100_000;
 const FREE_READS_PER_MONTH = 50_000 * 30;
@@ -245,13 +252,20 @@ describe('Firestore reads per request', () => {
 		const [latest] = await measure('notifications', notificationsPath);
 		await measure('notifications poll', `/api/v1/notifications?limit=1&since_id=${latest!.id}`);
 
-		const timelineMonthlyReads = (label: 'home' | 'list') =>
-			Math.round(
+		// 新着がポアソン過程で届くとして、1 回のリクエストの間に 1 件以上届く確率を求める。
+		const timelineMonthlyReads = (label: 'home' | 'list') => {
+			const newEntryRatio =
+				1 - Math.exp((-NEW_ENTRIES_PER_DAY[label] * TIMELINE_POLL_SECONDS) / 86_400);
+			const cachedReads =
+				results[label]!.total * (1 - newEntryRatio) +
+				results[`${label} (new entry)`]!.total * newEntryRatio;
+			return Math.round(
 				((results[`${label} (rebuild)`]!.total +
-					results[label]!.total * (TIMELINE_REQUESTS_PER_REBUILD - 1)) /
+					cachedReads * (TIMELINE_REQUESTS_PER_REBUILD - 1)) /
 					TIMELINE_REQUESTS_PER_REBUILD) *
 					TIMELINE_REQUESTS_PER_MONTH,
 			);
+		};
 		const monthly = {
 			home: timelineMonthlyReads('home'),
 			list: timelineMonthlyReads('list'),
@@ -277,6 +291,7 @@ describe('Firestore reads per request', () => {
 						.join(', ')} |`,
 			),
 			'',
+			`new entries per day: home ${NEW_ENTRIES_PER_DAY.home}, list ${NEW_ENTRIES_PER_DAY.list}`,
 			`monthly reads: home ${monthly.home}, list ${monthly.list}, notifications ${monthly.notifications}, total ${monthlyReads}`,
 			`monthly cost: $${estimate.monthlyUsd}`,
 		];

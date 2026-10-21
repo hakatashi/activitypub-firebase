@@ -292,7 +292,7 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 射影から読めるとき、カーソルの無い先頭ページは組み立て済みの Status のままインスタンス内にキャッシュする
 (`functions/src/mastodon/presenters/timelineHeadCache.ts`、→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md))。
 リクエストごとにマーカー・`following`・`timelineView` のバージョンと射影の最新のエントリを読み、変わっていなければキャッシュを返す。
-新着があれば新着分だけを組み立てて先頭に足し、全体は 5 分で組み立て直す。`timelineView` は、閲覧者が Status の見え方を
+新着があれば新着分だけを組み立てて先頭に足し、全体は 15 分で組み立て直す。`timelineView` は、閲覧者が Status の見え方を
 変えるルート(投稿・削除・お気に入り・ブースト・ブックマーク・ピン・フォロー・プロフィール・リスト)に付けた
 `touchesTimelineView` ミドルウェアが、応答を送る前に書き直す。
 

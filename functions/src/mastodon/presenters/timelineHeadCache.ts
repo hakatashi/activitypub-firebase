@@ -18,7 +18,7 @@ const cache = new Map<string, TimelineHeadCacheEntry>();
 
 const MAX_ENTRIES = 32;
 // リモートで変わる件数・編集・削除などを読み直すまでの時間。
-const MAX_AGE_MS = 5 * 60 * 1000;
+const MAX_AGE_MS = 15 * 60 * 1000;
 
 export const clearTimelineHeadCache = () => {
 	cache.clear();
