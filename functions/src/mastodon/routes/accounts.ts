@@ -20,6 +20,7 @@ import {
 } from '../http/auth.js';
 import { NotFoundError, UnprocessableError } from '../http/errors.js';
 import { loadAccount, loadViewer } from '../http/loaders.js';
+import { touchesTimelineView } from '../http/middlewares.js';
 import { parseMultipart } from '../http/multipart.js';
 import type { MultipartFile } from '../http/multipart.js';
 import { idParamSchema, toBoolean } from '../http/params.js';
@@ -120,6 +121,7 @@ router.patch(
 	'/v1/accounts/update_credentials',
 	authRequired,
 	scopeRequired('write:accounts'),
+	touchesTimelineView,
 	async (req, res) => {
 		let bodyInput: unknown = req.body;
 		let avatarFile: MultipartFile | undefined;
@@ -346,6 +348,7 @@ router.post(
 	'/v1/accounts/:id/follow',
 	authRequired,
 	scopeRequired('write:follows'),
+	touchesTimelineView,
 	validate({ params: accountParamsSchema }),
 	async (req, res) => {
 		const { id } = getValidParams(res, accountParamsSchema);
@@ -388,6 +391,7 @@ router.post(
 	'/v1/accounts/:id/unfollow',
 	authRequired,
 	scopeRequired('write:follows'),
+	touchesTimelineView,
 	validate({ params: accountParamsSchema }),
 	async (req, res) => {
 		const { id } = getValidParams(res, accountParamsSchema);

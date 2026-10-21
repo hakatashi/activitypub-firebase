@@ -7,6 +7,7 @@ import {
 	getPublicTimeline,
 } from '../../src/mastodon/presenters/status.js';
 import { getFollowing } from '../../src/social/follows.js';
+import { touchTimelineViewVersion } from '../../src/social/timelines.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
 import { mergeIntoTimelineFeeds } from '../../src/projections/timelineFeeds.js';
 import { enableTimelineFeeds, resetFirestore } from '../helpers/index.js';
@@ -389,6 +390,8 @@ describe.each(['scan', 'feed'] as const)('Mastodon timelines (Issue #58) [%s]', 
 				object: b1,
 				published: new Date().toISOString(),
 			} as unknown as APObject);
+			// Mastodon API のお気に入りは、応答の前に閲覧者のバージョンを書き直す (→ ADR-0139)。
+			await touchTimelineViewVersion(me.id);
 
 			const home2 = await getHomeTimeline(me, { limit: 10 });
 			expect(home2[0]?.favourited).toBe(true);

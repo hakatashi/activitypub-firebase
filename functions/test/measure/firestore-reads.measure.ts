@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/apex.js';
 import { db } from '../../src/firebase.js';
+import { clearTimelineHeadCache } from '../../src/mastodon/presenters/timelineHeadCache.js';
 import { clearMastodonIdCache } from '../../src/mastodonId.js';
 import { rebuildTimelineFeeds } from '../../src/projections/timelineFeeds.js';
 import { addListAccounts, createList } from '../../src/social/lists.js';
@@ -31,6 +32,9 @@ const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
 const TIMELINE_REQUESTS_PER_MONTH = SECONDS_PER_MONTH / 15;
 const NOTIFICATION_POLLS_PER_MONTH = SECONDS_PER_MONTH / 20;
 const NOTIFICATION_RELOADS_PER_MONTH = 30 * 30;
+// タイムラインの先頭ページのキャッシュ (ADR-0139) は 5 分で組み立て直すので、15 秒ごとのリクエストの
+// 20 回に 1 回が組み立て直し、残りがキャッシュの検証だけになる。
+const TIMELINE_REQUESTS_PER_REBUILD = (5 * 60) / 15;
 // 東京リージョンの読み取りの単価 (USD / 1 回) と、無料枠 (1 日 5 万回)。
 const READ_PRICE = 0.038 / 100_000;
 const FREE_READS_PER_MONTH = 50_000 * 30;
@@ -209,22 +213,50 @@ describe('Firestore reads per request', () => {
 			return res.body as { id: string }[];
 		};
 
-		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138) が空の状態、2 回目は効いた状態。
+		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138、ADR-0139) が空の状態、2 回目は効いた状態。
+		// タイムラインは、先頭ページのキャッシュ (ADR-0139) だけを捨てて組み立て直す回 (rebuild) も測る。
+		const timelinePaths = {
+			home: '/api/v1/timelines/home?limit=20',
+			list: `/api/v1/timelines/list/${list!.id}?limit=20`,
+		};
 		for (const [label, path] of [
-			['home', '/api/v1/timelines/home?limit=20'],
-			['list', `/api/v1/timelines/list/${list!.id}?limit=20`],
+			...Object.entries(timelinePaths),
 			['notifications', '/api/v1/notifications?limit=80'],
 		] as const) {
 			clearMastodonIdCache();
+			clearTimelineHeadCache();
 			await measure(`${label} (cold)`, path);
+			if (label !== 'notifications') {
+				clearTimelineHeadCache();
+				await measure(`${label} (rebuild)`, path);
+			}
 			await measure(label, path);
 		}
+		// 新着が 1 件あるとき (ADR-0139 決定4)。リストのメンバーの Note なので、ホームとリストの両方に載る。
+		await apex.store.saveObject({
+			id: `${remotes[0]}/notes/new`,
+			type: 'Note',
+			attributedTo: remotes[0],
+			content: '<p>new</p>',
+			published: new Date().toISOString(),
+			to: [PUBLIC],
+			cc: [`${remotes[0]}/followers`],
+		} as unknown as APObject);
+		await measure('home (new entry)', timelinePaths.home);
+		await measure('list (new entry)', timelinePaths.list);
 		const [latest] = await measure('notifications', '/api/v1/notifications?limit=80');
 		await measure('notifications poll', `/api/v1/notifications?limit=1&since_id=${latest!.id}`);
 
+		const timelineMonthlyReads = (label: 'home' | 'list') =>
+			Math.round(
+				((results[`${label} (rebuild)`]!.total +
+					results[label]!.total * (TIMELINE_REQUESTS_PER_REBUILD - 1)) /
+					TIMELINE_REQUESTS_PER_REBUILD) *
+					TIMELINE_REQUESTS_PER_MONTH,
+			);
 		const monthly = {
-			home: results.home!.total * TIMELINE_REQUESTS_PER_MONTH,
-			list: results.list!.total * TIMELINE_REQUESTS_PER_MONTH,
+			home: timelineMonthlyReads('home'),
+			list: timelineMonthlyReads('list'),
 			notifications:
 				results['notifications poll']!.total * NOTIFICATION_POLLS_PER_MONTH +
 				results.notifications!.total * NOTIFICATION_RELOADS_PER_MONTH,

@@ -3,14 +3,23 @@ import type { CollectionReference, QueryDocumentSnapshot } from '@google-cloud/f
 import { chunk, uniq } from 'lodash-es';
 import type { APActor } from 'activitypub-types';
 import type { APObject } from '../apex/index.js';
-import { domain, escapeFirestoreKey, toFirestoreKey, unescapeFirestoreKey } from '../firebase.js';
+import firebase from 'firebase-admin';
+import {
+	db,
+	domain,
+	escapeFirestoreKey,
+	toFirestoreKey,
+	unescapeFirestoreKey,
+} from '../firebase.js';
+import type { FirestoreKey } from '../firebase.js';
 import { getObjectHashtags } from '../hashtags.js';
 import { getMastodonIds, mastodonIdToTimestamp } from '../mastodonId.js';
 import type { PageParams } from '../pagination.js';
 import { isAscending, isIdInRange, lowerBoundId, takePage } from '../pagination.js';
+import { followingVersionRef } from '../projections/follows.js';
 import { timelineFeedsMarkerRef } from '../projections/timelineFeeds.js';
-import { HomeFeed, ListFeed, UserInfos } from '../schema.js';
-import type { ListRecord, TimelineFeedEntry } from '../schema.js';
+import { HomeFeed, ListFeed, ProjectionVersions, UserInfos } from '../schema.js';
+import type { ListRecord, ProjectionVersion, TimelineFeedEntry } from '../schema.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toArray, toIdArray } from '../utils.js';
 import { getFollowing } from './follows.js';
 import { getExclusiveListMembers } from './lists.js';
@@ -680,4 +689,53 @@ export const getListTimelineItems = async (
 		});
 	}
 	return collectAuthorsTimelineItems({ authors, page, viewer, viewerFollowing, filterNotes });
+};
+
+// 閲覧者が Status の見え方を変えたことを示すバージョン (→ ADR-0139 決定3)。読み取り側は `updateTime` を見る。
+const timelineViewVersionRef = (key: FirestoreKey) =>
+	ProjectionVersions(key).doc(toFirestoreKey('timelineView'));
+
+const timelineViewVersionData = () => ({
+	updatedAt:
+		firebase.firestore.FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
+});
+
+export const touchTimelineViewVersion = async (actorId: string) => {
+	await timelineViewVersionRef(escapeFirestoreKey(actorId)).set(timelineViewVersionData());
+};
+
+export type TimelineTarget = { kind: 'home' } | { kind: 'list'; listId: string };
+
+export interface TimelineHeadState {
+	// タイムラインの射影のマーカー・following・閲覧者のバージョンの `updateTime` をつないだもの
+	version: string;
+	// 射影の最新のエントリの Mastodon ID (空なら null)
+	latestEntryId: string | null;
+}
+
+// 先頭ページのキャッシュを検証するための状態を読む (→ ADR-0139 決定2)。キャッシュしてはいけなければ undefined。
+// 呼び出し側は組み立ての前に読む。間に挟まった書き込みは、次の呼び出しでバージョンか最新のエントリの違いとして現れる。
+export const readTimelineHeadState = async (
+	viewerId: string,
+	target: TimelineTarget,
+): Promise<TimelineHeadState | undefined> => {
+	const key = escapeFirestoreKey(viewerId);
+	const feed =
+		target.kind === 'home' ? HomeFeed(key) : ListFeed(key, toFirestoreKey(target.listId));
+	const viewRef = timelineViewVersionRef(key);
+	const [[marker, following, view], latest] = await Promise.all([
+		db.getAll(timelineFeedsMarkerRef(key), followingVersionRef(key), viewRef),
+		feed.orderBy('id', 'desc').limit(1).get(),
+	]);
+	if (marker?.updateTime === undefined || following?.updateTime === undefined) {
+		return undefined;
+	}
+	// 一度も操作していなければ作る。これより後の操作はすべてこれを書き直すので、作った時点から使える。
+	const viewTime = view?.updateTime ?? (await viewRef.set(timelineViewVersionData())).writeTime;
+	return {
+		version: [marker.updateTime, following.updateTime, viewTime]
+			.map((time) => time.valueOf())
+			.join(' '),
+		latestEntryId: latest.docs[0]?.data().id ?? null,
+	};
 };
