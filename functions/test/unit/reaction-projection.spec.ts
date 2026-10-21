@@ -6,6 +6,7 @@ import { escapeFirestoreKey } from '../../src/firebase.js';
 import { getMastodonIds } from '../../src/mastodonId.js';
 import { plainTextToHtml, publishNote } from '../../src/notes.js';
 import { rebuildReactionProjection } from '../../src/projections/reactions.js';
+import { getReactedNoteIris } from '../../src/social/reactions.js';
 import { ReactionRelations, Streams } from '../../src/schema.js';
 import type { ReactionKind, ReactionRelation } from '../../src/schema.js';
 import { toIdArray } from '../../src/utils.js';
@@ -275,5 +276,29 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		expect(await getRelations('reblogs')).toEqual(expectedReblogs);
 
 		expect(await rebuildReactionProjection()).toMatchObject({ written: 0, deleted: 0 });
+	});
+
+	test('getReactedNoteIris returns only the reacted notes across in-query chunks (#348)', async () => {
+		const noteIris = Array.from(
+			{ length: 35 },
+			(_, index) => `https://remote.example/notes/${index}?a=b#c`,
+		);
+		const reactedIris = [noteIris[0]!, noteIris[29]!, noteIris[30]!, noteIris[34]!];
+		for (const iri of reactedIris) {
+			await ReactionRelations(escapeFirestoreKey(me.id), 'favourites')
+				.doc(escapeFirestoreKey(iri))
+				.set({
+					object: iri,
+					activityIris: [`${iri}/like`],
+					cursorId: null,
+					createdAt: firebase.firestore.Timestamp.now(),
+				});
+		}
+
+		const favourited = await getReactedNoteIris(me.id, 'favourites', [...noteIris, noteIris[0]!]);
+		expect([...favourited].toSorted()).toEqual(reactedIris.toSorted());
+		expect(await getReactedNoteIris(me.id, 'reblogs', noteIris)).toEqual(new Set());
+		expect(await getReactedNoteIris(alice.id, 'favourites', noteIris)).toEqual(new Set());
+		expect(await getReactedNoteIris(me.id, 'favourites', [])).toEqual(new Set());
 	});
 });
