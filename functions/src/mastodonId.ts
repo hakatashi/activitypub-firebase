@@ -17,6 +17,44 @@ const MAX_TIMESTAMP = 2 ** 48 - 1;
 // 空きシーケンスを探すとき、1回の getAll でまとめて読む候補の数。
 const PROBE_BATCH_SIZE = 16;
 
+// IRI ⇔ Mastodon ID の対応のインスタンス内キャッシュ (→ ADR-0138)。対応は採番後に変わらないので無効化しない。
+// Map の挿入順を使った LRU で、参照したものを末尾に移し、上限を超えたら先頭から捨てる。
+const MAPPING_CACHE_MAX_ENTRIES = 20_000;
+const mastodonIdByIriCache = new Map<string, string>();
+const iriByMastodonIdCache = new Map<string, string>();
+
+const touchCache = (cache: Map<string, string>, key: string) => {
+	const value = cache.get(key);
+	if (value !== undefined) {
+		cache.delete(key);
+		cache.set(key, value);
+	}
+	return value;
+};
+
+const setCache = (cache: Map<string, string>, key: string, value: string) => {
+	cache.delete(key);
+	cache.set(key, value);
+	while (cache.size > MAPPING_CACHE_MAX_ENTRIES) {
+		const oldest = cache.keys().next().value;
+		if (oldest === undefined) {
+			break;
+		}
+		cache.delete(oldest);
+	}
+};
+
+const rememberMapping = (iri: string, mastodonId: string) => {
+	setCache(mastodonIdByIriCache, iri, mastodonId);
+	setCache(iriByMastodonIdCache, mastodonId, iri);
+};
+
+// テスト用。エミュレータを消したときに、消えた対応を返さないようにする。
+export const clearMastodonIdCache = () => {
+	mastodonIdByIriCache.clear();
+	iriByMastodonIdCache.clear();
+};
+
 const mastodonIdPattern = new RegExp(`^\\d{${MASTODON_ID_LENGTH}}$`);
 
 export const isMastodonId = (value: string) => mastodonIdPattern.test(value);
@@ -133,24 +171,41 @@ export const getOrAssignMastodonIdInTransaction = async (
 	return mastodonId;
 };
 
-export const getOrAssignMastodonId = (iri: string, published: unknown) =>
-	db.runTransaction((transaction) =>
+// コミットが成功してから覚える。トランザクションの中で覚えると、再試行で捨てられた ID が残る。
+export const getOrAssignMastodonId = async (iri: string, published: unknown) => {
+	const mastodonId = await db.runTransaction((transaction) =>
 		getOrAssignMastodonIdInTransaction(transaction, iri, published),
 	);
+	rememberMapping(iri, mastodonId);
+	return mastodonId;
+};
 
 // IRI → Mastodon ID をまとめて引く。採番はしない (未採番の IRI は結果に含まれない)。
 // バックフィルの `--dry-run` など、書き込んではならない場面で使う。
+// キャッシュに無いものだけを読む (→ ADR-0138)。トランザクションの中では使わないこと。
 export const findMastodonIds = async (iris: string[]) => {
 	const result = new Map<string, string>();
-	if (iris.length === 0) {
+	const missing: string[] = [];
+	for (const iri of new Set(iris)) {
+		const cached = touchCache(mastodonIdByIriCache, iri);
+		if (cached === undefined) {
+			missing.push(iri);
+		} else {
+			result.set(iri, cached);
+		}
+	}
+	if (missing.length === 0) {
 		return result;
 	}
 
-	const docs = await db.getAll(...iris.map((iri) => MastodonIdsByIri.doc(escapeFirestoreKey(iri))));
-	iris.forEach((iri, index) => {
+	const docs = await db.getAll(
+		...missing.map((iri) => MastodonIdsByIri.doc(escapeFirestoreKey(iri))),
+	);
+	missing.forEach((iri, index) => {
 		const mastodonId = docs[index]?.get('mastodonId');
 		if (typeof mastodonId === 'string') {
 			result.set(iri, mastodonId);
+			rememberMapping(iri, mastodonId);
 		}
 	});
 	return result;
@@ -167,13 +222,21 @@ export const getMastodonIds = async (entries: { iri: string; published: unknown 
 	return result;
 };
 
-// Mastodon ID → IRI。形式が不正な ID や未知の ID には undefined を返す。
+// Mastodon ID → IRI。形式が不正な ID や未知の ID には undefined を返す。キャッシュを先に見る (→ ADR-0138)。
 export const getIriByMastodonId = async (mastodonId: string) => {
 	if (!isMastodonId(mastodonId)) {
 		return undefined;
 	}
+	const cached = touchCache(iriByMastodonIdCache, mastodonId);
+	if (cached !== undefined) {
+		return cached;
+	}
 	const doc = await MastodonIds.doc(escapeFirestoreKey(mastodonId)).get();
-	return doc.data()?.iri;
+	const iri = doc.data()?.iri;
+	if (iri !== undefined) {
+		rememberMapping(iri, mastodonId);
+	}
+	return iri;
 };
 
 // メディア添付用の Mastodon ID を採番する (→ ADR-0091)。

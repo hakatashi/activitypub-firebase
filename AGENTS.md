@@ -18,6 +18,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 | ビルド・テスト・デプロイの方法 | [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md) |
 | 連合が動くことをどう確認するか | [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md) |
 | Elk などのクライアントで動くことをどう確認するか | [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) |
+| Firestore の読み取り回数と月額をどう見積もるか | [`docs/runbooks/measure-firestore-reads.md`](docs/runbooks/measure-firestore-reads.md) |
 | 本番のデータ・設定・ログをどう点検するか(移行前) | [`docs/runbooks/production-preflight-check.md`](docs/runbooks/production-preflight-check.md) |
 | pawoo.net からの引っ越しをどう実行・監視するか | [`docs/runbooks/account-migration.md`](docs/runbooks/account-migration.md) |
 | Claude Code のクラウドセッションで作業するときの注意 | [`docs/runbooks/cloud-session.md`](docs/runbooks/cloud-session.md) |

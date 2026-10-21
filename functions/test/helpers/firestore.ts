@@ -1,6 +1,7 @@
 import type { Timestamp } from '@google-cloud/firestore';
 import firebase from 'firebase-admin';
 import { escapeFirestoreKey } from '../../src/firebase.js';
+import { clearMastodonIdCache } from '../../src/mastodonId.js';
 import { timelineFeedsMarkerRef } from '../../src/projections/timelineFeeds.js';
 
 /**
@@ -22,6 +23,8 @@ export const resetFirestore = async (): Promise<void> => {
 	if (!res.ok) {
 		throw new Error(`Failed to reset Firestore emulator: ${res.status} ${res.statusText}`);
 	}
+	// 消えた対応をキャッシュから返さないようにする (→ ADR-0138)。
+	clearMastodonIdCache();
 };
 
 /**

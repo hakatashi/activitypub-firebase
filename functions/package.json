@@ -19,6 +19,7 @@
 		"test:changed": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --changed\"",
 		"test:changed:main": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --changed origin/main\"",
 		"test:only": "node bin/run-test.js",
+		"measure:reads": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --config vitest.measure.config.ts\"",
 		"test:watch": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest\""
 	},
 	"dependencies": {
