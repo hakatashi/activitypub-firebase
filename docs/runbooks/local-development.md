@@ -46,6 +46,9 @@ Firestore エミュレータを起動した上で Vitest を実行する。npm s
 | `npm --prefix functions run test:only -- <filter>` | 指定したファイル・テスト名・パス | 特定のテストの集中デバッグ、部分実行 |
 | `npm --prefix functions run test:watch` | Vitest ウォッチモード | TDD などテスト駆動での継続実行 |
 
+読み取り回数の計測(`npm --prefix functions run measure:reads`)は通常のテストに含まれない。
+手順は [`measure-firestore-reads.md`](measure-firestore-reads.md)。
+
 #### 1. 全件実行
 
 ```bash
@@ -134,6 +137,7 @@ cross-env GCLOUD_PROJECT=activitypub-firebase-dev npx vitest run --changed
 - `test/integration/` — Express アプリ(`activitypub` / `mastodonApi`)に対して
   `supertest` でリクエストを送るテスト。
 - `test/apex-upstream/` — 上流 `activitypub-express` の適合テスト群 (Jasmine 互換シム駆動、ADR-0052)。
+- `test/measure/` — Firestore の読み取り回数の計測(`*.measure.ts`。`npm test` には含めない。→ [`measure-firestore-reads.md`](measure-firestore-reads.md))。
 - `test/helpers/` — テスト共通ヘルパー (`resetFirestore`, `createLocalActor`, `addAccessToken`, `mastodon`)。
 
 Firestore エミュレータを使うテストでは、各テストの `afterEach` でテストヘルパーの
