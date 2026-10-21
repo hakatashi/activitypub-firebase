@@ -37,10 +37,14 @@ const NOTIFICATION_RELOADS_PER_MONTH = 30 * 30;
 const TIMELINE_POLL_SECONDS = 15;
 const TIMELINE_REQUESTS_PER_REBUILD = (15 * 60) / TIMELINE_POLL_SECONDS;
 // 1 日あたりのタイムラインの射影の新着の件数。新着があるリクエストは新着分を組み立てる (ADR-0139 決定4)。
-// 環境変数で上書きできる。既定値は本番の直近 3 日の平均 (docs/runbooks/measure-firestore-reads.md)。
+// 環境変数で上書きできる。ホームの既定値は本番の homeFeed の直近 3 日 (2026-10-18〜21) の 1,075 件の平均。
+// リストは本番を数えていないので、ホームの件数をフォロー中の人数に対するメンバーの割合で割り引く。
+const HOME_ENTRIES_PER_DAY = Number(process.env.MEASURE_HOME_ENTRIES_PER_DAY ?? 1075 / 3);
 const NEW_ENTRIES_PER_DAY = {
-	home: Number(process.env.MEASURE_HOME_ENTRIES_PER_DAY ?? 0),
-	list: Number(process.env.MEASURE_LIST_ENTRIES_PER_DAY ?? 0),
+	home: HOME_ENTRIES_PER_DAY,
+	list: Number(
+		process.env.MEASURE_LIST_ENTRIES_PER_DAY ?? (HOME_ENTRIES_PER_DAY * LIST_MEMBERS) / FOLLOWS,
+	),
 };
 // 東京リージョンの読み取りの単価 (USD / 1 回) と、無料枠 (1 日 5 万回)。
 const READ_PRICE = 0.038 / 100_000;
