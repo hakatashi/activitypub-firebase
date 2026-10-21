@@ -33,6 +33,7 @@ import {
 	requestRemoteActorRefreshIfStale,
 } from '../../social/remoteActorCounts.js';
 import { requestRemoteActorResolution } from '../../social/remoteActorResolution.js';
+import { requestRemoteOutboxBackfillIfStale } from '../../social/remoteOutbox.js';
 
 export const assertIsAPActor: (
 	object: ApexObject | undefined,
@@ -491,7 +492,10 @@ const remoteActorToAccount = async (username: string, lookupDomain: string) => {
 		return undefined;
 	}
 	assertIsAPActor(actor);
-	await requestRemoteActorRefreshIfStale(actor);
+	await Promise.all([
+		requestRemoteActorRefreshIfStale(actor),
+		requestRemoteOutboxBackfillIfStale(actor),
+	]);
 	return actorObjectToAccount(actor);
 };
 

@@ -16,6 +16,7 @@ import {
 	remoteActorRefreshQueue,
 	remoteActorRefreshTaskId,
 } from '../../src/social/remoteActorCounts.js';
+import { remoteOutboxBackfillQueue } from '../../src/social/remoteOutbox.js';
 import { remoteActorRefreshTask } from '../../src/tasks.js';
 import { createLocalActor, resetFirestore } from '../helpers/index.js';
 
@@ -122,6 +123,7 @@ describe('remote actor counts (Issue #229)', () => {
 		await resetFirestore();
 		handler = undefined;
 		enqueueSpy = vi.spyOn(remoteActorRefreshQueue, 'enqueue').mockResolvedValue(undefined);
+		vi.spyOn(remoteOutboxBackfillQueue, 'enqueue').mockResolvedValue(undefined);
 		await createLocalActor('hakatashi', { uid: 'uid-hakatashi', id: '1' });
 		await saveCarol();
 	});
