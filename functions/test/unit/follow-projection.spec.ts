@@ -9,7 +9,11 @@ import { localFollowersId } from '../../src/localActor.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { findMastodonIds, getOrAssignMastodonId } from '../../src/mastodonId.js';
 import { buildMetaIndex } from '../../src/meta.js';
-import { followContributions, rebuildFollowProjection } from '../../src/projections/follows.js';
+import {
+	followContributions,
+	followingVersionRef,
+	rebuildFollowProjection,
+} from '../../src/projections/follows.js';
 import { FollowRelations, Streams, UserInfos } from '../../src/schema.js';
 import type { FollowRelation, FollowRelationSide } from '../../src/schema.js';
 import {
@@ -256,6 +260,34 @@ describe('follow projection (Issue #193, ADR-0082)', () => {
 			expect((await getRelations('following')).size).toBe(0);
 			expect(await getCounts()).toEqual({ followers: 0, following: 0 });
 			await expectConsistent();
+		});
+
+		test('updates the following version so that the cache of getFollowing is refreshed (ADR-0135)', async () => {
+			const versionOf = async () =>
+				(await followingVersionRef(escapeFirestoreKey(me.id)).get()).updateTime?.valueOf();
+
+			// followers 側の変更ではバージョンを書かない
+			await followMe('https://remote.example/follows/alice-1', ALICE);
+			expect(await versionOf()).toBeUndefined();
+
+			await mastodonFollow(BOB);
+			const pendingVersion = await versionOf();
+			expect(pendingVersion).toBeDefined();
+			expect(await getFollowing(me)).toEqual([]);
+
+			const [followIri] = await outgoingFollowIris(BOB);
+			await acceptFrom(BOB, followIri as string);
+			const acceptedVersion = await versionOf();
+			expect(acceptedVersion).not.toBe(pendingVersion);
+			expect(await getFollowing(me)).toEqual([BOB]);
+
+			// 再送された Accept は射影を変えないので、バージョンも変えない
+			await acceptFrom(BOB, followIri as string);
+			expect(await versionOf()).toBe(acceptedVersion);
+
+			await mastodonFollow(BOB, 'unfollow');
+			expect(await versionOf()).not.toBe(acceptedVersion);
+			expect(await getFollowing(me)).toEqual([]);
 		});
 
 		test('keeps the remaining pending Follow when one of duplicate Follows is undone', async () => {

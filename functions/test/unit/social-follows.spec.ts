@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { apex } from '../../src/apex.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { buildMastodonId } from '../../src/mastodonId.js';
+import { followingVersionRef } from '../../src/projections/follows.js';
 import { FollowRelations } from '../../src/schema.js';
 import type { FollowRelationSide, FollowState } from '../../src/schema.js';
 import {
@@ -107,6 +108,39 @@ describe('social/follows (projection reads, ADR-0083)', () => {
 		expect(await getFollowIri(me, BOB)).toBe(`${BOB}#follow`);
 		expect(await getFollowIri(me, CAROL)).toBeUndefined();
 		expect(await getFollowIri(me, DAVE)).toBeUndefined();
+	});
+
+	describe('instance cache of getFollowing (ADR-0135)', () => {
+		const bumpVersion = () =>
+			followingVersionRef(escapeFirestoreKey(me.id)).set({ updatedAt: new Date() as never });
+
+		test('does not cache while the version document does not exist', async () => {
+			await setRelation('following', ALICE, 'accepted', idAt(1));
+			expect(await getFollowing(me)).toEqual([ALICE]);
+
+			await setRelation('following', BOB, 'accepted', idAt(2));
+			expect(new Set(await getFollowing(me))).toEqual(new Set([ALICE, BOB]));
+		});
+
+		test('reuses the cached list until the version changes', async () => {
+			await setRelation('following', ALICE, 'accepted', idAt(1));
+			await bumpVersion();
+			expect(await getFollowing(me)).toEqual([ALICE]);
+
+			// バージョンを更新しない書き込みは見えない (= 全件を読み直していない)。
+			await setRelation('following', BOB, 'accepted', idAt(2));
+			expect(await getFollowing(me)).toEqual([ALICE]);
+
+			await bumpVersion();
+			expect(new Set(await getFollowing(me))).toEqual(new Set([ALICE, BOB]));
+		});
+
+		test('returns a copy that callers can mutate without touching the cache', async () => {
+			await setRelation('following', ALICE, 'accepted', idAt(1));
+			await bumpVersion();
+			(await getFollowing(me)).push(BOB);
+			expect(await getFollowing(me)).toEqual([ALICE]);
+		});
 	});
 
 	describe('pagination by the Mastodon ID of the Follow (ADR-0062)', () => {

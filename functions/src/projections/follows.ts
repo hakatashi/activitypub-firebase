@@ -3,7 +3,8 @@ import type { Transaction } from '@google-cloud/firestore';
 import firebase from 'firebase-admin';
 import { isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
-import { escapeFirestoreKey } from '../firebase.js';
+import { escapeFirestoreKey, toFirestoreKey } from '../firebase.js';
+import type { FirestoreKey } from '../firebase.js';
 import {
 	localActorId,
 	localFollowersId,
@@ -11,12 +12,19 @@ import {
 	localRejectionsId,
 } from '../localActor.js';
 import { findMastodonIds, getMastodonIds } from '../mastodonId.js';
-import { FollowRelations, MastodonIdsByIri, Streams, UserInfos } from '../schema.js';
+import {
+	FollowRelations,
+	MastodonIdsByIri,
+	ProjectionVersions,
+	Streams,
+	UserInfos,
+} from '../schema.js';
 import type {
 	FollowRelation,
 	FollowRelationEntry,
 	FollowRelationSide,
 	FollowState,
+	ProjectionVersion,
 	UserInfo,
 } from '../schema.js';
 import { toIdArray, toTypeArray } from '../utils.js';
@@ -95,6 +103,15 @@ export const buildFollowRelation = (
 
 const relationKey = (side: FollowRelationSide, counterpart: string) => `${side} ${counterpart}`;
 
+// following の射影のバージョン (→ ADR-0135)。読み取り側は `updateTime` を見てキャッシュを捨てる。
+export const followingVersionRef = (userInfoKey: FirestoreKey) =>
+	ProjectionVersions(userInfoKey).doc(toFirestoreKey('following'));
+
+const followingVersionData = () => ({
+	updatedAt:
+		firebase.firestore.FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
+});
+
 // トランザクション内で射影の更新を準備する。Firestore のトランザクションは「すべての読み取りの後に
 // 書き込み」を要求するため、読み取りだけをここで済ませ、書き込みは戻り値の関数で行う。
 // 戻り値の関数には、呼び出し側がこの後に採番した Follow の Mastodon ID を渡せる。
@@ -134,6 +151,7 @@ export const prepareFollowProjectionUpdate = async (
 
 	return (followMastodonId) => {
 		const counterDeltas: Record<FollowRelationSide, number> = { followers: 0, following: 0 };
+		let followingChanged = false;
 
 		relationRefs.forEach(({ side, counterpart, ref }, index) => {
 			const existing = relationDocs[index]?.data();
@@ -160,13 +178,19 @@ export const prepareFollowProjectionUpdate = async (
 			if (relation === undefined) {
 				if (existing !== undefined) {
 					transaction.delete(ref);
+					followingChanged ||= side === 'following';
 				}
 			} else if (!isEqual(relation, existing)) {
 				transaction.set(ref, relation);
+				followingChanged ||= side === 'following';
 			}
 
 			counterDeltas[side] += Number(isCounted(side, relation)) - Number(isCounted(side, existing));
 		});
+
+		if (followingChanged) {
+			transaction.set(followingVersionRef(userInfoKey), followingVersionData());
+		}
 
 		const userInfo = userInfoDoc.data();
 		if (userInfo === undefined) {
@@ -253,6 +277,10 @@ export const rebuildFollowProjection = async ({ dryRun = false } = {}) => {
 				await doc.ref.delete();
 			}
 		}
+	}
+	// following の射影を書き換えたかは区別せず、常にキャッシュを捨てさせる (→ ADR-0135)。
+	if (!dryRun) {
+		await followingVersionRef(userInfoKey).set(followingVersionData());
 	}
 
 	const userInfoRef = UserInfos.doc(userInfoKey);

@@ -80,6 +80,19 @@ export interface FollowRelation {
 export const FollowRelations = (userInfoKey: FirestoreKey, side: FollowRelationSide) =>
 	UserInfos.doc(userInfoKey).collection(side) as CollectionReference<FollowRelation>;
 
+// 射影のバージョン (→ ADR-0135)。`userInfos/{ローカル actor}/projectionVersions/{射影}`。
+// 射影を書き換えるたびに同じトランザクションで書き直し、読み取り側は `updateTime` をバージョンとして使う。
+export type ProjectionVersionKind = 'following';
+
+export interface ProjectionVersion {
+	updatedAt: Timestamp;
+}
+
+export const ProjectionVersions = (userInfoKey: FirestoreKey) =>
+	UserInfos.doc(userInfoKey).collection(
+		'projectionVersions',
+	) as CollectionReference<ProjectionVersion>;
+
 // お気に入り・ブーストの射影 (→ ADR-0084)。`userInfos/{ローカル actor}/favourites|reblogs/{Note}`。
 export type ReactionKind = 'favourites' | 'reblogs';
 
