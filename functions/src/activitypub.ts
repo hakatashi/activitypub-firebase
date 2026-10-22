@@ -319,7 +319,7 @@ onApexInbox(app, async (message) => {
 		await requestResolutionOfObjectActors(message.object);
 	}
 
-	// 本文のリンクのプレビューカードを取得させる (→ ADR-0141)。
+	// 本文のリンクのプレビューカードを取得させる (→ ADR-0143)。
 	if (message.activity.type === 'Create' || message.activity.type === 'Update') {
 		await requestPreviewCard(message.object);
 	}

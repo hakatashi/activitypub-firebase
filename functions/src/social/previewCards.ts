@@ -20,7 +20,7 @@ import { isTaskAlreadyExistsError } from './remoteActorCounts.js';
 import { isLocalHost } from './remoteResolution.js';
 import { touchTimelineViewVersion } from './timelines.js';
 
-// 投稿本文のリンクのプレビューカードを非同期で取得し、Note の `_meta.card` に写す (→ ADR-0141)。
+// 投稿本文のリンクのプレビューカードを非同期で取得し、Note の `_meta.card` に写す (→ ADR-0143)。
 
 // サーバーレス環境でのメモリ滞留を防ぐ (→ ADR-0093)。
 sharp.cache(false);
@@ -93,7 +93,7 @@ const hasQuote = (note: APObject) =>
 		([key, value]) => value !== null && value !== undefined && QUOTE_KEY_PATTERN.test(key),
 	);
 
-// 本文のリンクのうち、プレビューカードを作る URL を選ぶ (→ ADR-0141 決定2)。
+// 本文のリンクのうち、プレビューカードを作る URL を選ぶ (→ ADR-0143 決定2)。
 // Mastodon がリモートの投稿に使う規則 (`FetchLinkCardService#parse_urls`) に揃える。
 export const pickPreviewCardUrl = (note: APObject): string | undefined => {
 	if (toArray(note.attachment).length > 0 || hasQuote(note)) {
@@ -137,7 +137,7 @@ export const pickPreviewCardUrl = (note: APObject): string | undefined => {
 	return visit(parseFragment(content), false);
 };
 
-// ----- 取得 (SSRF 対策 → ADR-0141 決定3) -----
+// ----- 取得 (SSRF 対策 → ADR-0143 決定3) -----
 
 // アドレスの範囲は apex と同じポリシーに従い、スキームだけ http も許す。
 const previewFetchPolicy = (): RemoteFetchPolicy => {
@@ -269,7 +269,7 @@ const fetchSafely = async (
 	}
 };
 
-// ----- 解析 (→ ADR-0141 決定4) -----
+// ----- 解析 (→ ADR-0143 決定4) -----
 
 const decodeWith = (body: Buffer, label: string | undefined) => {
 	if (label === undefined) {
@@ -389,7 +389,7 @@ export const parsePreviewHtml = (html: string, pageUrl: URL): ParsedPreview | un
 	};
 };
 
-// 画像は複製せず、幅・高さ・blurhash を出すためだけに読む (→ ADR-0141 決定5)。
+// 画像は複製せず、幅・高さ・blurhash を出すためだけに読む (→ ADR-0143 決定5)。
 // 読めなければ undefined (呼び出し側は OGP の幅・高さで画像の URL を返す)。
 const measureImage = async (
 	url: string,
@@ -471,7 +471,7 @@ export const fetchPreviewCard = async (url: string): Promise<PreviewCard | null>
 	};
 };
 
-// ----- 保存 (→ ADR-0141 決定6) -----
+// ----- 保存 (→ ADR-0143 決定6) -----
 
 const previewCardKey = (url: string) =>
 	toFirestoreKey(createHash('sha256').update(url).digest('hex'));
@@ -533,13 +533,13 @@ export const attachPreviewCard = async (noteIri: string) => {
 	const card = url === undefined ? null : await getOrFetchPreviewCard(url);
 	const written = await writeNoteCard(noteIri, url, card);
 	logger.info({ type: 'previewCardAttached', noteIri, url, found: card !== null, written });
-	// ローカルの投稿は、ホームの先頭ページのキャッシュにすぐ出す (→ ADR-0139、ADR-0141 決定6)。
+	// ローカルの投稿は、ホームの先頭ページのキャッシュにすぐ出す (→ ADR-0139、ADR-0143 決定6)。
 	if (written && getAttributedTo(note) === localActorId) {
 		await touchTimelineViewVersion(localActorId);
 	}
 };
 
-// ----- 依頼 (→ ADR-0141 決定1) -----
+// ----- 依頼 (→ ADR-0143 決定1) -----
 
 export const previewCardTaskId = (noteIri: string, url: string) =>
 	`preview-card-${createHash('sha256').update(`${noteIri}\n${url}`).digest('hex').slice(0, 40)}`;
@@ -595,7 +595,7 @@ const storedCardSchema = z.object({
 		.nullable(),
 });
 
-// Note の `_meta.card` のうち、今の本文から選んだ URL のものだけを返す (→ ADR-0141 決定6)。
+// Note の `_meta.card` のうち、今の本文から選んだ URL のものだけを返す (→ ADR-0143 決定6)。
 export const noteToPreviewCard = (note: APObject): PreviewCard | undefined => {
 	const stored = note._meta?.card;
 	if (stored === undefined) {

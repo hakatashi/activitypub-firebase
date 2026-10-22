@@ -268,7 +268,7 @@ export const previewCardTaskPayloadSchema = z.object({
 	noteIri: z.string().min(1),
 });
 
-// 投稿本文のリンクのプレビューカードを取得して Note に写す (→ ADR-0141)。
+// 投稿本文のリンクのプレビューカードを取得して Note に写す (→ ADR-0143)。
 // 取得の失敗は URL ごとのキャッシュに記録して翌日に任せるため、ここではリトライしない。
 export const previewCardTask = onTaskDispatched<unknown>(
 	{

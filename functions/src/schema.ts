@@ -255,7 +255,7 @@ export const IdempotencyKeys = db.collection(
 	'idempotencyKeys',
 ) as CollectionReference<IdempotencyKeyRecord>;
 
-// 投稿本文のリンクのプレビューカード (→ ADR-0141)。Mastodon の表現に依らない形で持つ。
+// 投稿本文のリンクのプレビューカード (→ ADR-0143)。Mastodon の表現に依らない形で持つ。
 export interface PreviewCardImage {
 	url: string;
 	width: number;

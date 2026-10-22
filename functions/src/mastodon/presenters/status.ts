@@ -64,7 +64,7 @@ export interface StatusContext {
 	mentionIds?: Map<string, string> | Record<string, string> | undefined;
 	// 認証ユーザー (viewer) のインタラクション状態 (→ ADR-0070)。
 	viewer?: StatusViewerContext | undefined;
-	// `_meta.card` から取り出したプレビューカード (→ ADR-0141)。
+	// `_meta.card` から取り出したプレビューカード (→ ADR-0143)。
 	card?: PreviewCard | undefined;
 }
 
@@ -90,7 +90,7 @@ export type StatusEntity = Omit<
 	text?: string | null;
 };
 
-// 本文のリンクのプレビューカード (→ ADR-0141)。oEmbed は扱わないので `type` は常に `link`。
+// 本文のリンクのプレビューカード (→ ADR-0143)。oEmbed は扱わないので `type` は常に `link`。
 export const previewCardToEntity = (card: PreviewCard): PreviewCardEntity => ({
 	url: card.url,
 	title: card.title,

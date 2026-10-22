@@ -46,7 +46,7 @@ declare module './apex/types.js' {
 		actor?: string;
 		// アーカイブインポート時に記録する移行元 URI (→ ADR-0126)。objects / streams コレクション。
 		legacyUri?: string;
-		// objects (Note) の本文のリンクのプレビューカードの写し (→ ADR-0141)。
+		// objects (Note) の本文のリンクのプレビューカードの写し (→ ADR-0143)。
 		card?: PreviewCard;
 	}
 }

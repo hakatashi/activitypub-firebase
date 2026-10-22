@@ -121,7 +121,7 @@ export const publishNote = async (actor: APObject, note: NewNote) => {
 	await apex.store.saveObject(object);
 	const activity = await apex.buildActivity('Create', actor.id, to, { cc, object, published });
 	await apex.addToOutbox(actor, activity);
-	// 本文のリンクのプレビューカードを取得させる (→ ADR-0141)。
+	// 本文のリンクのプレビューカードを取得させる (→ ADR-0143)。
 	await requestPreviewCard(object);
 
 	return { object, activity };
