@@ -15,6 +15,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 | 次に何をすべきか | オープンな GitHub Issue(進め方は [`docs/roadmap.md`](docs/roadmap.md)) |
 | 壊れている箇所・技術的負債 | [`docs/known-issues.md`](docs/known-issues.md) |
 | Mastodon API のどこまで実装したか | [`docs/mastodon-api-coverage.md`](docs/mastodon-api-coverage.md) |
+| ActivityPub 仕様(S2S)のどこまで準拠しているか | [`docs/activitypub-s2s-compliance.md`](docs/activitypub-s2s-compliance.md) |
 | ビルド・テスト・デプロイの方法 | [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md) |
 | 連合が動くことをどう確認するか | [`docs/runbooks/federation-testing.md`](docs/runbooks/federation-testing.md) |
 | Elk などのクライアントで動くことをどう確認するか | [`docs/runbooks/client-testing.md`](docs/runbooks/client-testing.md) |

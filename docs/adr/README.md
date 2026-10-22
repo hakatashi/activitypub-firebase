@@ -167,3 +167,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0138](0138-cache-mastodon-id-mapping-in-instance.md) | IRI と Mastodon ID の対応をインスタンス内にキャッシュする | Accepted |
 | [0139](0139-cache-timeline-head-page-in-instance.md) | ホーム・リストのタイムラインの先頭ページを、新着とバージョンを見てインスタンス内にキャッシュする | Accepted |
 | [0140](0140-backfill-remote-outbox-on-profile-view.md) | リモートアカウントの過去の公開投稿を、プロフィール閲覧時に outbox から補完する | Accepted |
+| [0141](0141-ignore-inbox-add-remove.md) | inbox に届いた Add / Remove の副作用を行わない | Accepted |
+| [0142](0142-prefer-shared-inbox-for-all-recipients.md) | 配送は宛先の種類によらず相手の sharedInbox を優先する | Accepted |
