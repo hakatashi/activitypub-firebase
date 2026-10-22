@@ -9,6 +9,7 @@ import { recordDeliveryResult } from './store/deliveries.js';
 import { refreshRemoteActorCounts } from './social/remoteActorCounts.js';
 import { resolveMissingRemoteActor } from './social/remoteActorResolution.js';
 import { backfillRemoteOutbox } from './social/remoteOutbox.js';
+import { attachPreviewCard } from './social/previewCards.js';
 
 export const pingTaskPayloadSchema = z.object({
 	message: z.string(),
@@ -260,5 +261,36 @@ export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 			return;
 		}
 		await refreshRemoteActorCounts(parsed.data.actorIri);
+	},
+);
+
+export const previewCardTaskPayloadSchema = z.object({
+	noteIri: z.string().min(1),
+});
+
+// 投稿本文のリンクのプレビューカードを取得して Note に写す (→ ADR-0143)。
+// 取得の失敗は URL ごとのキャッシュに記録して翌日に任せるため、ここではリトライしない。
+export const previewCardTask = onTaskDispatched<unknown>(
+	{
+		retryConfig: { maxAttempts: 1 },
+		rateLimits: {
+			maxConcurrentDispatches: 5,
+			maxDispatchesPerSecond: 2,
+		},
+		timeoutSeconds: 60,
+		// 画像の幅・高さ・blurhash を sharp で読む
+		memory: '512MiB',
+	},
+	async (request) => {
+		const parsed = previewCardTaskPayloadSchema.safeParse(request.data);
+		if (!parsed.success) {
+			logger.error({
+				type: 'previewCardTaskInvalidPayload',
+				error: parsed.error,
+				data: request.data,
+			});
+			return;
+		}
+		await attachPreviewCard(parsed.data.noteIri);
 	},
 );
