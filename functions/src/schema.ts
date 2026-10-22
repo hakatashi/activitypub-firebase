@@ -255,6 +255,35 @@ export const IdempotencyKeys = db.collection(
 	'idempotencyKeys',
 ) as CollectionReference<IdempotencyKeyRecord>;
 
+// 投稿本文のリンクのプレビューカード (→ ADR-0141)。Mastodon の表現に依らない形で持つ。
+export interface PreviewCardImage {
+	url: string;
+	width: number;
+	height: number;
+	blurhash: string | null;
+	description: string;
+}
+
+export interface PreviewCard {
+	// 投稿本文にあった URL (リダイレクト前)。
+	url: string;
+	title: string;
+	description: string;
+	providerName: string;
+	image: PreviewCardImage | null;
+}
+
+// URL ごとの取得結果のキャッシュ。ドキュメント ID は URL の SHA-256。取得できなかった URL は `card: null`。
+// `expiresAt` は TTL ポリシーの対象。
+export interface PreviewCardRecord {
+	url: string;
+	card: PreviewCard | null;
+	fetchedAt: Timestamp;
+	expiresAt: Timestamp;
+}
+
+export const PreviewCards = db.collection('previewCards') as CollectionReference<PreviewCardRecord>;
+
 // `/api/v1/markers` の既読位置マーカー (→ ADR-0067)。ドキュメント ID は
 // `${escapeFirestoreKey(actorId)}_${timeline}`。
 export interface MarkerRecord {

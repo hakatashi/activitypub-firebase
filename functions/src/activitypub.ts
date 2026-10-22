@@ -15,6 +15,7 @@ import {
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { acceptAndPublishFollow } from './social/follows.js';
+import { requestPreviewCard } from './social/previewCards.js';
 import { requestResolutionOfObjectActors } from './social/remoteActorResolution.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
@@ -316,6 +317,11 @@ onApexInbox(app, async (message) => {
 	// ブーストの元投稿の作者などが手元になければ取得させる (→ ADR-0106)。
 	if (message.activity.type === 'Create' || message.activity.type === 'Announce') {
 		await requestResolutionOfObjectActors(message.object);
+	}
+
+	// 本文のリンクのプレビューカードを取得させる (→ ADR-0141)。
+	if (message.activity.type === 'Create' || message.activity.type === 'Update') {
+		await requestPreviewCard(message.object);
 	}
 });
 
