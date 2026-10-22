@@ -315,6 +315,10 @@ UserInfo の `followPolicy` が `allowlist` のボットは、許可リストの
 actor には `manuallyApprovesFollowers: true` を出す。`open` のボットとポリシーを持たない主 actor は、すべて承認する
 (→ [ADR-0150](adr/0150-bot-follow-approval-policy.md))。
 
+外部のプログラムは、通常の Mastodon API にオペレータートークン(`POST /activitypub/bots/operator-token` で発行)と
+`X-Bot-Account: <username>` ヘッダを付けて、どのボットとしても操作できる。`resolveAuth`(`functions/src/mastodon/http/auth.ts`)が
+ヘッダのボットを認証中の actor にする。主 actor にはなれない(→ [ADR-0151](adr/0151-bot-operator-token.md))。
+
 ローカル actor かどうかは `isLocalActorIri`(`functions/src/localActor.ts`)で IRI から判定する。
 リアクションの射影・ステータスの URL・リンクプレビュー用のページは、ボットにも対応している。
 通知・フォロー関係・タイムラインの射影は主 actor 専用。
