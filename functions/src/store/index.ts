@@ -1,12 +1,16 @@
 import assert from 'node:assert';
-import type { Firestore } from '@google-cloud/firestore';
+import type { Firestore, QueryDocumentSnapshot } from '@google-cloud/firestore';
 import type { APObject, ApexStore, SaveActivityResult } from '../apex/index.js';
 import IApexStore from '../apex/store/interface.js';
 import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
-import { isEmpty, omit, omitBy } from 'lodash-es';
-import { db, escapeFirestoreKey } from '../firebase.js';
-import { getOrAssignMastodonIdInTransaction, toPublishedSortKey } from '../mastodonId.js';
+import { isEmpty, omit, omitBy, sortBy } from 'lodash-es';
+import { db, escapeFirestoreKey, toFirestoreKey } from '../firebase.js';
+import {
+	getOrAssignMastodonIdInTransaction,
+	isMastodonId,
+	toPublishedSortKey,
+} from '../mastodonId.js';
 import {
 	OBJECT_QUERY_META_KEYS,
 	OBJECT_QUERY_META_SOURCES,
@@ -22,6 +26,30 @@ import { enqueueDeliveryTasks } from './deliveries.js';
 import { getObjects } from './objects.js';
 import { prepareRepliesCountUpdate } from './replies.js';
 import { objectToUpdateDoc, replaceKeepingMeta, updateObjectCopies } from './updates.js';
+
+// コレクション (streams) の並べ替えキー。アクティビティの Mastodon ID で、20 桁ゼロ埋めなので
+// 辞書順が時系列順になる (→ ADR-0146)。
+const STREAM_ORDER_KEY = '_meta.mastodonId';
+
+const streamOrderOf = (doc: QueryDocumentSnapshot<APObject>): string => {
+	const value: unknown = doc.get(STREAM_ORDER_KEY);
+	return typeof value === 'string' ? value : '';
+};
+
+// ページのカーソル (`?page=`) を並べ替えキーに直す。以前のカーソルはドキュメント ID だったので、
+// その形式で来たらドキュメントを読んで Mastodon ID を引く (→ ADR-0146)。
+const resolveStreamCursor = async (after: string) => {
+	if (isMastodonId(after)) {
+		return after;
+	}
+	// エスケープ済みのドキュメント ID は `/` を含まない。`/` を含む値は doc() が例外を投げる。
+	if (after.includes('/')) {
+		return undefined;
+	}
+	const doc = await Streams.doc(toFirestoreKey(after)).get();
+	const value: unknown = doc.get(STREAM_ORDER_KEY);
+	return typeof value === 'string' ? value : undefined;
+};
 
 // apex が Store に要求する契約 (IApexStore) の Firestore 実装。apex から呼ばれないアプリ独自の
 // クエリや操作はこのクラスに置かず、同じディレクトリの機能別のモジュールに関数として置く。
@@ -136,11 +164,13 @@ export default class Store extends IApexStore implements ApexStore {
 	 * Return a specific collection (stream of activitites), e.g. a user's inbox
 	 * @param  {string} collectionId - _meta.collection identifier
 	 * @param  {number} limit - max number of activities to return
-	 * @param  {string} [after] - mongodb _id to begin querying after (i.e. last item of last page)
+	 * @param  {string} [after] - `_id` of the last item of the previous page
 	 * @param  {string[]} [blockList] - list of ids of actors whose activities should be excluded
 	 * @param  {object[]} [additionalQuery] - additional aggretation pipeline stages to include
 	 * @returns {Promise<object[]>} - result
 	 */
+	// アクティビティの Mastodon ID (`_meta.mastodonId`) の降順に並べ、`_id` にも Mastodon ID を入れて
+	// apex のページングのカーソルにする (→ ADR-0146)。
 	// blockList は Firestore の not-in ではなく取得後にアプリケーション側でフィルタする(→ ADR-0029)。
 	// oxlint-disable-next-line max-params
 	override async getStream(
@@ -161,11 +191,6 @@ export default class Store extends IApexStore implements ApexStore {
 
 		let query = Streams.where('_meta.collection', 'array-contains', collectionId);
 
-		if (after) {
-			// orderBy is descending, so "after" (the last item of the previous
-			// page) means items that sort strictly lower than it.
-			query = query.where(firebase.firestore.FieldPath.documentId(), '<', after);
-		}
 		if (additionalQuery && additionalQuery.length > 0) {
 			for (const queryObject of additionalQuery) {
 				for (const [key, value] of Object.entries(queryObject)) {
@@ -181,26 +206,32 @@ export default class Store extends IApexStore implements ApexStore {
 			}
 		}
 
-		query = query.orderBy(firebase.firestore.FieldPath.documentId(), 'desc');
-
+		let docs: QueryDocumentSnapshot<APObject>[];
 		if (limit) {
-			query = query.limit(limit);
+			if (after) {
+				const cursor = await resolveStreamCursor(after);
+				if (cursor === undefined) {
+					return [];
+				}
+				// 降順なので、前のページの末尾より小さいものが続きになる。
+				query = query.where(STREAM_ORDER_KEY, '<', cursor);
+			}
+			docs = (await query.orderBy(STREAM_ORDER_KEY, 'desc').limit(limit).get()).docs;
+		} else {
+			// 全件取得は配送先の解決にも使うので、`_meta.mastodonId` を欠くドキュメントも落とさないよう
+			// orderBy を付けずに読み、取得後に並べ替える (→ ADR-0146)。
+			docs = sortBy((await query.get()).docs, streamOrderOf).toReversed();
 		}
 
-		const streams = await query.get();
-
 		const blockSet = new Set(blockList);
-		const docs =
+		const visibleDocs =
 			blockSet.size > 0
-				? streams.docs.filter(
-						(doc) => !toIdArray(doc.get('actor')).some((actor) => blockSet.has(actor)),
-					)
-				: streams.docs;
+				? docs.filter((doc) => !toIdArray(doc.get('actor')).some((actor) => blockSet.has(actor)))
+				: docs;
 
 		// activitypub-express's buildCollectionPage uses `_id` (a MongoDB
-		// convention) as the cursor for the next page, so we surface the
-		// Firestore document ID under that key.
-		return docs.map((doc) => ({ ...doc.data(), _id: doc.id }));
+		// convention) as the cursor for the next page.
+		return visibleDocs.map((doc) => ({ ...doc.data(), _id: streamOrderOf(doc) || doc.id }));
 	}
 
 	override async getStreamCount(collectionId: string) {
@@ -369,10 +400,15 @@ export default class Store extends IApexStore implements ApexStore {
 			const existingData = activityDoc.data();
 
 			let result: SaveActivityResult;
-			let write: (() => void) | undefined;
+			// Mastodon ID はコレクションの並べ替えキーとして `_meta.mastodonId` にも書く (→ ADR-0146)。
+			let write: ((mastodonId: string) => void) | undefined;
 			if (existingData === undefined) {
 				result = { isNew: true, activity: activityWithId };
-				write = () => transaction.set(activityRef, activityWithId);
+				write = (mastodonId) =>
+					transaction.set(activityRef, {
+						...activityWithId,
+						_meta: { ...activityWithId._meta, mastodonId },
+					});
 			} else {
 				const existingCollections: string[] = Array.isArray(existingData._meta?.collection)
 					? existingData._meta.collection
@@ -400,9 +436,10 @@ export default class Store extends IApexStore implements ApexStore {
 							_meta: updatedMeta,
 						},
 					};
-					write = () =>
+					write = (mastodonId) =>
 						transaction.update(activityRef, {
 							'_meta.collection': updatedCollections,
+							'_meta.mastodonId': mastodonId,
 							...(publishedKey === undefined ? {} : { '_meta.published': publishedKey }),
 							...Object.fromEntries(Object.entries(queryMeta).map(([k, v]) => [`_meta.${k}`, v])),
 						});
@@ -423,7 +460,7 @@ export default class Store extends IApexStore implements ApexStore {
 				activityId,
 				activityWithId.published,
 			);
-			write?.();
+			write?.(mastodonId);
 			commitProjection?.(mastodonId);
 			return result;
 		});

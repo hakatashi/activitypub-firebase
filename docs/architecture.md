@@ -204,6 +204,8 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 (`getStream`/`getStreamCount`)は `array-contains` クエリで行い
 (→ [ADR-0017](adr/0017-meta-collection-as-array.md))、他の条件と組み合わせる検索は
 後述の `_meta.index` を使う(→ [ADR-0021](adr/0021-meta-index-as-maps.md))。
+`getStream` はアクティビティの Mastodon ID (`_meta.mastodonId`) の降順に並べ、ページのカーソル
+(`?page=`) にも Mastodon ID を使う(→ [ADR-0146](adr/0146-order-streams-by-activity-mastodon-id.md))。
 
 ### `_meta` メタデータフィールド
 
@@ -222,6 +224,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
 | `_meta.hashtags` | `objects` | `string[]` | タグ検索用に、`tag` の `Hashtag` の `name` を正規化(NFKC・先頭の `#` を除く・小文字化・使えない文字を除く。`functions/src/hashtags.ts`)した名前の配列。`getNotes` が `array-contains-any` で引く。タグが無ければキーを持たない。`Store#saveObject` / `updateObject` が書き、既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md))。 |
 | `_meta.actor` / `_meta.published` | `streams` (Announce) | `string` | タイムライン検索用に、Announce アクティビティの actor と published を文字列に正規化した写し。`Store#saveActivity` で保存時に非正規化して書く。既存データは `functions/bin/backfillActivityQueryMeta.ts` (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。 |
+| `_meta.mastodonId` | `streams` | `string` | コレクション (outbox・inbox・followers など) の並べ替えキー。アクティビティの IRI の Mastodon ID の写しで、`Store#saveActivity` が新規作成時と新しいコレクションへの追加時に書く。既存データは `functions/bin/backfillStreamMastodonId.ts` (→ [ADR-0146](adr/0146-order-streams-by-activity-mastodon-id.md))。 |
 | `_meta.card` | `objects` (Note) | `object` | 本文のリンクのプレビューカードの写し(`previewCards` の `card` と同じ形)。`previewCardTask` が書き、presenter は今の本文から選んだ URL と `url` が一致するときだけ Status の `card` に出す(→ [ADR-0143](adr/0143-preview-cards-for-links-in-statuses.md))。 |
 | `_meta.legacyUri` | `objects` (Note) / `streams` (Announce) | `string` | Mastodon アーカイブからインポートされた投稿・ブーストに記録する移行元インスタンスの旧 URI (`functions/src/social/archive.ts`、→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md))。 |
 

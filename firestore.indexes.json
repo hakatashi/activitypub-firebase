@@ -23,7 +23,7 @@
           "arrayConfig": "CONTAINS"
         },
         {
-          "fieldPath": "__name__",
+          "fieldPath": "_meta.mastodonId",
           "order": "DESCENDING"
         }
       ]

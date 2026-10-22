@@ -901,7 +901,8 @@ describe('inbox', function () {
         const callbackReceived = new Promise(resolve => {
           app.once('apex-inbox', async msg => {
             const saved = await apex.store.getActivity(announce.id)
-            expect(saved.object).toEqual([targetAct])
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            expect(global.stripSortKeys(saved.object)).toEqual([targetAct])
             resolve()
           })
         })

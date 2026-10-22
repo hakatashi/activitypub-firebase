@@ -566,9 +566,10 @@ describe('outbox', function () {
             const exp = merge({ _meta: { collection: ['https://localhost/outbox/test'] } }, activityNormalized)
             exp.type = 'Accept'
             exp.object = [follow.id]
-            expect(global.stripIds(msg.activity)).toEqual(exp)
+            expect(global.stripSortKeys(global.stripIds(msg.activity))).toEqual(exp)
             follow._meta.collection.push(testUser.followers[0])
-            expect(msg.object).toEqual(follow)
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            expect(global.stripSortKeys(msg.object)).toEqual(follow)
             resolve()
           })
         })
@@ -588,9 +589,10 @@ describe('outbox', function () {
             const exp = merge({ _meta: { collection: ['https://localhost/outbox/test'] } }, activityNormalized)
             exp.type = 'Accept'
             exp.object = [follow.id]
-            expect(global.stripIds(msg.activity)).toEqual(exp)
+            expect(global.stripSortKeys(global.stripIds(msg.activity))).toEqual(exp)
             follow._meta.collection.push(testUser.followers[0])
-            expect(msg.object).toEqual(follow)
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            expect(global.stripSortKeys(msg.object)).toEqual(follow)
             resolve()
           })
         })
@@ -919,6 +921,8 @@ describe('outbox', function () {
             delete msg.activity.likes
             delete msg.activity.shares
             delete msg.activity.published
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            msg.activity = global.stripSortKeys(msg.activity)
             expect(msg.activity).toEqual({
               _meta: { collection: [testUser.outbox[0], testUser.liked[0]] },
               type: 'Like',
@@ -927,7 +931,7 @@ describe('outbox', function () {
               to: ['https://ignore.com/u/ignored'],
               audience: ['as:Public']
             })
-            expect(msg.object).toEqual(likeable)
+            expect(global.stripSortKeys(msg.object)).toEqual(likeable)
             resolve()
           })
         })
@@ -943,7 +947,8 @@ describe('outbox', function () {
         const callbackReceived = new Promise(resolve => {
           app.once('apex-outbox', async function (msg) {
             const liked = await apex.getLiked(testUser, Infinity, true)
-            expect(liked.orderedItems).toEqual([likeable])
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            expect(global.stripSortKeys(liked.orderedItems)).toEqual([likeable])
             resolve()
           })
         })
@@ -1029,6 +1034,8 @@ describe('outbox', function () {
             delete msg.activity.likes
             delete msg.activity.shares
             delete msg.activity.published
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            msg.activity = global.stripSortKeys(msg.activity)
             expect(msg.activity).toEqual({
               _meta: { collection: ['https://localhost/outbox/test'] },
               type: 'Add',
@@ -1039,7 +1046,7 @@ describe('outbox', function () {
               audience: ['as:Public']
             })
             addable._meta = { collection: [collection] }
-            expect(msg.object).toEqual(addable)
+            expect(global.stripSortKeys(msg.object)).toEqual(addable)
             resolve()
           })
         })
@@ -1110,7 +1117,8 @@ describe('outbox', function () {
         const callbackReceived = new Promise(resolve => {
           app.once('apex-outbox', function (msg) {
             expect(msg.actor).toEqual(testUser)
-            expect(global.stripIds(msg.activity)).toEqual({
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            expect(global.stripSortKeys(global.stripIds(msg.activity))).toEqual({
               _meta: { collection: ['https://localhost/outbox/test'] },
               type: 'Remove',
               actor: ['https://localhost/u/test'],
@@ -1122,7 +1130,7 @@ describe('outbox', function () {
               shares: [{ totalItems: [0], type: 'OrderedCollection' }]
             })
             added._meta.collection = []
-            expect(msg.object).toEqual(added)
+            expect(global.stripSortKeys(msg.object)).toEqual(added)
             resolve()
           })
         })
@@ -1187,6 +1195,8 @@ describe('outbox', function () {
             delete msg.activity.likes
             delete msg.activity.shares
             delete msg.activity.published
+            // Store が書き足す並べ替えキーを除いて比較する (ADR-0146)
+            msg.activity = global.stripSortKeys(msg.activity)
             expect(msg.activity).toEqual({
               _meta: {
                 collection: [
