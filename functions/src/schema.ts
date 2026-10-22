@@ -42,7 +42,15 @@ export type UserInfo = Pick<
 	uid: string | null;
 	// 投稿の既定値 (→ ADR-0105)。古いドキュメントにはないので、読み取り側で既定値を補う。
 	source?: UserInfoSource;
+	// フォローの承認ポリシー。ボットだけが持つ。なければ全員を承認する (→ ADR-0150)。
+	followPolicy?: FollowPolicy;
 };
+
+export interface FollowPolicy {
+	mode: 'open' | 'allowlist';
+	// mode が allowlist のとき、フォローを承認する actor の IRI
+	allowlist: string[];
+}
 
 export type DefaultPrivacy = 'public' | 'unlisted' | 'private';
 

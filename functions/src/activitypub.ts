@@ -15,13 +15,14 @@ import {
 } from './localActor.js';
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
-import { acceptAndPublishFollow } from './social/follows.js';
+import { respondToFollow } from './social/follows.js';
 import { requestPreviewCard } from './social/previewCards.js';
 import { requestResolutionOfObjectActors } from './social/remoteActorResolution.js';
 import { handleRemotePinActivity } from './social/remotePins.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
+import { BotError, createBot, getBot, listBots, updateBotFollowPolicy } from './social/bots.js';
 import {
 	AliasError,
 	addAccountAlias,
@@ -118,6 +119,23 @@ export const resendDeliveryBodySchema = z.object({
 
 export const aliasBodySchema = z.object({
 	alias: z.string().min(1),
+});
+
+const followPolicySchema = z.object({
+	mode: z.enum(['open', 'allowlist']),
+	allowlist: z.array(z.string().url()).default([]),
+});
+
+export const createBotBodySchema = z.object({
+	username: z.string().min(1),
+	displayName: z.string().optional(),
+	summary: z.string().optional(),
+	iconUrl: z.string().url().optional(),
+	followPolicy: followPolicySchema.optional(),
+});
+
+export const updateBotBodySchema = z.object({
+	followPolicy: followPolicySchema,
 });
 
 app.get(
@@ -290,6 +308,66 @@ app.delete(
 	},
 );
 
+// ボットの作成・一覧・承認ポリシーの変更 (→ ADR-0149, ADR-0150)。
+const sendBotError = (res: express.Response, error: unknown) => {
+	if (error instanceof BotError) {
+		res.status(error.status).json({ error: error.message });
+		return;
+	}
+	throw error;
+};
+
+app.post('/activitypub/bots', adminOnly, async (req: express.Request, res: express.Response) => {
+	const parsedBody = createBotBodySchema.safeParse(req.body ?? {});
+	if (!parsedBody.success) {
+		res.status(400).json({ error: parsedBody.error.message });
+		return;
+	}
+	try {
+		res.status(201).json(await createBot(parsedBody.data));
+	} catch (error) {
+		sendBotError(res, error);
+	}
+});
+
+app.get('/activitypub/bots', adminOnly, async (req: express.Request, res: express.Response) => {
+	try {
+		res.json(await listBots());
+	} catch (error) {
+		sendBotError(res, error);
+	}
+});
+
+app.get(
+	'/activitypub/bots/:username',
+	adminOnly,
+	async (req: express.Request<{ username: string }>, res: express.Response) => {
+		const bot = await getBot(req.params.username);
+		if (bot === undefined) {
+			res.status(404).json({ error: 'Bot not found' });
+			return;
+		}
+		res.json(bot);
+	},
+);
+
+app.patch(
+	'/activitypub/bots/:username',
+	adminOnly,
+	async (req: express.Request<{ username: string }>, res: express.Response) => {
+		const parsedBody = updateBotBodySchema.safeParse(req.body ?? {});
+		if (!parsedBody.success) {
+			res.status(400).json({ error: parsedBody.error.message });
+			return;
+		}
+		try {
+			res.json(await updateBotFollowPolicy(req.params.username, parsedBody.data.followPolicy));
+		} catch (error) {
+			sendBotError(res, error);
+		}
+	},
+);
+
 onApexOutbox(app, (message) => {
 	// message.actor は自分自身の actor で _meta.privateKey (RSA 秘密鍵 PEM) を持つため、
 	// そのままログに出すと鍵が漏洩する。redactSensitiveBody でマスクしてから出力する。
@@ -306,9 +384,9 @@ onApexInbox(app, async (message) => {
 	// 持つため、そのままログに出すと鍵が漏洩する。redactSensitiveBody でマスクしてから出力する。
 	logger.info({ type: 'inbox', message: redactSensitiveBody(message) });
 
-	// Auto-accept follow
+	// 受信者の承認ポリシーに従って承認または拒否する (→ ADR-0150)。
 	if (message.activity.type === 'Follow') {
-		await acceptAndPublishFollow(message.recipient, message.activity);
+		await respondToFollow(message.recipient, message.activity);
 		return;
 	}
 

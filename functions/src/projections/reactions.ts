@@ -3,7 +3,7 @@ import firebase from 'firebase-admin';
 import { isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
 import { db, escapeFirestoreKey } from '../firebase.js';
-import { localActorId } from '../localActor.js';
+import { isLocalActorIri, localActorId } from '../localActor.js';
 import { getMastodonIds } from '../mastodonId.js';
 import { MastodonIdsByIri, ReactionRelations, Streams } from '../schema.js';
 import type { ReactionKind, ReactionRelation } from '../schema.js';
@@ -22,6 +22,8 @@ const ACTIVITY_TYPES = {
 const REACTION_KINDS = Object.keys(ACTIVITY_TYPES) as ReactionKind[];
 
 export interface ReactionContribution {
+	// Like / Announce をしたローカル actor (主 actor またはボット。→ ADR-0149)
+	actor: string;
 	kind: ReactionKind;
 	object: string;
 }
@@ -29,16 +31,18 @@ export interface ReactionContribution {
 // 1 件のアクティビティが、どの射影に載るべきかを返す。ローカル actor 発の Like / Announce だけが対象。
 // 取り消しは Undo と同時に元のアクティビティを消すので、存在していれば有効とみなす。
 export const reactionContributions = (activity: APObject | undefined): ReactionContribution[] => {
-	if (activity === undefined || toIdArray(activity.actor)[0] !== localActorId) {
+	const actor = activity === undefined ? undefined : toIdArray(activity.actor)[0];
+	if (activity === undefined || !isLocalActorIri(actor)) {
 		return [];
 	}
 	const types = toTypeArray(activity.type);
 	return REACTION_KINDS.filter((kind) => types.includes(ACTIVITY_TYPES[kind])).flatMap((kind) =>
-		toIdArray(activity.object).map((object) => ({ kind, object })),
+		toIdArray(activity.object).map((object) => ({ actor, kind, object })),
 	);
 };
 
-const contributionKey = ({ kind, object }: ReactionContribution) => `${kind} ${object}`;
+const contributionKey = ({ actor, kind, object }: ReactionContribution) =>
+	`${actor} ${kind} ${object}`;
 
 const serverTimestamp = () =>
 	firebase.firestore.FieldValue.serverTimestamp() as unknown as ReactionRelation['createdAt'];
@@ -63,8 +67,8 @@ const buildReactionRelation = (
 	return { object, activityIris, cursorId, createdAt };
 };
 
-const reactionRef = (kind: ReactionKind, object: string) =>
-	ReactionRelations(escapeFirestoreKey(localActorId), kind).doc(escapeFirestoreKey(object));
+const reactionRef = (actor: string, kind: ReactionKind, object: string) =>
+	ReactionRelations(escapeFirestoreKey(actor), kind).doc(escapeFirestoreKey(object));
 
 // トランザクション内で、アクティビティ IRI の Mastodon ID を `mastodonIdsByIri` から引く。
 const readMastodonIdsInTransaction = async (transaction: Transaction, iris: string[]) => {
@@ -111,7 +115,7 @@ export const prepareReactionProjectionUpdate = async (
 	}
 	const refs = Array.from(targets.values(), (target) => ({
 		...target,
-		ref: reactionRef(target.kind, target.object),
+		ref: reactionRef(target.actor, target.kind, target.object),
 	}));
 	const docs = await Promise.all(refs.map(({ ref }) => transaction.get(ref)));
 	// cursorId を決めるため、射影に残る他のアクティビティと、このアクティビティの Mastodon ID を読む。
@@ -126,10 +130,10 @@ export const prepareReactionProjectionUpdate = async (
 		if (mastodonId !== undefined) {
 			mastodonIds.set(activityIri, mastodonId);
 		}
-		refs.forEach(({ kind, object, ref }, index) => {
+		refs.forEach(({ actor, kind, object, ref }, index) => {
 			const existing = docs[index]?.data();
 			const activityIris = (existing?.activityIris ?? []).filter((iri) => iri !== activityIri);
-			if (afterKeys.has(contributionKey({ kind, object }))) {
+			if (afterKeys.has(contributionKey({ actor, kind, object }))) {
 				activityIris.push(activityIri);
 			}
 			const relation = buildReactionRelation(
@@ -150,12 +154,14 @@ export const prepareReactionProjectionUpdate = async (
 };
 
 // 射影には残っているが streams に元のアクティビティがない IRI を、射影から外す。
+// oxlint-disable-next-line max-params
 export const forgetReactionActivity = async (
+	actor: string,
 	kind: ReactionKind,
 	object: string,
 	activityIri: string,
 ) => {
-	const ref = reactionRef(kind, object);
+	const ref = reactionRef(actor, kind, object);
 	await db.runTransaction(async (transaction) => {
 		const existing = (await transaction.get(ref)).data();
 		if (existing === undefined || !existing.activityIris.includes(activityIri)) {

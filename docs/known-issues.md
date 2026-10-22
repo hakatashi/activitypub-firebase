@@ -52,3 +52,10 @@ inbox は 5xx を返して相手の再送に、配送は `deliveryTask` の再�
 
 `POST /oauth/revoke` による失効には対応しているが、期限切れのアクセストークン・
 リフレッシュトークン・認可コードを `functions/src/mastodon/oauth2Model.ts` の外から掃除する仕組みがない。
+
+### ボットの視点で読む API が空か不正確になる
+
+通知・フォロー関係・ホームやリストのタイムラインの射影は主 actor 専用で
+(`functions/src/projections/notifications.ts`、`follows.ts`、`timelineFeeds.ts` が `localActorId` で判定する)、
+ボットの `userInfos/{actor}` には書かれない(→ [ADR-0149](adr/0149-bot-actors-as-additional-local-actors.md))。
+ボットとして呼んだホーム・通知・relationships・フォロー中の一覧などは、空か不正確な結果を返す。

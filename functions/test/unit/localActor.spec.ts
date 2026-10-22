@@ -13,8 +13,11 @@ import {
 	localFollowersIri,
 	localFollowingId,
 	localFollowingIri,
+	isLocalActorIri,
 	localInboxIri,
 	localOutboxIri,
+	localStatusPageUrl,
+	localUsernameOf,
 } from '../../src/localActor.js';
 import { routes } from '../../src/routes.js';
 
@@ -86,5 +89,35 @@ describe('localActor IRI builders', () => {
 		expect(localActorId).toBe(localActorIri());
 		expect(localFollowersId).toBe(localFollowersIri());
 		expect(localFollowingId).toBe(localFollowingIri());
+	});
+});
+
+describe('isLocalActorIri / localUsernameOf (ADR-0149)', () => {
+	test('accepts any local actor IRI', () => {
+		expect(isLocalActorIri(`https://${domain}/activitypub/u/hakatashi`)).toBe(true);
+		expect(isLocalActorIri(`https://${domain}/activitypub/u/weather_bot`)).toBe(true);
+		expect(localUsernameOf(`https://${domain}/activitypub/u/weather_bot`)).toBe('weather_bot');
+	});
+
+	test.each([
+		undefined,
+		`https://${domain}/activitypub/u/`,
+		`https://${domain}/activitypub/u/hakatashi/followers`,
+		`https://${domain}/activitypub/u/hakatashi#main-key`,
+		`https://${domain}/activitypub/object/abc`,
+		'https://remote.example/activitypub/u/hakatashi',
+		`https://${domain}.evil.example/activitypub/u/hakatashi`,
+	])('rejects %j', (iri) => {
+		expect(isLocalActorIri(iri)).toBe(false);
+		expect(localUsernameOf(iri)).toBeUndefined();
+	});
+});
+
+describe('localStatusPageUrl', () => {
+	test('uses the given username', () => {
+		expect(localStatusPageUrl('123')).toBe(`https://${mastodonDomain}/@hakatashi/123`);
+		expect(localStatusPageUrl('123', 'weather_bot')).toBe(
+			`https://${mastodonDomain}/@weather_bot/123`,
+		);
 	});
 });

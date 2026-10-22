@@ -74,7 +74,7 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `runPostWorkBeforeSend` ミドルウェアがリクエストごとに `res.send` を差し替え、
   送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを await している
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
-  `postWorkCompleted` ログに出る。`runPostWork` が例外で失敗した場合は 500 を返し、送信元に再送を促す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。`apex-inbox` リスナーで Follow の自動 Accept と、リモート actor のピン留め・解除(`featured` を `target` にした `Add` / `Remove`)の取り込みを実装している(→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md))。なお、Follow の承認時や Undo(Follow) / Reject 受信時に followers などのコレクション Update は配送しない(→ [ADR-0112](adr/0112-do-not-deliver-collection-updates.md))。
+  `postWorkCompleted` ログに出る。`runPostWork` が例外で失敗した場合は 500 を返し、送信元に再送を促す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。`apex-inbox` リスナーで Follow の承認(受信者の承認ポリシーに従い Accept か Reject を返す。→ [ADR-0150](adr/0150-bot-follow-approval-policy.md))と、リモート actor のピン留め・解除(`featured` を `target` にした `Add` / `Remove`)の取り込みを実装している(→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md))。なお、Follow の承認時や Undo(Follow) / Reject 受信時に followers などのコレクション Update は配送しない(→ [ADR-0112](adr/0112-do-not-deliver-collection-updates.md))。
 - inbox への配送処理は `apex.net.inbox.post` をそのまま利用している。
   重複配送の検出と `isNewActivity` の設定は `Store#saveActivity` の戻り値契約に基づいて apex 内部で完結して行われ(→ [ADR-0049](adr/0049-save-activity-return-contract-and-inbox-dedup.md))、
   重複配送(`isNewActivity === false`)であっても受信者の `followers` コレクションに入っていない未承認の Follow は重複無視せず `apex-inbox` イベントを発火して承認をやり直す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。
@@ -302,6 +302,22 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 変わっていなければキャッシュを返す。先頭ページに新着があれば新着分だけを組み立てて先頭に足し、全体は 15 分で組み立て直す。`timelineView` は、閲覧者が Status の見え方を
 変えるルート(投稿・削除・お気に入り・ブースト・ブックマーク・ピン・フォロー・プロフィール・リスト)に付けた
 `touchesTimelineView` ミドルウェアが、応答を送る前に書き直す。
+
+## ボット
+
+ボット機能が有効なインスタンス(dev とボット用。→ [ADR-0148](adr/0148-instance-config-per-project.md))では、
+主 actor のほかに、ボットのローカル actor をいくつでも持てる(→ [ADR-0149](adr/0149-bot-actors-as-additional-local-actors.md))。
+ボットは type `Service` の actor と、`bot: true`・`uid: null` の `userInfos/{actor}` を持つ。
+作成・一覧・承認ポリシーの変更は `activitypub` 関数の管理エンドポイント `/activitypub/bots`(`X-Hakatashi-Token`)で行う
+(`functions/src/social/bots.ts`)。
+
+UserInfo の `followPolicy` が `allowlist` のボットは、許可リストの actor からの Follow だけを承認し、ほかには `Reject` を返す。
+actor には `manuallyApprovesFollowers: true` を出す。`open` のボットとポリシーを持たない主 actor は、すべて承認する
+(→ [ADR-0150](adr/0150-bot-follow-approval-policy.md))。
+
+ローカル actor かどうかは `isLocalActorIri`(`functions/src/localActor.ts`)で IRI から判定する。
+リアクションの射影・ステータスの URL・リンクプレビュー用のページは、ボットにも対応している。
+通知・フォロー関係・タイムラインの射影は主 actor 専用。
 
 ## ソーシャル・タイムライン層 (social/)
 
