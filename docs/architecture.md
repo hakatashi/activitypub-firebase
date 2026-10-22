@@ -36,7 +36,8 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
-| `remoteActorRefreshTask` | Cloud Tasks (`onTaskDispatched`) | リモート actor 本体を取り直してアバターなどを反映し、`followers` / `following` / `outbox` の件数と最終投稿日を取り直して `_meta` に保存する(`kind: 'counts'`。→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)、[ADR-0110](adr/0110-refresh-remote-actor-and-counts.md))か、手元にないリモート actor を取得して保存する(`kind: 'resolve'`。→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md))か、リモート actor の `outbox` から過去の公開・非収載の Note を補完する(`kind: 'outbox'`。Note だけを保存し、`Create` は保存しない。→ [ADR-0140](adr/0140-backfill-remote-outbox-on-profile-view.md))か、リモート actor の `featured` コレクションを取得してピン留めを同期する(`kind: 'featured'`。→ [ADR-0141](adr/0141-receive-remote-pinned-statuses.md)) |
+| `remoteActorRefreshTask` | Cloud Tasks (`onTaskDispatched`) | リモート actor 本体を取り直してアバターなどを反映し、`followers` / `following` / `outbox` の件数と最終投稿日を取り直して `_meta` に保存する(`kind: 'counts'`。→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)、[ADR-0110](adr/0110-refresh-remote-actor-and-counts.md))か、手元にないリモート actor を取得して保存する(`kind: 'resolve'`。→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md))か、リモート actor の `outbox` から過去の公開・非収載の Note を補完する(`kind: 'outbox'`。Note だけを保存し、`Create` は保存しない。→ [ADR-0140](adr/0140-backfill-remote-outbox-on-profile-view.md))か、リモート actor の `featured` コレクションを取得してピン留めを同期する(`kind: 'featured'`。→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md)) |
+| `previewCardTask` | Cloud Tasks (`onTaskDispatched`) | 投稿本文のリンクのページを SSRF セーフに取得し、OGP からプレビューカードを作って Note の `_meta.card` に写す(512MiB メモリ。→ [ADR-0143](adr/0143-preview-cards-for-links-in-statuses.md)) |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
 | `cleanupMediaTask` | Scheduled (`onSchedule`) | 未添付のまま24時間経過したメディアを Storage と Firestore から削除する (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 
@@ -73,7 +74,7 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   `runPostWorkBeforeSend` ミドルウェアがリクエストごとに `res.send` を差し替え、
   送出**前**に `postWork` と `apex-inbox`/`apex-outbox` イベントを await している
   (→ [ADR-0013](adr/0013-scoped-postwork-middleware.md))。所要時間は
-  `postWorkCompleted` ログに出る。`runPostWork` が例外で失敗した場合は 500 を返し、送信元に再送を促す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。`apex-inbox` リスナーで Follow の自動 Accept と、リモート actor のピン留め・解除(`featured` を `target` にした `Add` / `Remove`)の取り込みを実装している(→ [ADR-0141](adr/0141-receive-remote-pinned-statuses.md))。なお、Follow の承認時や Undo(Follow) / Reject 受信時に followers などのコレクション Update は配送しない(→ [ADR-0112](adr/0112-do-not-deliver-collection-updates.md))。
+  `postWorkCompleted` ログに出る。`runPostWork` が例外で失敗した場合は 500 を返し、送信元に再送を促す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。`apex-inbox` リスナーで Follow の自動 Accept と、リモート actor のピン留め・解除(`featured` を `target` にした `Add` / `Remove`)の取り込みを実装している(→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md))。なお、Follow の承認時や Undo(Follow) / Reject 受信時に followers などのコレクション Update は配送しない(→ [ADR-0112](adr/0112-do-not-deliver-collection-updates.md))。
 - inbox への配送処理は `apex.net.inbox.post` をそのまま利用している。
   重複配送の検出と `isNewActivity` の設定は `Store#saveActivity` の戻り値契約に基づいて apex 内部で完結して行われ(→ [ADR-0049](adr/0049-save-activity-return-contract-and-inbox-dedup.md))、
   重複配送(`isNewActivity === false`)であっても受信者の `followers` コレクションに入っていない未承認の Follow は重複無視せず `apex-inbox` イベントを発火して承認をやり直す(→ [ADR-0111](adr/0111-retry-unaccepted-follow-and-500-on-sync-failure.md))。
@@ -173,7 +174,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `contexts` | エスケープした URL | JSON-LD コンテキストのキャッシュ |
 | `deliveries` | エスケープした `アクティビティ ID + 宛先` | 配送結果(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md)) |
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
-| `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。`pins` はリモート actor のピン留めも同じ形で持つ(→ [ADR-0141](adr/0141-receive-remote-pinned-statuses.md))。ブックマークは一覧のカーソル `cursorId` を持つ(→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
+| `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。`pins` はリモート actor のピン留めも同じ形で持つ(→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md))。ブックマークは一覧のカーソル `cursorId` を持つ(→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
 | `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
 | `userInfos/{actor}/projectionVersions` | 射影の名前(`following` / `timelineFeeds` / `timelineView`) | 射影のバージョン。`updateTime` を読み取り側のキャッシュの無効化に使う(→ [ADR-0135](adr/0135-cache-following-by-projection-version.md))。`timelineFeeds` はタイムラインの射影から読むためのマーカー(→ [ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md))。`timelineView` は閲覧者が Status の見え方を変える API を呼ぶたびに書き直す、タイムラインの先頭ページのキャッシュのバージョン(→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md)) |
 | `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
@@ -184,6 +185,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `mediaAttachments` | Mastodon ID(20 桁の数字) | アップロードされたメディアのメタデータ(→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
 | `mastodonIds` | Mastodon ID(20 桁の数字) | ID → AP IRI のマッピング(→ [ADR-0058](adr/0058-mastodon-id-snowflake-layout.md)) |
 | `mastodonIdsByIri` | エスケープした IRI | AP IRI → Mastodon ID のマッピング |
+| `previewCards` | URL の SHA-256 | リンクのプレビューカードの取得結果(失敗は `card: null`)。成功は 14 日・失敗は 1 日で取り直す。`expiresAt` に TTL ポリシー(→ [ADR-0143](adr/0143-preview-cards-for-links-in-statuses.md)) |
 | `idempotencyKeys` | `sha256(actor IRI + キー)` | `POST /api/v1/statuses` の `Idempotency-Key` → Note IRI。`expiresAt` に TTL ポリシー(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md)) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 
@@ -220,6 +222,7 @@ Firestore 上でもそのまま配列として保存する。コレクション�
 | `_meta.attributedTo` / `_meta.inReplyTo` / `_meta.preferredUsername` | `objects` | `string` | 検索用に、同名のフィールドの先頭の1件を文字列に正規化した写し(IRI は `toIdArray`、`preferredUsername` は `toStringValue`)。受信したオブジェクトは apex が配列で、ローカルのものはスカラーで保存するため、`getNotes` / `getReplies` / acct lookup はこちらを等価条件で引く。解決できなければキーを持たない。`Store#saveObject` / `updateObject` が保存する内容から計算し直して書く。既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0086](adr/0086-normalize-object-query-fields-into-meta.md))。 |
 | `_meta.hashtags` | `objects` | `string[]` | タグ検索用に、`tag` の `Hashtag` の `name` を正規化(NFKC・先頭の `#` を除く・小文字化・使えない文字を除く。`functions/src/hashtags.ts`)した名前の配列。`getNotes` が `array-contains-any` で引く。タグが無ければキーを持たない。`Store#saveObject` / `updateObject` が書き、既存データは `functions/bin/backfillObjectQueryMeta.ts` (→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md))。 |
 | `_meta.actor` / `_meta.published` | `streams` (Announce) | `string` | タイムライン検索用に、Announce アクティビティの actor と published を文字列に正規化した写し。`Store#saveActivity` で保存時に非正規化して書く。既存データは `functions/bin/backfillActivityQueryMeta.ts` (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md))。 |
+| `_meta.card` | `objects` (Note) | `object` | 本文のリンクのプレビューカードの写し(`previewCards` の `card` と同じ形)。`previewCardTask` が書き、presenter は今の本文から選んだ URL と `url` が一致するときだけ Status の `card` に出す(→ [ADR-0143](adr/0143-preview-cards-for-links-in-statuses.md))。 |
 | `_meta.legacyUri` | `objects` (Note) / `streams` (Announce) | `string` | Mastodon アーカイブからインポートされた投稿・ブーストに記録する移行元インスタンスの旧 URI (`functions/src/social/archive.ts`、→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md))。 |
 
 #### 2. Cloud Functions (`denormalizations.ts`) による非正規化プロパティ
@@ -310,10 +313,11 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 | `remoteResolution.ts` | リモートの AP オブジェクト・actor の取得(SSRF セーフな `requestObject`、オリジン検証。→ [ADR-0097](adr/0097-search-and-resolve-remote-resources.md)) |
 | `remoteActorCounts.ts` | リモート actor の件数・最終投稿日の取得と `_meta` への保存、古いときの取得依頼(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | `remoteActorResolution.ts` | 手元にないリモート actor の取得依頼(Account の組み立て・inbox での `Create` / `Announce` 受信時)とタスクでの取得(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
-| `remotePins.ts` | リモート actor のピン留めの取り込み(inbox の `Add` / `Remove` の照合と、`featured` コレクションからの同期・その依頼。→ [ADR-0141](adr/0141-receive-remote-pinned-statuses.md)) |
+| `remotePins.ts` | リモート actor のピン留めの取り込み(inbox の `Add` / `Remove` の照合と、`featured` コレクションからの同期・その依頼。→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `archive.ts` | Mastodon アーカイブ (`outbox.json`・`media_attachments/`) からの投稿履歴 (`Create`・`Announce`) および添付メディアの Cloud Storage へのインポート (配送抑止、自リプライスレッド結合、公開範囲維持、Snowflake ID からのミリ秒・Mastodon ID 復元、サムネイル・blurhash 補完。→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md)、[ADR-0127](adr/0127-import-archive-media-attachments.md)) |
 | `import.ts` | Mastodon エクスポート CSV からのフォロー関係・ブックマーク・リストのインポート (→ [ADR-0124](adr/0124-import-following-and-bookmarks-from-csv.md)、[ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
+| `previewCards.ts` | 投稿本文のリンクのプレビューカード。対象の URL の選択(Mastodon と同じ規則)、`previewCardTask` への依頼(`POST /api/v1/statuses`・inbox の `Create` / `Update`)、apex の `assertSafeUrl` / `makePinnedAgent` による各ホップでの検証と IP 固定での取得(`http` も許す・HTML は先頭 1MB・画像は 5MB)、parse5 での OGP の解析、sharp での画像の幅・高さ・blurhash、`previewCards` へのキャッシュと Note の `_meta.card` への写し(→ [ADR-0143](adr/0143-preview-cards-for-links-in-statuses.md)) |
 | `migration.ts` | pawoo.net からのアカウント移行進捗突き合わせと事前 `Update(Person)` 配送 (→ [ADR-0125](adr/0125-migration-progress-reconciliation-and-pre-delivery.md)) |
 | `types.ts` | `NoteObject` などのドメイン型定義 |
 
@@ -412,7 +416,7 @@ unfavourite / unreblog は射影に載っている Like / Announce をすべて 
 ## 依存関係
 
 `firebase-functions` / `firebase-admin` / `@node-oauth/oauth2-server` / `express` /
-`jsonld` / `undici` が主要な依存。バージョンは `functions/package.json` を参照。
+`jsonld` / `undici` / `parse5` が主要な依存。バージョンは `functions/package.json` を参照。
 `activitypub-express` は npm 依存ではなく `functions/src/apex/` にフォークを取り込んでいる
 (→ [ADR-0041](adr/0041-vendor-fork-in-tree.md))。
 型定義のみ `masto` パッケージを利用している(`CamelToSnake` 型ユーティリティで

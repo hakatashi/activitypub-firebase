@@ -692,7 +692,7 @@ docker compose up -d
 ## 16. リモートアカウントのピン留め(`featured` / `Add` / `Remove`)
 
 dev が相手をフォローしている必要がある(`Add` / `Remove` はフォロワーにしか届かない)。2026-10-22 に Mastodon・Misskey の両方で確認した
-(→ [ADR-0141](../adr/0141-receive-remote-pinned-statuses.md))。
+(→ [ADR-0144](../adr/0144-receive-remote-pinned-statuses.md))。
 
 ```bash
 A=<dev での相手の Mastodon ID>

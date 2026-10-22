@@ -233,6 +233,12 @@
       "indexes": []
     },
     {
+      "collectionGroup": "previewCards",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "authorizationCodes",
       "fieldPath": "expiresAt",
       "ttl": true,

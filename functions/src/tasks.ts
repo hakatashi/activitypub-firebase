@@ -9,6 +9,7 @@ import { recordDeliveryResult } from './store/deliveries.js';
 import { refreshRemoteActorCounts } from './social/remoteActorCounts.js';
 import { resolveMissingRemoteActor } from './social/remoteActorResolution.js';
 import { backfillRemoteOutbox } from './social/remoteOutbox.js';
+import { attachPreviewCard } from './social/previewCards.js';
 import { syncRemoteFeatured } from './social/remotePins.js';
 
 export const pingTaskPayloadSchema = z.object({
@@ -231,7 +232,7 @@ export const remoteActorRefreshTaskPayloadSchema = z.object({
 });
 
 // リモート actor 本体と件数を取り直す (→ ADR-0104、ADR-0110)、手元にない actor を取得する (→ ADR-0106)、
-// 過去の公開投稿を outbox から補完する (→ ADR-0140)、またはピン留めを `featured` から同期する (→ ADR-0141)。
+// 過去の公開投稿を outbox から補完する (→ ADR-0140)、またはピン留めを `featured` から同期する (→ ADR-0144)。
 // 取得の失敗はそれぞれの中で吸収し、再試行は翌日の依頼に任せるため、ここではリトライしない。
 export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 	{
@@ -265,5 +266,36 @@ export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 			return;
 		}
 		await refreshRemoteActorCounts(parsed.data.actorIri);
+	},
+);
+
+export const previewCardTaskPayloadSchema = z.object({
+	noteIri: z.string().min(1),
+});
+
+// 投稿本文のリンクのプレビューカードを取得して Note に写す (→ ADR-0143)。
+// 取得の失敗は URL ごとのキャッシュに記録して翌日に任せるため、ここではリトライしない。
+export const previewCardTask = onTaskDispatched<unknown>(
+	{
+		retryConfig: { maxAttempts: 1 },
+		rateLimits: {
+			maxConcurrentDispatches: 5,
+			maxDispatchesPerSecond: 2,
+		},
+		timeoutSeconds: 60,
+		// 画像の幅・高さ・blurhash を sharp で読む
+		memory: '512MiB',
+	},
+	async (request) => {
+		const parsed = previewCardTaskPayloadSchema.safeParse(request.data);
+		if (!parsed.success) {
+			logger.error({
+				type: 'previewCardTaskInvalidPayload',
+				error: parsed.error,
+				data: request.data,
+			});
+			return;
+		}
+		await attachPreviewCard(parsed.data.noteIri);
 	},
 );

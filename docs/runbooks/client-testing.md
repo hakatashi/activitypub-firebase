@@ -81,6 +81,10 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
   足りなければ API で `POST /api/v1/statuses/:id/favourite` / `bookmark` を足す)
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
   - `04-profile.png`: アバター画像・ヘッダー画像、表示名、プロフィール文が正しく描画されている
+  - リンクを含む投稿にプレビューカードが出ている(→ [ADR-0143](../adr/0143-preview-cards-for-links-in-statuses.md))。
+    カードは投稿・受信の後に `previewCardTask` が非同期に付けるので、事前に `/activitypub/createPost` で
+    リンク付きの投稿を作り、`GET /api/v1/accounts/:id/statuses` の `card` が埋まるのを待ってから実行する。
+    同じ URL の結果は `previewCards` に 14 日残るので、取得をやり直すなら別の URL を使う
 - [ ] `--post` (または `--write`) で `post: found in account statuses`
 - [ ] `--media` (または `--write`) で `postMedia: found with media in account statuses`
 - [ ] `--delete` (または `--write`) で `delete: status deleted via UI`
@@ -237,4 +241,4 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
 - Elk の `/<dev>/@admin@mastodon-test.hakatashi.com` と Phanpy の `/#/<dev>/a/<ID>` で、
   ピン留めした投稿が「Pinned post」(Phanpy はピンのアイコン)付きで先頭に出る。Misskey の `admin@misskey-test.hakatashi.com` も同じ。
 - Elk は `?pinned=true` の後に `?pinned=true&max_id=...` を取りに来る。ピン留めが何度も繰り返して並んでいたら、
-  ページの範囲が効いていない([ADR-0141](../adr/0141-receive-remote-pinned-statuses.md))。
+  ページの範囲が効いていない([ADR-0144](../adr/0144-receive-remote-pinned-statuses.md))。

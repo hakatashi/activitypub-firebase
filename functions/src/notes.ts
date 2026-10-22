@@ -1,6 +1,7 @@
 import type { APObject } from './apex/index.js';
 import { apex } from './apex.js';
 import type { NoteTag } from './mastodon/statusContent.js';
+import { requestPreviewCard } from './social/previewCards.js';
 import { toIdArray } from './utils.js';
 
 // ローカル actor の Note を組み立てて保存し、Create を outbox に積んで配送する (→ ADR-0063)。
@@ -120,6 +121,8 @@ export const publishNote = async (actor: APObject, note: NewNote) => {
 	await apex.store.saveObject(object);
 	const activity = await apex.buildActivity('Create', actor.id, to, { cc, object, published });
 	await apex.addToOutbox(actor, activity);
+	// 本文のリンクのプレビューカードを取得させる (→ ADR-0143)。
+	await requestPreviewCard(object);
 
 	return { object, activity };
 };

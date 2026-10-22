@@ -15,7 +15,7 @@ import { getApex, getLocals, getRouteParam } from './locals.js';
 
 const needsResolveObject = ['announce', 'block', 'create', 'follow', 'like'];
 const needsResolveActivity = ['accept', 'add', 'reject', 'remove'];
-// inbox の Add / Remove の object は Activity に限らない (AS2)。手元にあるものだけを探し、外部へは取りに行かない (→ ADR-0141)
+// inbox の Add / Remove の object は Activity に限らない (AS2)。手元にあるものだけを探し、外部へは取りに行かない (→ ADR-0144)
 const needsLocalAnyObject = ['add', 'remove'];
 const needsLocalActivity = ['undo'];
 const needsLocalObject = ['delete'];
@@ -29,7 +29,7 @@ const obxRequiresActivityObject = ['accept', 'add', 'reject', 'remove', 'undo'];
 const requiresObjectOwnership = ['delete', 'undo', 'update'];
 const requiresTarget = ['add', 'remove'];
 // `id` を持たない一時的なもの (AP §3.1) として受け付ける種類。Mastodon / Misskey はピン留めの Add / Remove に
-// `id` を付けない。保存を前提とする副作用 (コレクションへの追加・Undo の対象) がない種類に限る (→ ADR-0141)
+// `id` を付けない。保存を前提とする副作用 (コレクションへの追加・Undo の対象) がない種類に限る (→ ADR-0144)
 const allowsTransient = ['add', 'remove'];
 
 type ObjectResolution = Promise<APObject | null | undefined> | APObject | undefined;

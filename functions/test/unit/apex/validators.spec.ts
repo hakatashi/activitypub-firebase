@@ -198,7 +198,7 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 			);
 			expect(res.locals.apex.object).toEqual(existingFollow);
 		});
-		test('looks up a plain object for Add without fetching it (ADR-0141)', async () => {
+		test('looks up a plain object for Add without fetching it (ADR-0144)', async () => {
 			const resolveActivitySpy = vi.spyOn(apex, 'resolveActivity');
 			const addActivity = {
 				id: 'https://remote.example/s/add-1',
@@ -294,7 +294,7 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 			expect(res.locals.apex.activity).toBeUndefined();
 		});
 		test.each(['Add', 'Remove'])(
-			'accepts %s whose object is not an Activity (ADR-0141)',
+			'accepts %s whose object is not an Activity (ADR-0144)',
 			async (type) => {
 				const activity = {
 					id: `https://remote.example/s/${type}-1`,

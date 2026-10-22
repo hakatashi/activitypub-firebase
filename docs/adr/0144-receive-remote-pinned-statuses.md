@@ -1,4 +1,4 @@
-# ADR-0141: リモートアカウントのピン留めを `featured` コレクションと `Add` / `Remove` から取り込む
+# ADR-0144: リモートアカウントのピン留めを `featured` コレクションと `Add` / `Remove` から取り込む
 
 - **Status:** Accepted
 - **Date:** 2026-10-22

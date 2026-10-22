@@ -25,7 +25,7 @@ import {
 } from './remoteOutbox.js';
 import { getObjectOrUndefined, originOf, requestRemoteObject } from './remoteResolution.js';
 
-// リモート actor のピン留めを、`featured` コレクションと `Add` / `Remove` から取り込む (→ ADR-0141)。
+// リモート actor のピン留めを、`featured` コレクションと `Add` / `Remove` から取り込む (→ ADR-0144)。
 // 保存先はローカルと同じ `userInfos/{actor}/pins/{noteKey}`。
 
 // 1 actor あたりに保存するピン留めの上限。

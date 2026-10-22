@@ -6,6 +6,7 @@ import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
 import type { APObject } from '../../apex/index.js';
 import { getFollowing } from '../../social/follows.js';
+import { noteToPreviewCard } from '../../social/previewCards.js';
 import { getReactedNoteIris } from '../../social/reactions.js';
 import { getThreadAncestors, getThreadDescendants } from '../../social/threads.js';
 import {
@@ -26,7 +27,7 @@ import {
 import { localStatusPageUrl } from '../../localActor.js';
 import { getIriByMastodonId, getMastodonIds } from '../../mastodonId.js';
 import { Bookmarks, UserInfos } from '../../schema.js';
-import type { ListRecord } from '../../schema.js';
+import type { ListRecord, PreviewCard } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toIdArray, toStringValue } from '../../utils.js';
@@ -63,19 +64,53 @@ export interface StatusContext {
 	mentionIds?: Map<string, string> | Record<string, string> | undefined;
 	// 認証ユーザー (viewer) のインタラクション状態 (→ ADR-0070)。
 	viewer?: StatusViewerContext | undefined;
+	// `_meta.card` から取り出したプレビューカード (→ ADR-0143)。
+	card?: PreviewCard | undefined;
 }
 
 // masto の型は `application` を non-null としているが、Mastodon 本体はリモート投稿で null を返す。
 // また preview_url は仕様上 nullable であり、DELETE レスポンスでは本文プレーンテキストの `text` が含まれる。
+// PreviewCard の `blurhash` も、画像が無ければ null (masto の型は non-null)。
+export type PreviewCardEntity = Omit<CamelToSnake<mastodon.v1.PreviewCard>, 'blurhash'> & {
+	blurhash: string | null;
+	image_description: string;
+	language: string | null;
+	published_at: string | null;
+	authors: never[];
+};
+
 export type StatusEntity = Omit<
 	CamelToSnake<mastodon.v1.Status>,
-	'application' | 'media_attachments' | 'reblog'
+	'application' | 'media_attachments' | 'reblog' | 'card'
 > & {
 	application: CamelToSnake<mastodon.v1.Status>['application'] | null;
 	media_attachments: MediaAttachmentEntity[];
 	reblog: StatusEntity | null;
+	card: PreviewCardEntity | null;
 	text?: string | null;
 };
+
+// 本文のリンクのプレビューカード (→ ADR-0143)。oEmbed は扱わないので `type` は常に `link`。
+export const previewCardToEntity = (card: PreviewCard): PreviewCardEntity => ({
+	url: card.url,
+	title: card.title,
+	description: card.description,
+	language: null,
+	type: 'link',
+	author_name: '',
+	author_url: '',
+	provider_name: card.providerName,
+	provider_url: '',
+	html: '',
+	width: card.image?.width ?? 0,
+	height: card.image?.height ?? 0,
+	image: card.image?.url ?? null,
+	image_description: card.image?.description ?? '',
+	embed_url: '',
+	blurhash: card.image?.blurhash ?? null,
+	published_at: null,
+	authors: [],
+});
 
 const isLocalIri = (iri: string) => iri.startsWith(`https://${domain}/`);
 
@@ -121,7 +156,7 @@ export const noteObjectToStatus = (
 		mentions: noteToMentions(note, context.mentionIds),
 		tags: noteToHashtags(note),
 		emojis: noteToEmojis(note),
-		card: null,
+		card: context.card === undefined ? null : previewCardToEntity(context.card),
 		poll: null,
 	};
 };
@@ -291,6 +326,7 @@ const buildStatusFromNote = (
 		meta: note._meta,
 		mentionIds: context.accountIds,
 		viewer: context.viewerRelations,
+		card: noteToPreviewCard(note),
 	});
 };
 
