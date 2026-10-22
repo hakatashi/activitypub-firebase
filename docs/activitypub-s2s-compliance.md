@@ -107,7 +107,7 @@ inbox からの転送は、元の署名ではなくローカル actor の鍵で�
 | §B.5 | オブジェクトをたどる再帰の深さを制限する | should | ✅ | `resolveReferences`([ADR-0055](adr/0055-resolve-references-limits-and-cycle-detection.md))、`address` の 1 段の展開 |
 | §B.6 | スパムを選別する | recommended | — | 仕組みはない。シングルユーザーで、相手の actor のブロック(`blockList`)だけがある |
 | §B.7 | 連合の DoS に備える。送信は指数バックオフなどで相手を過負荷にしない | should / SHOULD | ✅ | 送信は Cloud Tasks の指数バックオフ(`maxDoublings: 4`)と `rateLimits`(`tasks.ts`)。受信のレート制限はない |
-| §B.10 | ブラウザで描画するフィールドをサニタイズする | should | ❌ | リンクプレビュー用の HTML だけがサニタイズする(`mastodon/publicPageHtml.ts`)。Mastodon API はリモートの HTML をそのまま返す → [#364](https://github.com/hakatashi/activitypub-firebase/issues/364) |
+| §B.10 | ブラウザで描画するフィールドをサニタイズする | should | ✅ | Mastodon API は `Status.content`・`Account.note`・`fields` の値を応答時に Mastodon の `MASTODON_STRICT` と同じ許可リストでサニタイズする(`mastodon/sanitizeHtml.ts`、[ADR-0145](adr/0145-sanitize-html-in-mastodon-api-responses.md))。表示名・`spoiler_text` は Mastodon と同じくプレーンテキストとして返す。リンクプレビュー用の HTML は `mastodon/publicPageHtml.ts` がサニタイズする。`test/unit/sanitizeHtml.spec.ts` |
 | §B.11 | `bto` / `bcc` を表示しない | should | ✅ | ActivityPub の応答は `stringifyPublicJSONLD` で取り除く。Mastodon API の応答に `bto` / `bcc` は出ない |
 
 ## 対象外にしたもの

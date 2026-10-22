@@ -27,6 +27,7 @@ import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { isAPActor } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
+import { sanitizeHtml } from '../sanitizeHtml.js';
 import { getObjects } from '../../store/objects.js';
 import {
 	readRemoteActorStats,
@@ -116,6 +117,11 @@ export const actorObjectToAccount = async (
 
 	return {
 		...omit(baseUserInfo, 'source'),
+		// HTML のフィールドはサニタイズして返す (→ ADR-0145)。
+		fields: (baseUserInfo.fields ?? []).map((field) => ({
+			...field,
+			value: sanitizeHtml(field.value),
+		})),
 		id: accountId,
 		username,
 		acct: isLocal ? username : `${username}@${actorDomain}`,
@@ -125,7 +131,7 @@ export const actorObjectToAccount = async (
 		avatar_static: avatar,
 		header,
 		header_static: header,
-		note: actor.summary ?? '',
+		note: sanitizeHtml(actor.summary ?? ''),
 		discoverable: actor.discoverable ?? false,
 	};
 };

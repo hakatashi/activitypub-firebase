@@ -49,11 +49,6 @@ inbox は 5xx を返して相手の再送に、配送は `deliveryTask` の再�
 
 ## Mastodon API
 
-### リモートから受け取った HTML をサニタイズせずに返す
-
-`Status.content` などにリモートの HTML をそのまま入れる(`functions/src/mastodon/presenters/status.ts`)。
-Phanpy はサーバーがサニタイズ済みである前提で描画する → [#364](https://github.com/hakatashi/activitypub-firebase/issues/364)。
-
 ### 期限切れの OAuth トークンが残り続ける
 
 `POST /oauth/revoke` による失効には対応しているが、期限切れのアクセストークン・

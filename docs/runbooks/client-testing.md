@@ -101,6 +101,7 @@ dev の実装が追いつけば消える。消えたらこの節も更新する�
 | Phanpy: `net::ERR_FAILED https://mastodon-test.hakatashi.com/system/...`、`https://s3-mstdn.maud.io/...`、`https://img.pawoo.net/...` | リモートのメディアの配信設定(CORS)。Phanpy は `crossOrigin` 付きで画像を読む。dev とは無関係 |
 | Phanpy: `net::ERR_FAILED .../accounts/avatars/...` | GCS のエッジキャッシュ(最大1時間)に CORS 設定前の古いレスポンスが残っている場合。キャッシュ期限切れや新規画像アップロードで解消する |
 
+| Phanpy: `[favourites] pageerror: AbortError: signal is aborted without reason` | 画面遷移で Phanpy が前の画面の fetch を中断したもの。お気に入りの画面は表示される(2026-10-23 に確認)。dev とは無関係 |
 | Phanpy: `net::ERR_FILE_NOT_FOUND blob:http://127.0.0.1:5315/...`(`--media`) | 投稿後に Phanpy がプレビュー用の Object URL を破棄したもの。dev とは無関係 |
 
 ## 検索(`/api/v2/search`)の確認
