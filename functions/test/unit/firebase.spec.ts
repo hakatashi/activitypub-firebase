@@ -75,9 +75,9 @@ describe('FirestoreKey type constraints', () => {
 	});
 });
 
-describe('domain and mastodonDomain configuration (ADR-0077)', () => {
+describe('domain and mastodonDomain configuration (ADR-0077, ADR-0148)', () => {
 	test('resolves to dev domain when projectId is not activitypub-firebase', () => {
-		// firebase.ts は projectId === 'activitypub-firebase' 以外をすべて dev ドメインとして扱う。
+		// 対応表にない projectId は dev の設定になる (ADR-0148)。
 		// テストでワーカーごとに GCLOUD_PROJECT (例: activitypub-firebase-dev-w1) を変えても
 		// ドメイン判定が変わらない前提をここで固定する (ADR-0077)。
 		expect(domain).toBe('activitypub-dev.hakatashi.com');

@@ -30,7 +30,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0002](0002-keep-activitypub-express.md) | activitypub-express を継続利用し、配送層のみ差し替える | Superseded by ADR-0040 |
 | [0003](0003-delivery-via-cloud-tasks.md) | 配送は Cloud Tasks で行う | Accepted |
 | [0004](0004-no-custom-ui-use-elk.md) | 自前 Web UI を作らず Mastodon 互換 API + Elk を使う | Accepted |
-| [0005](0005-single-user-multi-ready-data-model.md) | 運用はシングルユーザー、データモデルはマルチユーザー対応を保つ | Accepted |
+| [0005](0005-single-user-multi-ready-data-model.md) | 運用はシングルユーザー、データモデルはマルチユーザー対応を保つ | Accepted (複数アカウントの API を作らない部分は ADR-0149 で一部 Superseded) |
 | [0006](0006-mastodon-api-id-scheme.md) | Mastodon API の ID は時系列順序を持つ独自採番にする | Accepted |
 | [0007](0007-no-streaming-api.md) | ストリーミング API は実装しない | Accepted |
 | [0008](0008-two-domain-split.md) | ActivityPub と Mastodon API を2つのドメインに分ける | Accepted |
@@ -174,3 +174,8 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0145](0145-sanitize-html-in-mastodon-api-responses.md) | Mastodon API の応答で、本文・プロフィールの HTML を Mastodon の `MASTODON_STRICT` と同じ許可リストでサニタイズする | Accepted |
 | [0146](0146-order-streams-by-activity-mastodon-id.md) | outbox などのコレクションは、アクティビティの Mastodon ID の降順で並べる | Accepted |
 | [0147](0147-cache-timeline-max-id-pages-in-instance.md) | ホーム・リストのタイムラインの `max_id` だけのページも、バージョンを見てインスタンス内にキャッシュする | Accepted |
+| [0148](0148-instance-config-per-project.md) | インスタンスの設定を Firebase プロジェクトごとの対応表に持つ | Accepted |
+| [0149](0149-bot-actors-as-additional-local-actors.md) | ボットを、主 actor と同じ形の追加のローカル actor として持つ | Accepted |
+| [0150](0150-bot-follow-approval-policy.md) | ボットのフォローは、ボットごとの許可リストで承認し、それ以外は Reject する | Accepted |
+| [0151](0151-bot-operator-token.md) | ボットの投稿は Mastodon API で受け、1つのオペレータートークンと `X-Bot-Account` ヘッダで actor を選ぶ | Accepted |
+| [0152](0152-bots-instance-in-separate-project.md) | ボット用インスタンスは別の Firebase プロジェクトで、同じリポジトリから同じ Functions をデプロイする | Accepted |

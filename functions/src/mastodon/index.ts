@@ -4,7 +4,7 @@ import { https, logger } from 'firebase-functions/v2';
 import { beforeUserCreated, HttpsError } from 'firebase-functions/v2/identity';
 import { apex } from '../apex.js';
 import { db, escapeFirestoreKey, mastodonDomain } from '../firebase.js';
-import { LOCAL_ADMIN_EMAIL, LOCAL_USERNAME, localActorId } from '../localActor.js';
+import { LOCAL_LOGIN_EMAIL, LOCAL_USERNAME, localActorId } from '../localActor.js';
 import { UserInfos } from '../schema.js';
 import { pickSafeHeaders, redactSensitiveBody } from '../utils.js';
 import apiRouter from './api.js';
@@ -59,8 +59,9 @@ export { mediaUploadApi } from './mediaUploadApi.js';
 export const beforeUserCreate = beforeUserCreated(async (user) => {
 	if (
 		!user.data ||
+		LOCAL_LOGIN_EMAIL === null ||
 		user.additionalUserInfo?.providerId !== 'google.com' ||
-		user.data.email !== LOCAL_ADMIN_EMAIL
+		user.data.email !== LOCAL_LOGIN_EMAIL
 	) {
 		throw new HttpsError('permission-denied', `Only ${LOCAL_USERNAME} can create new account`);
 	}
