@@ -319,8 +319,13 @@ export interface ParsedPreview {
 	title: string;
 	description: string;
 	providerName: string;
-	image: { url: string; description: string } | undefined;
+	image: { url: string; description: string; width: number; height: number } | undefined;
 }
+
+const toDimension = (value: string | undefined) => {
+	const number = Number(value?.trim());
+	return Number.isInteger(number) && number > 0 ? number : 0;
+};
 
 // `<head>` の OGP などから題名・説明・画像・提供元を取り出す。題名が無ければ undefined。
 export const parsePreviewHtml = (html: string, pageUrl: URL): ParsedPreview | undefined => {
@@ -373,6 +378,8 @@ export const parsePreviewHtml = (html: string, pageUrl: URL): ParsedPreview | un
 				? undefined
 				: {
 						url: imageUrl.href,
+						width: toDimension(metas.get('og:image:width')),
+						height: toDimension(metas.get('og:image:height')),
 						description:
 							normalizeText(
 								metas.get('og:image:alt') ?? metas.get('twitter:image:alt'),
@@ -383,6 +390,7 @@ export const parsePreviewHtml = (html: string, pageUrl: URL): ParsedPreview | un
 };
 
 // 画像は複製せず、幅・高さ・blurhash を出すためだけに読む (→ ADR-0141 決定5)。
+// 読めなければ undefined (呼び出し側は OGP の幅・高さで画像の URL を返す)。
 const measureImage = async (
 	url: string,
 ): Promise<Omit<PreviewCardImage, 'url' | 'description'> | undefined> => {
@@ -459,10 +467,7 @@ export const fetchPreviewCard = async (url: string): Promise<PreviewCard | null>
 		title: parsed.title,
 		description: parsed.description,
 		providerName: parsed.providerName,
-		image:
-			parsed.image === undefined || measured === undefined
-				? null
-				: { ...parsed.image, ...measured },
+		image: parsed.image === undefined ? null : { ...parsed.image, blurhash: null, ...measured },
 	};
 };
 

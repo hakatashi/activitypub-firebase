@@ -25,14 +25,14 @@ Issue #330。Status の `card` を常に `null` で返しており、Elk / Phanp
    `og:description` → `description` を説明、`og:image` を画像、`og:site_name` を提供元とする。題名が無ければカードを作らない。
    文字コードは `Content-Type` → `<meta charset>` → UTF-8 の順。oEmbed と動画の埋め込み (`html`) は扱わず、`type` は常に `link`。
 5. **画像:** 自前のストレージには複製せず、リモートの URL をそのまま返す。幅・高さ・blurhash を出すため、
-   同じ SSRF 対策で画像を 5MB まで取得し sharp で読む (16MP 超は捨てる)。取得できなければ画像なしのカードにする。
+   同じ SSRF 対策で画像を 5MB まで取得し sharp で読む (16MP 超・SVG は読まない)。読めなくても (相手の 429 など)
+   画像の URL は返し、幅・高さは `og:image:width` / `height` (無ければ 0)、blurhash は null にする。
 6. **保存:** URL ごとの結果を `previewCards/{URL の SHA-256}` に持ち (失敗も含む)、成功は 14 日・失敗は 1 日の間は取り直さない
    (`expiresAt` に TTL ポリシー)。Note には `_meta.card` に写しを置き、presenter は追加の読み取りなしで `card` を返す。
    写しは対象の URL を持ち、presenter は今の本文から選んだ URL と一致するときだけ返す (編集でリンクが変わったとき)。
    ローカルの投稿に写しを置いたときは、閲覧者のバージョン ([ADR-0139](0139-cache-timeline-head-page-in-instance.md)) を書き直す。
-7. 処理は `social/previewCards.ts` に置く ([ADR-0080](0080-social-domain-layer-and-dependency-direction.md))。
-   タスクは `maxAttempts: 1` で、失敗は上記のキャッシュで翌日に任せる。`GET /api/v1/statuses/:id/card` は
-   Mastodon 3.0 で削除済みなので実装しない。
+7. 処理は `social/previewCards.ts` に置く。タスクは `maxAttempts: 1` で、失敗は上記のキャッシュで翌日に任せる。
+   `GET /api/v1/statuses/:id/card` は Mastodon 3.0 で削除済みなので実装しない。
 
 ## 理由
 
@@ -47,5 +47,4 @@ Issue #330。Status の `card` を常に `null` で返しており、Elk / Phanp
 
 ## 参照
 
-- 関連 Issue: [#330](https://github.com/hakatashi/activitypub-firebase/issues/330)
-- [[0050-ssrf-safe-request-object-in-apex]]、[[0080-social-domain-layer-and-dependency-direction]]、[[0107-minimal-html-status-page-for-link-previews]]、[[0139-cache-timeline-head-page-in-instance]]
+- 関連 Issue: [#330](https://github.com/hakatashi/activitypub-firebase/issues/330) / [[0050-ssrf-safe-request-object-in-apex]]、[[0080-social-domain-layer-and-dependency-direction]]、[[0107-minimal-html-status-page-for-link-previews]]、[[0139-cache-timeline-head-page-in-instance]]

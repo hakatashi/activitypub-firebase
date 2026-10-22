@@ -81,6 +81,10 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
   足りなければ API で `POST /api/v1/statuses/:id/favourite` / `bookmark` を足す)
 - [ ] スクリーンショットで、タイムライン・プロフィールに中身が表示されている
   - `04-profile.png`: アバター画像・ヘッダー画像、表示名、プロフィール文が正しく描画されている
+  - リンクを含む投稿にプレビューカードが出ている(→ [ADR-0141](../adr/0141-preview-cards-for-links-in-statuses.md))。
+    カードは投稿・受信の後に `previewCardTask` が非同期に付けるので、事前に `/activitypub/createPost` で
+    リンク付きの投稿を作り、`GET /api/v1/accounts/:id/statuses` の `card` が埋まるのを待ってから実行する。
+    同じ URL の結果は `previewCards` に 14 日残るので、取得をやり直すなら別の URL を使う
 - [ ] `--post` (または `--write`) で `post: found in account statuses`
 - [ ] `--media` (または `--write`) で `postMedia: found with media in account statuses`
 - [ ] `--delete` (または `--write`) で `delete: status deleted via UI`

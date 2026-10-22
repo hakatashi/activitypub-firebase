@@ -101,12 +101,19 @@ describe('parsePreviewHtml', () => {
 			<meta property="og:site_name" content="Site">
 			<meta property="og:image" content="/images/a.png">
 			<meta property="og:image:alt" content="alt text">
+			<meta property="og:image:width" content="1200">
+			<meta property="og:image:height" content="630">
 		</head><body></body></html>`;
 		expect(parsePreviewHtml(html, pageUrl)).toEqual({
 			title: 'OG title',
 			description: 'og description',
 			providerName: 'Site',
-			image: { url: 'https://site.example/images/a.png', description: 'alt text' },
+			image: {
+				url: 'https://site.example/images/a.png',
+				description: 'alt text',
+				width: 1200,
+				height: 630,
+			},
 		});
 	});
 
@@ -192,7 +199,11 @@ describe('fetching preview cards', () => {
 		},
 		'/huge-image-page': (res) => {
 			res.writeHead(200, { 'content-type': 'text/html' });
-			res.end(html('<title>Huge image</title><meta property="og:image" content="/huge.png">'));
+			res.end(
+				html(
+					'<title>Huge image</title><meta property="og:image" content="/huge.png"><meta property="og:image:width" content="640"><meta property="og:image:height" content="480">',
+				),
+			);
 		},
 		'/huge.png': (res) => {
 			res.writeHead(200, { 'content-type': 'image/png' });
@@ -287,14 +298,14 @@ describe('fetching preview cards', () => {
 			await expect(fetchPreviewCard(`${origin}/huge`)).resolves.toMatchObject({ title: 'Huge' });
 		});
 
-		test('drops images that are too large or not raster images', async () => {
+		test('keeps the image URL with the OGP size when the image cannot be measured', async () => {
 			await expect(fetchPreviewCard(`${origin}/huge-image-page`)).resolves.toMatchObject({
 				title: 'Huge image',
-				image: null,
+				image: { url: `${origin}/huge.png`, width: 640, height: 480, blurhash: null },
 			});
 			await expect(fetchPreviewCard(`${origin}/svg-page`)).resolves.toMatchObject({
 				title: 'SVG',
-				image: null,
+				image: { url: `${origin}/image.svg`, width: 0, height: 0, blurhash: null },
 			});
 		});
 	});

@@ -54,7 +54,7 @@
 |---|---|---|---|
 | POST | `/api/v1/statuses` | ✅ | `Idempotency-Key`(1時間)対応。`media_ids`(最大4件、画像のみ)対応、Note の `attachment` として配送。`poll` / `scheduled_at` は 422。`visibility` / `sensitive` / `language` の省略時はアカウントの既定値を使う。メンション・ハッシュタグ・URL を自動変換 (→ [ADR-0105](adr/0105-account-source-defaults.md)、[ADR-0071](adr/0071-post-content-formatting-and-mentions.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 | GET | `/api/v1/statuses/:id` | ✅ | 可視性判定あり。未存在・権限なしは 404。favourited / reblogged / bookmarked / pinned を認証ユーザーから判定、media_attachments を Note から導出 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)) |
-| — | Status の `card` | ✅ | 本文の最初のリンクの OGP から作った `type: link` のカード(画像はリモートの URL のまま、幅・高さ・blurhash あり)。投稿・受信時に非同期に取得し、取得前と添付・引用のある投稿は `null`。oEmbed・動画の埋め込みは扱わない (→ [ADR-0141](adr/0141-preview-cards-for-links-in-statuses.md)) |
+| — | Status の `card` | ✅ | 本文の最初のリンクの OGP から作った `type: link` のカード(画像はリモートの URL のまま。幅・高さ・blurhash は画像を読んで出し、読めなければ OGP の幅・高さ)。投稿・受信時に非同期に取得し、取得前と添付・引用のある投稿は `null`。oEmbed・動画の埋め込みは扱わない (→ [ADR-0141](adr/0141-preview-cards-for-links-in-statuses.md)) |
 | GET | `/api/v1/statuses/:id/card` | ⬜ | Mastodon 3.0 で削除済みのため実装しない (→ [ADR-0141](adr/0141-preview-cards-for-links-in-statuses.md)) |
 | DELETE | `/api/v1/statuses/:id` | ✅ | `write:statuses` 必須。自分の投稿のみ。Note 削除時は Tombstone 化、outbox 配送、statuses_count 減算、本文 (text) を返却。ブースト ID 指定時はブースト取り消しを行い Status を返却 (→ [ADR-0096](adr/0096-boosts-in-timelines-and-account-statuses.md)) |
 | GET | `/api/v1/statuses/:id/context` | ✅ | ancestors (上限40、古い順) / descendants (DFS、深さ20・件数60上限)。手元のみ探索、循環参照ガード |
