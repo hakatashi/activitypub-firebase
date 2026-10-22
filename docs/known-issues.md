@@ -11,6 +11,16 @@
 apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` / `Undo` / `Update`。
 `Follow` は apex 側にケースがなく、`functions/src/activitypub.ts` の `apex-inbox` リスナーで
 自前実装している。`Move` は apex が完全に非対応(2xx で受け取って捨てる。→ [ADR-0115](adr/0115-inbox-4xx-only-for-sender-faults.md))。
+`Add` / `Remove` は副作用を行わない方針だが(→ [ADR-0141](adr/0141-ignore-inbox-add-remove.md))、
+object が Note のもの(Mastodon のピン留め)には 400 を返している → [#363](https://github.com/hakatashi/activitypub-firebase/issues/363)。
+
+### 仕様の S2S 部分との照合で見つかった非準拠
+
+条文ごとの判定は [`activitypub-s2s-compliance.md`](activitypub-s2s-compliance.md) にある。特に影響の大きいもの:
+
+- inbox が `Create` / `Announce` に埋め込まれた別オリジンのオブジェクトを、検証せずに保存する(なりすましが可能)
+  → [#362](https://github.com/hakatashi/activitypub-firebase/issues/362)
+- outbox などの `OrderedCollection` が新しい順に並んでいない → [#359](https://github.com/hakatashi/activitypub-firebase/issues/359)
 
 ### リモートの取得が恒久的な 4xx で失敗しても、inbox が 500 を返す
 
@@ -38,6 +48,11 @@ inbox は 5xx を返して相手の再送に、配送は `deliveryTask` の再�
 → [#326](https://github.com/hakatashi/activitypub-firebase/issues/326)。
 
 ## Mastodon API
+
+### リモートから受け取った HTML をサニタイズせずに返す
+
+`Status.content` などにリモートの HTML をそのまま入れる(`functions/src/mastodon/presenters/status.ts`)。
+Phanpy はサーバーがサニタイズ済みである前提で描画する → [#364](https://github.com/hakatashi/activitypub-firebase/issues/364)。
 
 ### 期限切れの OAuth トークンが残り続ける
 
