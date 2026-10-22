@@ -36,7 +36,8 @@ Mastodon / Misskey は actor の `featured` にピン留めの `OrderedCollectio
    - コレクションを取得できたときだけ、`pins` をその内容に置き換える (取得できなかった Note は外れる)。
      取得できなければ `pins` は変えず、`featuredFetchedAt` だけを更新して翌日の閲覧に任せる。
    - 並び順を保つため、同期で加えるピン留めの `createdAt` はコレクションの順に 1 ミリ秒ずつずらす。
-5. `?pinned=true` は `createdAt` の新しい順に返す (Mastodon の `status_pins.id DESC` と同じ)。
+5. `?pinned=true` は `createdAt` の新しい順に返し、Mastodon と同じく `max_id` などで Mastodon ID の範囲を絞って `limit` 件までにする
+   (ページの指定を無視すると、Elk が `max_id` 付きで取り直すたびに同じピン留めが並ぶ)。
 
 ## 理由
 

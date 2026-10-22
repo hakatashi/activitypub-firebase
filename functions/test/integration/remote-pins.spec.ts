@@ -378,6 +378,25 @@ describe('remote pinned statuses (Issue #318)', () => {
 			]);
 		});
 
+		test('applies the page range to the pinned statuses', async () => {
+			await syncRemoteFeatured(carolIri);
+			const id = await getOrAssignMastodonId(carolIri, undefined);
+			const first = await request(mastodon).get(`/api/v1/accounts/${id}/statuses?pinned=true`);
+			const ids = first.body.map((status: { id: string }) => status.id) as string[];
+			expect(ids).toHaveLength(2);
+
+			// Elk は `max_id` を付けて次のページを取りに来る。同じピン留めを返さない。
+			const next = await request(mastodon).get(
+				`/api/v1/accounts/${id}/statuses?pinned=true&max_id=${ids.at(-1)}`,
+			);
+			expect(next.body).toEqual([]);
+
+			const limited = await request(mastodon).get(
+				`/api/v1/accounts/${id}/statuses?pinned=true&limit=1`,
+			);
+			expect(limited.body.map((status: { id: string }) => status.id)).toEqual([ids[0]]);
+		});
+
 		test('skips items that are not the actor’s own notes', async () => {
 			featuredItems = [
 				note(3, { attributedTo: `${origin}/users/dave` }),
