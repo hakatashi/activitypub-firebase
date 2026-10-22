@@ -58,6 +58,8 @@ jobs:
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
           - id: activitypub-firebase-dev
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+          - id: activitypub-firebase-bots
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_BOTS
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -81,11 +83,23 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
+        # Hosting のターゲットはプロジェクトごとに異なるため、ターゲットを明示する (→ ADR-0152)。
         project:
           - id: activitypub-firebase
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+            target: activitypub
+          - id: activitypub-firebase
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+            target: mastodon
           - id: activitypub-firebase-dev
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+            target: activitypub
+          - id: activitypub-firebase-dev
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+            target: mastodon
+          - id: activitypub-firebase-bots
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_BOTS
+            target: bots
     steps:
       - uses: actions/checkout@v7
         with:
@@ -99,6 +113,7 @@ jobs:
           firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
           channelId: live
           projectId: '${{matrix.project.id}}'
+          target: '${{matrix.project.target}}'
   smoke-test-dev:
     name: Smoke test (dev)
     needs: [deploy-firebase, deploy-hosting]

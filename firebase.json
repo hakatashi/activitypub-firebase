@@ -178,6 +178,126 @@
           }
         }
       ]
+    },
+    {
+      "target": "bots",
+      "public": "hosting/bots",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "/api/**",
+          "headers": [
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            }
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/.well-known/**",
+          "function": {
+            "functionId": "activitypub",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/activitypub/**",
+          "function": {
+            "functionId": "activitypub",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/nodeinfo/**",
+          "function": {
+            "functionId": "activitypub",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/api/v1/accounts/update_credentials",
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/api/v1/media",
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/api/v1/media/**",
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/api/v2/media",
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/api/v2/media/**",
+          "function": {
+            "functionId": "mediaUploadApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/api/**",
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/oauth/**",
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/tags/**",
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/avatars/original/missing.png",
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "source": "/headers/original/missing.png",
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
+          "regex": "^/@[^/]+(?:/[0-9]+)?/?$",
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
+        }
+      ]
     }
   ],
   "emulators": {

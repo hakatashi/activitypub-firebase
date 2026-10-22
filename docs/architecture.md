@@ -435,12 +435,15 @@ unfavourite / unreblog は射影に載っている Like / Announce をすべて 
 
 ## デプロイ
 
-`.firebaserc` で本番 `activitypub-firebase` と開発 `activitypub-firebase-dev` の2環境を定義。
+`.firebaserc` で本番 `activitypub-firebase`、開発 `activitypub-firebase-dev`、ボット用 `activitypub-firebase-bots` の3環境を定義
+(→ [ADR-0152](adr/0152-bots-instance-in-separate-project.md))。
+Hosting のターゲットは、本番と dev が `activitypub`(`hakatashi.com` などの個人サイトと相乗り)と `mastodon`、
+ボット用が `bots`(ActivityPub と Mastodon API を `bots.activitypub.hakatashi.com` の1ドメインで出し、public は `hosting/bots/`)。
 ドメイン・主 actor・ボット機能の有無は、`functions/src/instanceConfig.ts` の `projectId` ごとの対応表で決まる。
 対応表にない `projectId`(テストのワーカーなど)は dev の設定になる(→ [ADR-0148](adr/0148-instance-config-per-project.md))。
 
 `.github/workflows/main.yml` が main への push でテスト・lint 実行後、
-**両方の環境に同時にデプロイ**する。
+**すべての環境に順にデプロイ**する。Hosting はプロジェクトとターゲットの組ごとにデプロイする。
 
 ## 依存関係
 
