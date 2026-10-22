@@ -1,22 +1,25 @@
-import { readTimelineHeadState } from '../../social/timelines.js';
+import { readTimelineHeadState, readTimelineVersion } from '../../social/timelines.js';
 import type { TimelineTarget } from '../../social/timelines.js';
 import type { PageParams } from '../pagination.js';
 import type { StatusEntity } from './status.js';
 
-// ホーム・リストのタイムラインの先頭ページを、組み立て済みの Status のままインスタンス内にキャッシュする (→ ADR-0139)。
+// ホーム・リストのタイムラインの先頭ページと `max_id` だけのページを、組み立て済みの Status のままインスタンス内に
+// キャッシュする (→ ADR-0139、ADR-0147)。
 
 interface TimelineHeadCacheEntry {
 	version: string;
+	// `max_id` のページでは使わない (→ ADR-0147 決定2)
 	latestEntryId: string | null;
 	// 全体を組み立てた時刻。新着を足しても更新しない (→ ADR-0139 決定5)
 	builtAt: number;
 	statuses: StatusEntity[];
 }
 
-// キーは閲覧者・タイムライン・limit。Map の挿入順を LRU に使う。
+// キーは閲覧者・タイムライン・limit・max_id。Map の挿入順を LRU に使う。
 const cache = new Map<string, TimelineHeadCacheEntry>();
 
-const MAX_ENTRIES = 32;
+// 先頭ページが Phanpy の 2 ページ目などに追い出されないように、先頭ページの数より十分大きくする (→ ADR-0147 決定4)。
+const MAX_ENTRIES = 64;
 // リモートで変わる件数・編集・削除などを読み直すまでの時間。
 const MAX_AGE_MS = 15 * 60 * 1000;
 
@@ -55,8 +58,49 @@ const mergeStatuses = (fresh: StatusEntity[], cached: StatusEntity[], limit: num
 		.slice(0, limit);
 };
 
+const cacheKey = (viewerId: string, target: TimelineTarget, page: PageParams) =>
+	[
+		viewerId,
+		target.kind === 'home' ? 'home' : `list ${target.listId}`,
+		page.limit,
+		page.maxId ?? '',
+	].join('\n');
+
+// `max_id` だけのページは、バージョンが組み立てたときと同じならキャッシュを返す。新着はこのページに入らないので
+// 最新のエントリは見ない (→ ADR-0147 決定2)。
+const withOlderPageCache = async ({
+	viewerId,
+	target,
+	page,
+	build,
+}: {
+	viewerId: string;
+	target: TimelineTarget;
+	page: PageParams;
+	build: (page: PageParams) => Promise<StatusEntity[]>;
+}): Promise<StatusEntity[]> => {
+	const version = await readTimelineVersion(viewerId);
+	if (version === undefined) {
+		return build(page);
+	}
+	const key = cacheKey(viewerId, target, page);
+	const cached = cache.get(key);
+	if (
+		cached !== undefined &&
+		cached.version === version &&
+		Date.now() - cached.builtAt < MAX_AGE_MS
+	) {
+		remember(key, cached);
+		return [...cached.statuses];
+	}
+	const builtAt = Date.now();
+	const statuses = await build(page);
+	remember(key, { version, latestEntryId: null, builtAt, statuses });
+	return [...statuses];
+};
+
 // 先頭ページ (カーソルなし) なら、キャッシュを検証して返す。新着があれば新着分だけを `build` で組み立てて足す。
-// それ以外のページや、キャッシュできない状態なら毎回 `build` する。
+// `max_id` だけのページはバージョンだけを見てキャッシュする。それ以外のページや、キャッシュできない状態なら毎回 `build` する。
 export const withTimelineHeadCache = async ({
 	viewerId,
 	target,
@@ -68,18 +112,17 @@ export const withTimelineHeadCache = async ({
 	page: PageParams;
 	build: (page: PageParams) => Promise<StatusEntity[]>;
 }): Promise<StatusEntity[]> => {
-	if (page.maxId !== undefined || page.sinceId !== undefined || page.minId !== undefined) {
+	if (page.sinceId !== undefined || page.minId !== undefined) {
 		return build(page);
+	}
+	if (page.maxId !== undefined) {
+		return withOlderPageCache({ viewerId, target, page, build });
 	}
 	const state = await readTimelineHeadState(viewerId, target);
 	if (state === undefined) {
 		return build(page);
 	}
-	const key = [
-		viewerId,
-		target.kind === 'home' ? 'home' : `list ${target.listId}`,
-		page.limit,
-	].join('\n');
+	const key = cacheKey(viewerId, target, page);
 	const cached = cache.get(key);
 	if (
 		cached !== undefined &&

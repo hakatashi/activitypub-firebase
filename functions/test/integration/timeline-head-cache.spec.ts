@@ -191,17 +191,54 @@ describe('timeline head cache (Issue #347, ADR-0139)', () => {
 		expect(await home()).toHaveLength(2);
 	});
 
-	test('does not cache pages with a cursor', async () => {
+	test('caches pages with only max_id until it expires (ADR-0147)', async () => {
 		await saveNote(REMOTE_A);
 		const a2 = await saveNote(REMOTE_A);
 		const [newest] = await home('limit=1');
 		expect(newest?.uri).toBe(a2);
+		const query = `limit=1&max_id=${newest!.id}`;
 
-		const [older] = await home(`limit=1&max_id=${newest!.id}`);
+		const older = await home(query);
 		await apex.store.updateObject(noteObject(REMOTE_A, 1, { content: 'edited' }), REMOTE_A, true);
-		expect((await home(`limit=1&max_id=${newest!.id}`))[0]).toEqual({
-			...older,
-			content: 'edited',
-		});
+		// 新着は max_id のページに入らない。
+		await saveNote(REMOTE_B);
+		expect(await home(query)).toEqual(older);
+
+		const now = Date.now();
+		vi.spyOn(Date, 'now').mockReturnValue(now + 15 * 60 * 1000);
+		expect(await home(query)).toEqual([{ ...older[0], content: 'edited' }]);
+	});
+
+	test('reflects the viewer actions and unfollows on pages with max_id (ADR-0147)', async () => {
+		await saveNote(REMOTE_A, { to: [`${REMOTE_A}/followers`], cc: [] });
+		await saveNote(REMOTE_B);
+		const a3 = await saveNote(REMOTE_A);
+		const [newest] = await home('limit=1');
+		expect(newest?.uri).toBe(a3);
+		const query = `limit=3&max_id=${newest!.id}`;
+		const older = await home(query);
+		expect(older).toHaveLength(2);
+		expect(older[0]?.favourited).toBe(false);
+
+		const res = await mastodonReq.post(`/api/v1/statuses/${older[0]!.id}/favourite`, TOKEN);
+		expect(res.status).toBe(200);
+		expect((await home(query))[0]?.favourited).toBe(true);
+
+		const account = await getStatuses(`/api/v1/accounts/search?q=alice@remote.example`);
+		const unfollow = await mastodonReq.post(`/api/v1/accounts/${account[0]!.id}/unfollow`, TOKEN);
+		expect(unfollow.status).toBe(200);
+		expect((await home(query)).map((status) => status.uri)).toEqual([older[0]?.uri]);
+	});
+
+	test('does not cache pages with since_id', async () => {
+		const a1 = await saveNote(REMOTE_A);
+		await saveNote(REMOTE_A);
+		const [, oldest] = await home();
+		expect(oldest?.uri).toBe(a1);
+
+		const query = `limit=1&since_id=${oldest!.id}`;
+		const [first] = await home(query);
+		await apex.store.updateObject(noteObject(REMOTE_A, 2, { content: 'edited' }), REMOTE_A, true);
+		expect((await home(query))[0]).toEqual({ ...first, content: 'edited' });
 	});
 });
