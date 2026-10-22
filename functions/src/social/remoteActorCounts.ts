@@ -53,7 +53,7 @@ export const isRemoteActorStatsStale = (stats: RemoteActorStats, now = Date.now(
 	return Number.isNaN(fetchedAt) || now - fetchedAt >= REMOTE_ACTOR_COUNTS_TTL_MS;
 };
 
-export type RemoteActorTaskKind = 'counts' | 'resolve' | 'outbox';
+export type RemoteActorTaskKind = 'counts' | 'resolve' | 'outbox' | 'featured';
 
 // 同じ actor への依頼を種類ごとに 1 日 1 回にするためのタスク ID (Cloud Tasks の重複排除に使う)。
 export const remoteActorRefreshTaskId = (

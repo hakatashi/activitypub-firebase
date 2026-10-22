@@ -349,7 +349,11 @@ export const getAccountTimelineItems = async (
 	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
 	if (options.pinned) {
 		const actorKey = escapeFirestoreKey(actorId);
-		const pinsSnap = await UserInfos.doc(actorKey).collection('pins').get();
+		// ピン留めした新しい順 (→ ADR-0141)。
+		const pinsSnap = await UserInfos.doc(actorKey)
+			.collection('pins')
+			.orderBy('createdAt', 'desc')
+			.get();
 		if (pinsSnap.empty) {
 			return [];
 		}

@@ -198,6 +198,38 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 			);
 			expect(res.locals.apex.object).toEqual(existingFollow);
 		});
+		test('looks up a plain object for Add without fetching it (ADR-0141)', async () => {
+			const resolveActivitySpy = vi.spyOn(apex, 'resolveActivity');
+			const addActivity = {
+				id: 'https://remote.example/s/add-1',
+				type: 'Add',
+				actor: [ACTOR_ID],
+				object: [NOTE_ID],
+				target: [`${ACTOR_ID}/featured`],
+			};
+
+			const { req, res } = createMockReqRes(addActivity);
+			await runMiddleware(apex.net.validators.activityObject, req, res);
+
+			expect(res.locals.apex.object).toEqual(note);
+			expect(resolveActivitySpy).not.toHaveBeenCalled();
+			resolveActivitySpy.mockRestore();
+		});
+
+		test('leaves the object undefined for Remove of an unknown object', async () => {
+			const removeActivity = {
+				id: 'https://remote.example/s/remove-1',
+				type: 'Remove',
+				actor: [ACTOR_ID],
+				object: ['https://remote.example/o/unknown'],
+				target: [`${ACTOR_ID}/featured`],
+			};
+
+			const { req, res } = createMockReqRes(removeActivity);
+			await runMiddleware(apex.net.validators.activityObject, req, res);
+
+			expect(res.locals.apex.object).toBeUndefined();
+		});
 	});
 
 	describe('inboxActivity', () => {
@@ -259,6 +291,45 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 
 			expect(res.locals.apex.status).toBe(400);
 			expect(res.locals.apex.statusMessage).toBe('Object requried for Like activity');
+			expect(res.locals.apex.activity).toBeUndefined();
+		});
+		test.each(['Add', 'Remove'])(
+			'accepts %s whose object is not an Activity (ADR-0141)',
+			async (type) => {
+				const activity = {
+					id: `https://remote.example/s/${type}-1`,
+					type,
+					actor: [ACTOR_ID],
+					object: ['https://remote.example/o/unknown'],
+					target: [`${ACTOR_ID}/featured`],
+				};
+
+				const { req, res } = createMockReqRes(activity, {
+					target: recipient,
+					actor,
+					object: undefined,
+				});
+
+				await runMiddleware(apex.net.validators.inboxActivity, req, res);
+
+				expect(res.locals.apex.activity).toBe(true);
+				expect(res.locals.apex.status).toBeUndefined();
+			},
+		);
+
+		test('rejects Add without an object with 400', async () => {
+			const addActivity = {
+				id: 'https://remote.example/s/add-1',
+				type: 'Add',
+				actor: [ACTOR_ID],
+				target: [`${ACTOR_ID}/featured`],
+			};
+
+			const { req, res } = createMockReqRes(addActivity, { target: recipient, actor });
+
+			await runMiddleware(apex.net.validators.inboxActivity, req, res);
+
+			expect(res.locals.apex.status).toBe(400);
 			expect(res.locals.apex.activity).toBeUndefined();
 		});
 	});

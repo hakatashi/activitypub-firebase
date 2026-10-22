@@ -9,6 +9,7 @@ import { recordDeliveryResult } from './store/deliveries.js';
 import { refreshRemoteActorCounts } from './social/remoteActorCounts.js';
 import { resolveMissingRemoteActor } from './social/remoteActorResolution.js';
 import { backfillRemoteOutbox } from './social/remoteOutbox.js';
+import { syncRemoteFeatured } from './social/remotePins.js';
 
 export const pingTaskPayloadSchema = z.object({
 	message: z.string(),
@@ -226,11 +227,11 @@ export const deliveryTask = onTaskDispatched<unknown>(
 
 export const remoteActorRefreshTaskPayloadSchema = z.object({
 	actorIri: z.string().min(1),
-	kind: z.enum(['counts', 'resolve', 'outbox']).default('counts'),
+	kind: z.enum(['counts', 'resolve', 'outbox', 'featured']).default('counts'),
 });
 
 // リモート actor 本体と件数を取り直す (→ ADR-0104、ADR-0110)、手元にない actor を取得する (→ ADR-0106)、
-// または過去の公開投稿を outbox から補完する (→ ADR-0140)。
+// 過去の公開投稿を outbox から補完する (→ ADR-0140)、またはピン留めを `featured` から同期する (→ ADR-0141)。
 // 取得の失敗はそれぞれの中で吸収し、再試行は翌日の依頼に任せるため、ここではリトライしない。
 export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 	{
@@ -257,6 +258,10 @@ export const remoteActorRefreshTask = onTaskDispatched<unknown>(
 		}
 		if (parsed.data.kind === 'outbox') {
 			await backfillRemoteOutbox(parsed.data.actorIri);
+			return;
+		}
+		if (parsed.data.kind === 'featured') {
+			await syncRemoteFeatured(parsed.data.actorIri);
 			return;
 		}
 		await refreshRemoteActorCounts(parsed.data.actorIri);

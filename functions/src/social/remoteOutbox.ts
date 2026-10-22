@@ -79,26 +79,26 @@ export const requestRemoteOutboxBackfillIfStale = async (actor: APObject) => {
 	}
 };
 
-const isObject = (value: unknown): value is APObject =>
+export const isObject = (value: unknown): value is APObject =>
 	typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const firstOfValue = (value: unknown) => toArray(value)[0];
+export const firstOfValue = (value: unknown) => toArray(value)[0];
 
-const collectionItems = (collection: APObject): unknown[] =>
+export const collectionItems = (collection: APObject): unknown[] =>
 	toArray(collection.orderedItems ?? collection.items);
 
 // 外部へのリクエストの回数を数えながら、actor と同じオリジンのものだけを取得する。
-const createFetcher = (actorOrigin: string) => {
+export const createFetcher = (actorOrigin: string, maxRequests = OUTBOX_MAX_REQUESTS) => {
 	let requests = 0;
 	return {
 		get exhausted() {
-			return requests >= OUTBOX_MAX_REQUESTS;
+			return requests >= maxRequests;
 		},
 		get requests() {
 			return requests;
 		},
 		fetch: (url: string): Promise<APObject | undefined> => {
-			if (requests >= OUTBOX_MAX_REQUESTS || originOf(url) !== actorOrigin) {
+			if (requests >= maxRequests || originOf(url) !== actorOrigin) {
 				return Promise.resolve(undefined);
 			}
 			requests++;
@@ -107,10 +107,10 @@ const createFetcher = (actorOrigin: string) => {
 	};
 };
 
-type Fetcher = ReturnType<typeof createFetcher>;
+export type Fetcher = ReturnType<typeof createFetcher>;
 
 // 埋め込みか IRI のコレクションページを解決する。
-const resolvePage = (value: unknown, fetcher: Fetcher): Promise<APObject | undefined> => {
+export const resolvePage = (value: unknown, fetcher: Fetcher): Promise<APObject | undefined> => {
 	// 埋め込みでも `id` だけの参照なら取得する。
 	if (isObject(value) && (value.orderedItems !== undefined || value.items !== undefined)) {
 		return Promise.resolve(value);

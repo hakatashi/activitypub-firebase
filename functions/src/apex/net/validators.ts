@@ -14,13 +14,16 @@ import { getApex, getLocals, getRouteParam } from './locals.js';
 
 const needsResolveObject = ['announce', 'block', 'create', 'follow', 'like'];
 const needsResolveActivity = ['accept', 'add', 'reject', 'remove'];
+// inbox の Add / Remove の object は Activity に限らない (AS2)。手元にあるものだけを探し、外部へは取りに行かない (→ ADR-0141)
+const needsLocalAnyObject = ['add', 'remove'];
 const needsLocalActivity = ['undo'];
 const needsLocalObject = ['delete'];
 const obxNeedsLocalObject = ['delete', 'update'];
 const needsInlineObject = ['update'];
 const obxNeedsInlineObject = ['create'];
 const requiresObject = ['announce', 'create', 'delete', 'follow', 'like', 'update'];
-const requiresActivityObject = ['accept', 'add', 'reject', 'remove'];
+const requiresActivityObject = ['accept', 'reject'];
+const requiresObjectId = ['add', 'remove'];
 const obxRequiresActivityObject = ['accept', 'add', 'reject', 'remove', 'undo'];
 const requiresObjectOwnership = ['delete', 'undo', 'update'];
 const requiresTarget = ['add', 'remove'];
@@ -41,6 +44,9 @@ const isAcceptableBy = (
 	return toArray(accepted?.to).includes(actorId);
 };
 
+const getLocalActivityOrObject = async (apex: ReturnType<typeof getApex>, id: string) =>
+	(await apex.store.getActivity(id, true)) ?? apex.store.getObject(id, true);
+
 export const activityObject = (req: Request, res: Response, next: NextFunction): void => {
 	const apex = getApex(req);
 	const resLocal = getLocals(res);
@@ -54,6 +60,9 @@ export const activityObject = (req: Request, res: Response, next: NextFunction):
 	let object: ObjectResolution;
 	if (needsResolveObject.includes(type) && activity.object) {
 		object = apex.resolveObject(first(activity.object), true);
+	} else if (needsLocalAnyObject.includes(type)) {
+		const objectId = apex.objectIdFromActivity(activity);
+		object = objectId === null ? undefined : getLocalActivityOrObject(apex, objectId);
 	} else if (needsResolveActivity.includes(type) && activity.object) {
 		object = apex.resolveActivity(first(activity.object), true);
 	} else if (needsLocalActivity.includes(type)) {
@@ -148,6 +157,12 @@ export const inboxActivity = (req: Request, res: Response, next: NextFunction): 
 	if (requiresActivityObject.includes(type) && !apex.validateActivity(object)) {
 		resLocal.status = 400;
 		resLocal.statusMessage = `Activity type object requried for ${activity.type} activity`;
+		next();
+		return;
+	}
+	if (requiresObjectId.includes(type) && apex.objectIdFromActivity(activity) === null) {
+		resLocal.status = 400;
+		resLocal.statusMessage = `Object requried for ${activity.type} activity`;
 		next();
 		return;
 	}
