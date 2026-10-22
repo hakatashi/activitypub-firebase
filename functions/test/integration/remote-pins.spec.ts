@@ -12,7 +12,7 @@ import type { APObject } from '../../src/apex/index.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 import { getOrAssignMastodonId } from '../../src/mastodonId.js';
-import { Objects, UserInfos } from '../../src/schema.js';
+import { Objects, Streams, UserInfos } from '../../src/schema.js';
 import {
 	REMOTE_ACTOR_COUNTS_TTL_MS,
 	remoteActorRefreshQueue,
@@ -324,6 +324,28 @@ describe('remote pinned statuses (Issue #318)', () => {
 			});
 			expect(removed.status).toBe(200);
 			expect(await pinnedIris()).toEqual([]);
+		});
+
+		// Mastodon / Misskey は Add / Remove に id を付けない。
+		test('accepts Add / Remove without an id as transient activities without saving them', async () => {
+			const add = { type: 'Add', object: `${carolIri}/statuses/2`, target: featuredIri };
+			const remove = { type: 'Remove', object: `${carolIri}/statuses/2`, target: featuredIri };
+
+			expect((await postToInbox(add)).status).toBe(200);
+			expect(await pinnedIris()).toEqual([`${carolIri}/statuses/2`]);
+			expect((await postToInbox(remove)).status).toBe(200);
+			expect(await pinnedIris()).toEqual([]);
+			// 同じ内容の Add が再び届いても、重複として捨てない。
+			expect((await postToInbox(add)).status).toBe(200);
+			expect(await pinnedIris()).toEqual([`${carolIri}/statuses/2`]);
+
+			const streams = await Streams.get();
+			expect(streams.docs.filter((doc) => ['Add', 'Remove'].includes(doc.get('type')))).toEqual([]);
+		});
+
+		test('still rejects other activities without an id', async () => {
+			const res = await postToInbox({ type: 'Like', object: `${carolIri}/statuses/2` });
+			expect(res.status).toBe(400);
 		});
 
 		test('rejects Add without an object', async () => {

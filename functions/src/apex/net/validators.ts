@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { isTransientFailure } from '../pub/fetchErrors.js';
 import type { APObject } from '../types.js';
@@ -27,6 +28,9 @@ const requiresObjectId = ['add', 'remove'];
 const obxRequiresActivityObject = ['accept', 'add', 'reject', 'remove', 'undo'];
 const requiresObjectOwnership = ['delete', 'undo', 'update'];
 const requiresTarget = ['add', 'remove'];
+// `id` を持たない一時的なもの (AP §3.1) として受け付ける種類。Mastodon / Misskey はピン留めの Add / Remove に
+// `id` を付けない。保存を前提とする副作用 (コレクションへの追加・Undo の対象) がない種類に限る (→ ADR-0141)
+const allowsTransient = ['add', 'remove'];
 
 type ObjectResolution = Promise<APObject | null | undefined> | APObject | undefined;
 
@@ -101,6 +105,21 @@ export const activityObject = (req: Request, res: Response, next: NextFunction):
 			next();
 		})
 		.catch(next);
+};
+
+// `id` のない Add / Remove に仮の `id` を振り、一時的なアクティビティとして扱う。仮の `id` は保存も公開もしない
+export const transientActivity = (req: Request, res: Response, next: NextFunction): void => {
+	const body: unknown = req.body;
+	if (
+		isRecord(body) &&
+		body.id === undefined &&
+		typeof body.type === 'string' &&
+		allowsTransient.includes(body.type.toLowerCase())
+	) {
+		body.id = `urn:uuid:${randomUUID()}`;
+		getLocals(res).transient = true;
+	}
+	next();
 };
 
 // confirm activity actor is sender and not blocked

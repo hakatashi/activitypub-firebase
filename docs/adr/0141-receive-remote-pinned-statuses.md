@@ -15,6 +15,9 @@ Mastodon / Misskey は actor の `featured` にピン留めの `OrderedCollectio
 1. **フォーク側の修正は「`Add` / `Remove` の `object` を Activity に限らない」ことだけ** ([ADR-0042](0042-apex-fork-responsibility-boundary.md))。
    AS2 の `Add` / `Remove` の object は任意のオブジェクトで、これは素で使う全員に必要な修正である。inbox では object を
    手元の streams / objects から探すだけで、外部へは取りに行かない (`Remove` や対象外の `Add` で無駄な取得をしない)。
+   また Mastodon / Misskey は `Add` / `Remove` に `id` を付けないので、`id` のない `Add` / `Remove` を AP §3.1 の
+   一時的なアクティビティとして受け付ける。仮の `urn:uuid:` を振り、streams への保存・参照の解決・転送をせずに
+   `apex-inbox` だけを発火する。重複配送は判別しない (処理が冪等なので問題ない)。保存を前提とする副作用を持つ他の種類は従来どおり `id` を要求する。
 2. **ピン留めとして扱うかの判断と保存は本体側** (`social/remotePins.ts`)。`apex-inbox` で受けた `Add` / `Remove` のうち、
    `target` が送信者の `featured` と一致し、object の IRI が送信者と同じオリジンのものだけを扱う。それ以外は無視する。
    - `Add`: Note を手元から探し、なければ SSRF 対策済みの `requestObject` で取得し、`attributedTo` が送信者の
