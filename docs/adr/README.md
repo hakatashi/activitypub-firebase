@@ -171,3 +171,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0142](0142-prefer-shared-inbox-for-all-recipients.md) | 配送は宛先の種類によらず相手の sharedInbox を優先する | Accepted |
 | [0143](0143-preview-cards-for-links-in-statuses.md) | 投稿本文のリンクのプレビューカードを、受信・投稿時に非同期で取得して Note の `_meta` に持つ | Accepted |
 | [0144](0144-receive-remote-pinned-statuses.md) | リモートアカウントのピン留めを `featured` コレクションと `Add` / `Remove` から取り込む | Accepted |
+| [0145](0145-sanitize-html-in-mastodon-api-responses.md) | Mastodon API の応答で、本文・プロフィールの HTML を Mastodon の `MASTODON_STRICT` と同じ許可リストでサニタイズする | Accepted |

@@ -140,6 +140,34 @@ describe('actorObjectToAccount', () => {
 	});
 });
 
+describe('actorObjectToAccount sanitization', () => {
+	test('sanitizes the note and field values but keeps the display name as text (ADR-0145)', async () => {
+		const actor = {
+			id: `https://${domain}/activitypub/u/hakatashi`,
+			type: 'Person',
+			preferredUsername: 'hakatashi',
+			name: '<b>name</b>',
+			summary: '<p onclick="x">Bio<script>alert(1)</script></p>',
+		} as unknown as APActor;
+		const account = await actorObjectToAccount(actor, {
+			...userInfo,
+			fields: [
+				{ name: 'Web', value: '<a href="https://e.com" onclick="x">e.com</a>', verified_at: null },
+			],
+		});
+
+		expect(account.display_name).toBe('<b>name</b>');
+		expect(account.note).toBe('<p>Bio</p>');
+		expect(account.fields).toEqual([
+			{
+				name: 'Web',
+				value: '<a href="https://e.com" rel="nofollow noopener" target="_blank">e.com</a>',
+				verified_at: null,
+			},
+		]);
+	});
+});
+
 describe('accountToCredentialAccount', () => {
 	test('converts account into CredentialAccount with source and default role', async () => {
 		const actor = {
@@ -199,6 +227,21 @@ describe('noteObjectToStatus', () => {
 			visibility: 'public',
 			account,
 		});
+	});
+
+	test('sanitizes the content HTML received from remote servers (ADR-0145)', () => {
+		const account = { username: 'remote' } as unknown as CamelToSnake<mastodon.v1.Account>;
+		const note = {
+			id: 'https://remote.example/notes/xss',
+			published: '2023-06-01T00:00:00.000Z',
+			summary: 'CW <b>text</b>',
+			content: '<p>hi<img src=x onerror="alert(1)"><a href="javascript:alert(1)">x</a></p>',
+		} as unknown as APNote;
+
+		const status = noteObjectToStatus(note, account, '00109547043225600000');
+		expect(status.content).toBe('<p>hix</p>');
+		// spoiler_text は Mastodon でもプレーンテキストなので、そのまま返す。
+		expect(status.spoiler_text).toBe('CW <b>text</b>');
 	});
 
 	test('takes the first element when content is an array', () => {

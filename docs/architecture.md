@@ -342,6 +342,7 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |
 | `statusAttributes.ts` | Note から Status の属性(visibility・language・各種カウント・mentions・tags・media_attachments など)を導出する純粋関数(→ [ADR-0060](adr/0060-derive-status-attributes-from-note.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
+| `sanitizeHtml.ts` | `Status.content`・`Account.note`・`fields` の値の HTML を、Mastodon の `MASTODON_STRICT` と同じ許可リストで応答時にサニタイズする(parse5 で解析。→ [ADR-0145](adr/0145-sanitize-html-in-mastodon-api-responses.md)) |
 | `statusContent.ts` | 投稿本文のメンション・URL・ハッシュタグを解析して HTML と `tag` を組み立てる(→ [ADR-0071](adr/0071-post-content-formatting-and-mentions.md)) |
 | `pagination.ts` | `max_id` / `since_id` / `min_id` / `limit` の解釈と `Link` ヘッダの生成(Firestore には触らない) |
 | `oauth.ts` | OAuth2 のエンドポイント。認可画面に FirebaseUI を埋め込む |

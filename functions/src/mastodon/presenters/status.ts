@@ -32,6 +32,7 @@ import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toIdArray, toStringValue } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
+import { sanitizeHtml } from '../sanitizeHtml.js';
 import { withTimelineHeadCache } from './timelineHeadCache.js';
 import {
 	getMentionIris,
@@ -142,7 +143,8 @@ export const noteObjectToStatus = (
 		...noteToCounts(note, context.meta),
 		...noteToViewerAttributes(note, context.viewer),
 		muted: false,
-		content: toStringValue(note.content) ?? '',
+		// リモートの HTML をそのまま返さない (→ ADR-0145)。
+		content: sanitizeHtml(toStringValue(note.content) ?? ''),
 		reblog: null,
 		// application はこのサーバーの投稿のみ。リモート投稿では不明なので null。
 		application: isLocalIri(noteId)
