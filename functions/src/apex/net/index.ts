@@ -67,6 +67,7 @@ export default {
 			validators.jsonld,
 			validators.targetActorWithMeta,
 			security.verifySignature,
+			validators.transientActivity,
 			validators.actor,
 			validators.activityObject,
 			validators.inboxActivity,

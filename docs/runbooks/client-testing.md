@@ -233,3 +233,12 @@ mastodon.social など Authorized Fetch のサーバーは署名付き GET が�
   Phanpy(`/#/<dev>/a/<Account ID>`)で開き、ヘッダーの位置に壊れた画像(alt テキスト "admin's profile header")が出ない。
 - `header` が `https://<dev>/headers/original/missing.png` で、その URL が `200 image/png` を返す
   (→ [ADR-0109](../adr/0109-default-avatar-and-header-images.md))。
+
+## リモートアカウントのピン留めの確認
+
+`run.mjs` は巡回しない。変えたときは、Playwright で次を確かめる(2026-10-22 に実施)。
+
+- Elk の `/<dev>/@admin@mastodon-test.hakatashi.com` と Phanpy の `/#/<dev>/a/<ID>` で、
+  ピン留めした投稿が「Pinned post」(Phanpy はピンのアイコン)付きで先頭に出る。Misskey の `admin@misskey-test.hakatashi.com` も同じ。
+- Elk は `?pinned=true` の後に `?pinned=true&max_id=...` を取りに来る。ピン留めが何度も繰り返して並んでいたら、
+  ページの範囲が効いていない([ADR-0144](../adr/0144-receive-remote-pinned-statuses.md))。

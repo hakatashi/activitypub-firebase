@@ -689,6 +689,35 @@ docker compose up -d
 # その後 admin アカウント作成とトークン発行を行う (詳細は ~/docs/misskey-test-instance.md)
 ```
 
+## 16. リモートアカウントのピン留め(`featured` / `Add` / `Remove`)
+
+dev が相手をフォローしている必要がある(`Add` / `Remove` はフォロワーにしか届かない)。2026-10-22 に Mastodon・Misskey の両方で確認した
+(→ [ADR-0144](../adr/0144-receive-remote-pinned-statuses.md))。
+
+```bash
+A=<dev での相手の Mastodon ID>
+dpin() { curl -s -H "Authorization: Bearer $MASTODON_DEV_TOKEN" \
+  "https://mastodon-dev.hakatashi.com/api/v1/accounts/$A/statuses?pinned=true" | jq -c '[.[]|.content]'; }
+
+# Mastodon: 投稿をピン留め・解除し、15 秒ほど待ってから dpin
+mapi -X POST $REMOTE/api/v1/statuses/<ID>/pin
+mapi -X POST $REMOTE/api/v1/statuses/<ID>/unpin
+# Misskey
+misapi '"noteId": "<ID>"' i/pin
+misapi '"noteId": "<ID>"' i/unpin
+
+# 受信のログ(remotePinAdded / remotePinRemoved / remotePinIgnored)
+gcloud logging read 'resource.labels.service_name="activitypub" AND jsonPayload.type=~"remotePin"' \
+  --project activitypub-firebase-dev --freshness=10m --limit 10 --format=json | jq -c '.[]|.jsonPayload'
+```
+
+- Mastodon も Misskey も `Add` / `Remove` に `id` を付けない。inbox が 400 "Invalid activity" を返していたら、
+  `id` のないアクティビティの受け付け(apex フォークの `validators.transientActivity`)が効いていない。
+- `featured` からの同期は、`userInfos/{actor}/pins` を消してから `GET /api/v1/accounts/:id` を開くと
+  `remoteActorRefreshTask`(`kind: 'featured'`)で走る。`_meta.featuredFetchedAt` が 24 時間以内なら走らないので、
+  そのときはこのフィールドも消す。ログは `service_name="remoteactorrefreshtask" AND jsonPayload.type=~"remoteFeatured"`。
+  Mastodon・Misskey とも `featured` に Note を埋め込んで返すので、リクエストは 1 回で済む。
+
 ## Firestore を直接読む
 
 クライアントからの直接アクセスは禁止されているが、`gcloud` の認証情報を使えば

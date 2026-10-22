@@ -23,6 +23,12 @@ export const save = (req: Request, res: Response, next: NextFunction): void => {
 		next();
 		return;
 	}
+	// 一時的なアクティビティは保存しない。重複配送は判別できないので、常に初めて見たものとして扱う
+	if (resLocal.transient === true) {
+		resLocal.isNewActivity = true;
+		next();
+		return;
+	}
 	const apex = getApex(req);
 	let activity = body;
 	if (denormalizeObject.includes(activity.type.toLowerCase()) && resLocal.object) {
@@ -408,7 +414,8 @@ export const resolveThread = (req: Request, res: Response, next: NextFunction): 
 	const apex = getApex(req);
 	const resLocal = getLocals(res);
 	const body: unknown = req.body;
-	if (!resLocal.activity || !isAPObject(body)) {
+	// 一時的なアクティビティは転送しないので、参照を解決しない
+	if (!resLocal.activity || resLocal.transient === true || !isAPObject(body)) {
 		next();
 		return;
 	}

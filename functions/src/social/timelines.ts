@@ -349,7 +349,11 @@ export const getAccountTimelineItems = async (
 	const viewerFollowing = new Set(viewer ? await getFollowing(viewer) : []);
 	if (options.pinned) {
 		const actorKey = escapeFirestoreKey(actorId);
-		const pinsSnap = await UserInfos.doc(actorKey).collection('pins').get();
+		// ピン留めした新しい順 (→ ADR-0144)。
+		const pinsSnap = await UserInfos.doc(actorKey)
+			.collection('pins')
+			.orderBy('createdAt', 'desc')
+			.get();
 		if (pinsSnap.empty) {
 			return [];
 		}
@@ -359,14 +363,16 @@ export const getAccountTimelineItems = async (
 		const ids = await getMastodonIds(
 			visibleNotes.map((note) => ({ iri: note.id, published: note.published })),
 		);
+		// Mastodon と同じく、ピン留めの順のまま Mastodon ID でページの範囲を絞る。
+		// 絞らないと、Elk が `max_id` 付きで取り直すたびに同じピン留めが並ぶ。
 		const items: TimelineItem[] = [];
 		for (const note of visibleNotes) {
 			const id = ids.get(note.id);
-			if (id !== undefined) {
+			if (id !== undefined && isIdInRange(id, page)) {
 				items.push({ type: 'note', id, note });
 			}
 		}
-		return items;
+		return items.slice(0, page.limit);
 	}
 	return collectTimelineItems({
 		actors: [actorId],

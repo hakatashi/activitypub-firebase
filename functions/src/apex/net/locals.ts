@@ -22,6 +22,8 @@ export interface ApexLocals {
 	activity?: boolean | undefined;
 	linked?: APObject[] | undefined;
 	isNewActivity?: SaveActivityStatus | undefined;
+	// `id` のない一時的なアクティビティ (AP §3.1)。保存せず、仮の `id` を振って副作用とイベントだけを処理する
+	transient?: boolean | undefined;
 	authorized?: boolean | undefined;
 	authorizedUserId?: string | undefined;
 	responseType?: string | undefined;

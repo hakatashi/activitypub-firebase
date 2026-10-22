@@ -170,3 +170,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0141](0141-ignore-inbox-add-remove.md) | inbox に届いた Add / Remove の副作用を行わない | Accepted |
 | [0142](0142-prefer-shared-inbox-for-all-recipients.md) | 配送は宛先の種類によらず相手の sharedInbox を優先する | Accepted |
 | [0143](0143-preview-cards-for-links-in-statuses.md) | 投稿本文のリンクのプレビューカードを、受信・投稿時に非同期で取得して Note の `_meta` に持つ | Accepted |
+| [0144](0144-receive-remote-pinned-statuses.md) | リモートアカウントのピン留めを `featured` コレクションと `Add` / `Remove` から取り込む | Accepted |

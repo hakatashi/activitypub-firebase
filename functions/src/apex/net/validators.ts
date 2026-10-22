@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { isTransientFailure } from '../pub/fetchErrors.js';
 import type { APObject } from '../types.js';
@@ -14,16 +15,22 @@ import { getApex, getLocals, getRouteParam } from './locals.js';
 
 const needsResolveObject = ['announce', 'block', 'create', 'follow', 'like'];
 const needsResolveActivity = ['accept', 'add', 'reject', 'remove'];
+// inbox の Add / Remove の object は Activity に限らない (AS2)。手元にあるものだけを探し、外部へは取りに行かない (→ ADR-0144)
+const needsLocalAnyObject = ['add', 'remove'];
 const needsLocalActivity = ['undo'];
 const needsLocalObject = ['delete'];
 const obxNeedsLocalObject = ['delete', 'update'];
 const needsInlineObject = ['update'];
 const obxNeedsInlineObject = ['create'];
 const requiresObject = ['announce', 'create', 'delete', 'follow', 'like', 'update'];
-const requiresActivityObject = ['accept', 'add', 'reject', 'remove'];
+const requiresActivityObject = ['accept', 'reject'];
+const requiresObjectId = ['add', 'remove'];
 const obxRequiresActivityObject = ['accept', 'add', 'reject', 'remove', 'undo'];
 const requiresObjectOwnership = ['delete', 'undo', 'update'];
 const requiresTarget = ['add', 'remove'];
+// `id` を持たない一時的なもの (AP §3.1) として受け付ける種類。Mastodon / Misskey はピン留めの Add / Remove に
+// `id` を付けない。保存を前提とする副作用 (コレクションへの追加・Undo の対象) がない種類に限る (→ ADR-0144)
+const allowsTransient = ['add', 'remove'];
 
 type ObjectResolution = Promise<APObject | null | undefined> | APObject | undefined;
 
@@ -41,6 +48,9 @@ const isAcceptableBy = (
 	return toArray(accepted?.to).includes(actorId);
 };
 
+const getLocalActivityOrObject = async (apex: ReturnType<typeof getApex>, id: string) =>
+	(await apex.store.getActivity(id, true)) ?? apex.store.getObject(id, true);
+
 export const activityObject = (req: Request, res: Response, next: NextFunction): void => {
 	const apex = getApex(req);
 	const resLocal = getLocals(res);
@@ -54,6 +64,9 @@ export const activityObject = (req: Request, res: Response, next: NextFunction):
 	let object: ObjectResolution;
 	if (needsResolveObject.includes(type) && activity.object) {
 		object = apex.resolveObject(first(activity.object), true);
+	} else if (needsLocalAnyObject.includes(type)) {
+		const objectId = apex.objectIdFromActivity(activity);
+		object = objectId === null ? undefined : getLocalActivityOrObject(apex, objectId);
 	} else if (needsResolveActivity.includes(type) && activity.object) {
 		object = apex.resolveActivity(first(activity.object), true);
 	} else if (needsLocalActivity.includes(type)) {
@@ -92,6 +105,21 @@ export const activityObject = (req: Request, res: Response, next: NextFunction):
 			next();
 		})
 		.catch(next);
+};
+
+// `id` のない Add / Remove に仮の `id` を振り、一時的なアクティビティとして扱う。仮の `id` は保存も公開もしない
+export const transientActivity = (req: Request, res: Response, next: NextFunction): void => {
+	const body: unknown = req.body;
+	if (
+		isRecord(body) &&
+		body.id === undefined &&
+		typeof body.type === 'string' &&
+		allowsTransient.includes(body.type.toLowerCase())
+	) {
+		body.id = `urn:uuid:${randomUUID()}`;
+		getLocals(res).transient = true;
+	}
+	next();
 };
 
 // confirm activity actor is sender and not blocked
@@ -148,6 +176,12 @@ export const inboxActivity = (req: Request, res: Response, next: NextFunction): 
 	if (requiresActivityObject.includes(type) && !apex.validateActivity(object)) {
 		resLocal.status = 400;
 		resLocal.statusMessage = `Activity type object requried for ${activity.type} activity`;
+		next();
+		return;
+	}
+	if (requiresObjectId.includes(type) && apex.objectIdFromActivity(activity) === null) {
+		resLocal.status = 400;
+		resLocal.statusMessage = `Object requried for ${activity.type} activity`;
 		next();
 		return;
 	}

@@ -17,6 +17,7 @@ import { runPostWorkBeforeSend } from './postWork.js';
 import { acceptAndPublishFollow } from './social/follows.js';
 import { requestPreviewCard } from './social/previewCards.js';
 import { requestResolutionOfObjectActors } from './social/remoteActorResolution.js';
+import { handleRemotePinActivity } from './social/remotePins.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
@@ -312,6 +313,12 @@ onApexInbox(app, async (message) => {
 
 	if (message.activity.type === 'Create') {
 		logger.info(`New ${message.object?.type} from ${message.actor} to ${message.recipient}`);
+	}
+
+	// リモート actor のピン留め・解除 (→ ADR-0144)。
+	if (message.activity.type === 'Add' || message.activity.type === 'Remove') {
+		await handleRemotePinActivity(message.actor, message.activity);
+		return;
 	}
 
 	// ブーストの元投稿の作者などが手元になければ取得させる (→ ADR-0106)。
