@@ -36,7 +36,7 @@ Firestore へのクライアントからの読み書きは `firestore.rules` で
 | `onStreamWritten` | Firestore trigger | `streams/{id}` の `_meta.index`(検索用インデックス)を非正規化 |
 | `onStreamCreated` | Firestore trigger | `userInfos` の投稿数と、Note の Like / Announce 数を非正規化 |
 | `deliveryTask` | Cloud Tasks (`onTaskDispatched`) | 配送ワーカー。受信者1件への配送を1回実行する |
-| `remoteActorRefreshTask` | Cloud Tasks (`onTaskDispatched`) | リモート actor 本体を取り直してアバターなどを反映し、`followers` / `following` / `outbox` の件数と最終投稿日を取り直して `_meta` に保存する(`kind: 'counts'`。→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)、[ADR-0110](adr/0110-refresh-remote-actor-and-counts.md))か、手元にないリモート actor を取得して保存する(`kind: 'resolve'`。→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
+| `remoteActorRefreshTask` | Cloud Tasks (`onTaskDispatched`) | リモート actor 本体を取り直してアバターなどを反映し、`followers` / `following` / `outbox` の件数と最終投稿日を取り直して `_meta` に保存する(`kind: 'counts'`。→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)、[ADR-0110](adr/0110-refresh-remote-actor-and-counts.md))か、手元にないリモート actor を取得して保存する(`kind: 'resolve'`。→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md))か、リモート actor の `outbox` から過去の公開・非収載の Note を補完する(`kind: 'outbox'`。Note だけを保存し、`Create` は保存しない。→ [ADR-0140](adr/0140-backfill-remote-outbox-on-profile-view.md)) |
 | `pingTask` | Cloud Tasks (`onTaskDispatched`) | Cloud Tasks の疎通確認用。`GET /activitypub/pingTaskQueue` から発行する |
 | `cleanupMediaTask` | Scheduled (`onSchedule`) | 未添付のまま24時間経過したメディアを Storage と Firestore から削除する (→ [ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
 
