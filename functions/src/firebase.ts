@@ -1,6 +1,7 @@
 import './init.js';
 import firebase from 'firebase-admin';
 import { getInstallations } from 'firebase-admin/installations';
+import { resolveInstanceConfig } from './instanceConfig.js';
 
 export { FUNCTION_REGION, taskQueueName } from './init.js';
 
@@ -18,10 +19,8 @@ if (!isTestOrEmulator) {
 export const app = firebase.initializeApp(appOptions);
 export const db = firebase.firestore();
 export const projectId = getInstallations().app.options.projectId;
-export const domain =
-	projectId === 'activitypub-firebase' ? 'hakatashi.com' : 'activitypub-dev.hakatashi.com';
-export const mastodonDomain =
-	projectId === 'activitypub-firebase' ? 'mastodon.hakatashi.com' : 'mastodon-dev.hakatashi.com';
+export const instanceConfig = resolveInstanceConfig(projectId);
+export const { domain, mastodonDomain } = instanceConfig;
 
 declare const firestoreKeyBrand: unique symbol;
 export type FirestoreKey = string & { readonly [firestoreKeyBrand]: true };

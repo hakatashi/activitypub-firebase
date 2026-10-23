@@ -1,13 +1,14 @@
-import { domain, mastodonDomain } from './firebase.js';
+import { domain, instanceConfig, mastodonDomain } from './firebase.js';
 import { routes } from './routes.js';
 
-// 単一ユーザー運用 (AGENTS.md, ADR-0005) のローカルアクター設定。
-export const LOCAL_USERNAME = 'hakatashi';
-export const LOCAL_DISPLAY_NAME = 'hakatashi';
-export const LOCAL_SUMMARY = '博多市です。';
-export const LOCAL_ICON_URL =
-	'https://raw.githubusercontent.com/hakatashi/icon/master/images/icon_480px.png';
-export const LOCAL_ADMIN_EMAIL = 'hakatasiloving@gmail.com';
+// インスタンスの主 actor の設定 (ADR-0005, ADR-0078)。値はプロジェクトごとに決まる (→ ADR-0148)。
+export const LOCAL_USERNAME = instanceConfig.primaryActor.username;
+export const LOCAL_DISPLAY_NAME = instanceConfig.primaryActor.displayName;
+export const LOCAL_SUMMARY = instanceConfig.primaryActor.summary;
+export const LOCAL_ICON_URL = instanceConfig.primaryActor.iconUrl;
+export const LOCAL_ACTOR_TYPE = instanceConfig.primaryActor.type;
+export const LOCAL_LOGIN_EMAIL = instanceConfig.primaryActor.loginEmail;
+export const LOCAL_ADMIN_EMAIL = instanceConfig.contactEmail;
 
 export const localAccountUrl = `https://elk.zone/${mastodonDomain}/@${LOCAL_USERNAME}@${domain}`;
 

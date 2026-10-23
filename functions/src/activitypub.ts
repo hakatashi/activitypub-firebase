@@ -7,6 +7,7 @@ import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
 import { domain, mastodonDomain } from './firebase.js';
 import {
 	LOCAL_DISPLAY_NAME,
+	LOCAL_ACTOR_TYPE,
 	LOCAL_ICON_URL,
 	LOCAL_SUMMARY,
 	LOCAL_USERNAME,
@@ -159,7 +160,7 @@ app.get(
 			LOCAL_DISPLAY_NAME,
 			LOCAL_SUMMARY,
 			LOCAL_ICON_URL,
-			'Person',
+			LOCAL_ACTOR_TYPE,
 		);
 		await apex.store.setup(actor);
 		// eslint-disable-next-line require-atomic-updates
