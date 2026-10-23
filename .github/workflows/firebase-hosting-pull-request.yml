@@ -37,6 +37,8 @@ jobs:
     if: '${{ github.event.pull_request.head.repo.full_name == github.repository }}'
     runs-on: ubuntu-latest
     strategy:
+      # 1つのプロジェクトの失敗で、ほかのプロジェクトのプレビューを止めない。
+      fail-fast: false
       matrix:
         # Hosting のターゲットはプロジェクトごとに異なるため、ターゲットを明示する (→ ADR-0152)。
         project:
