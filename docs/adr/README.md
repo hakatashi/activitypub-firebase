@@ -181,3 +181,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0152](0152-bots-instance-in-separate-project.md) | ボット用インスタンスは別の Firebase プロジェクトで、同じリポジトリから同じ Functions をデプロイする | Accepted |
 | [0153](0153-split-fetch-and-delivery-timeouts.md) | 外部への取得と配送のタイムアウトを分け(8 秒・15 秒)、配送の再試行を 8 回に延ばす | Accepted |
 | [0154](0154-exclude-dev-environment-from-main-deploy.md) | main push 時の自動デプロイ先から dev 環境を除外する | Accepted |
+| [0156](0156-read-remote-actor-flags-with-prefixed-keys.md) | リモート actor の locked / bot / discoverable は、プレフィックス付きのキーも読んで Account に反映する | Accepted |

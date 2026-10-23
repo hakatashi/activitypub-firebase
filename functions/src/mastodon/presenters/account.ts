@@ -25,7 +25,7 @@ import { Objects, UserInfo, UserInfos } from '../../schema.js';
 import type { DefaultPrivacy, ReactionKind } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
-import { isAPActor } from '../../utils.js';
+import { isAPActor, isActorDiscoverable, isActorLocked, isAutomatedActor } from '../../utils.js';
 import type { PageParams } from '../pagination.js';
 import { sanitizeHtml } from '../sanitizeHtml.js';
 import { getObjects } from '../../store/objects.js';
@@ -77,6 +77,8 @@ const remoteUserInfo = (actorObject: ApexObject | APActor): UserInfo => {
 	const stats = readRemoteActorStats((actorObject as ApexObject)._meta);
 	return {
 		...externalUserInfo,
+		bot: isAutomatedActor(actorObject),
+		locked: isActorLocked(actorObject),
 		created_at: toCreatedAt(actorObject.published) ?? externalUserInfo.created_at,
 		followers_count: stats.followersCount ?? 0,
 		following_count: stats.followingCount ?? 0,
@@ -132,7 +134,7 @@ export const actorObjectToAccount = async (
 		header,
 		header_static: header,
 		note: sanitizeHtml(actor.summary ?? ''),
-		discoverable: actor.discoverable ?? false,
+		discoverable: isActorDiscoverable(actorObject),
 	};
 };
 
