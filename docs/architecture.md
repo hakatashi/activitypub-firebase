@@ -443,7 +443,7 @@ Hosting のターゲットは、本番と dev が `activitypub`(`hakatashi.com` 
 対応表にない `projectId`(テストのワーカーなど)は dev の設定になる(→ [ADR-0148](adr/0148-instance-config-per-project.md))。
 
 `.github/workflows/main.yml` が main への push でテスト・lint 実行後、
-**すべての環境に順にデプロイ**する。Hosting はプロジェクトとターゲットの組ごとにデプロイする。
+**本番環境 (`activitypub-firebase`) とボット用環境 (`activitypub-firebase-bots`) に順にデプロイ**する(dev 環境 `activitypub-firebase-dev` は手動検証用環境として除外されている。→ [ADR-0154](adr/0154-exclude-dev-environment-from-main-deploy.md))。Hosting はプロジェクトとターゲットの組ごとにデプロイする。
 
 ## 依存関係
 

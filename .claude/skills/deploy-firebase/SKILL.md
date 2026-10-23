@@ -68,7 +68,7 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx bin/denormalizations.ts
 ## 3. 本番・ボット用インスタンスへのデプロイ
 
 **行わない。** `main` への push で CI(`.github/workflows/main.yml`)が本番 `activitypub-firebase`
-と dev `activitypub-firebase-dev` の両方に自動デプロイする。本番だけを狙って手動デプロイする
+およびボット用環境 `activitypub-firebase-bots` に自動デプロイする(dev `activitypub-firebase-dev` には自動デプロイされない)。本番だけを狙って手動デプロイする
 経路は用意しない(事故時の切り分けが難しくなるため)。dev で検証が済んだ変更は、PR を経て
 `main` にマージすることで本番に反映する。
 
