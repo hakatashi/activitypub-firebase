@@ -25,9 +25,7 @@ describe('apex-inbox event: Follow', () => {
 			_meta: { collection: ['https://example.com/activitypub/u/hakatashi/inbox'] },
 		};
 
-		const respondToFollowSpy = vi
-			.spyOn(follows, 'respondToFollow')
-			.mockResolvedValue(undefined);
+		const respondToFollowSpy = vi.spyOn(follows, 'respondToFollow').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
@@ -38,9 +36,7 @@ describe('apex-inbox event: Follow', () => {
 	});
 
 	test('does not treat non-Follow activities as follow requests', async () => {
-		const respondToFollowSpy = vi
-			.spyOn(follows, 'respondToFollow')
-			.mockResolvedValue(undefined);
+		const respondToFollowSpy = vi.spyOn(follows, 'respondToFollow').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
