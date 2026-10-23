@@ -440,7 +440,7 @@ curl -s -X POST "$DEV/activitypub/deliveries/resend" \
 ```
 
 - [ ] `deliveries/failed` の当該レコードの `attempts` が 1 → 2 → … と増える
-      (`retryConfig` は `maxAttempts: 5`、バックオフ 10s から倍々なので3分ほどで打ち止め)
+      (`retryConfig` は `maxAttempts: 8`、バックオフ 10s から延びていくので 18 分ほどで打ち止め)
 - [ ] `gcloud tasks list` にリトライ待ちのタスクが見える
 - [ ] ログに `deliveryTaskReceived` が試行回数ぶん出る
 

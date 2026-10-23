@@ -453,8 +453,8 @@ export const deliver = async function (
 			method: 'POST',
 			headers,
 			body: activity,
-			headersTimeout: this.requestTimeout,
-			bodyTimeout: this.requestTimeout,
+			headersTimeout: this.deliveryTimeout,
+			bodyTimeout: this.deliveryTimeout,
 			dispatcher: agent,
 		});
 

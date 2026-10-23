@@ -42,6 +42,9 @@ export const apex = ActivitypubExpress({
 	routes,
 	store: new Store(),
 	offlineMode: true,
+	// inbox の中の取得は送信側の打ち切り(Mastodon は 10 秒)に収め、配送はそれより長く待つ (→ ADR-0153)
+	requestTimeout: 8000,
+	deliveryTimeout: 15000,
 	remoteFetchPolicy,
 	nodeInfoMetadata: {
 		nodeName: '博多市',

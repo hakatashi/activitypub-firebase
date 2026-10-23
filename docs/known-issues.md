@@ -39,13 +39,6 @@ identity/v1 は配信元(web-payments.org)が消えていて取得できず、`j
 (GoToSocial 系の Follow などが該当)。**本番は Firestore の `contexts` に手で1件入れて回避している。dev には入っていない**
 → [#325](https://github.com/hakatashi/activitypub-firebase/issues/325)。
 
-### 外部への HTTP リクエストのタイムアウトが一律 5 秒
-
-`requestTimeout` は apex の既定の 5 秒のまま(`functions/src/apex/index.ts`、`functions/src/apex.ts` で上書きしていない)。
-署名者・オブジェクト・`@context` の取得、WebFinger、配送のすべてがこの値を使う。相手のサーバーが遅いと一時的な失敗になり、
-inbox は 5xx を返して相手の再送に、配送は `deliveryTask` の再試行に頼る
-→ [#326](https://github.com/hakatashi/activitypub-firebase/issues/326)。
-
 ## Mastodon API
 
 ### 期限切れの OAuth トークンが残り続ける

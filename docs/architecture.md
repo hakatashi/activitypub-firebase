@@ -99,8 +99,9 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   リダイレクトを含む**各ホップ**で名前解決した IP が unicast であることを検証する。
   DNS rebinding を防ぐため、検証済みの IP に固定した undici の `Agent` で接続する。
   レスポンスサイズ(5MB)・リダイレクト回数(5回)・タイムアウトにも上限を設ける。
-  タイムアウトは apex の `requestTimeout`(既定の 5 秒。`functions/src/apex.ts` では上書きしていない)で、
-  署名者・オブジェクト・`@context` の取得、WebFinger、配送のすべてが同じ値を使う。
+  タイムアウトは、署名者・オブジェクト・`@context` の取得と WebFinger が apex の `requestTimeout`(8 秒)、
+  配送が `deliveryTimeout`(15 秒)で、どちらも `functions/src/apex.ts` で設定する
+  (→ [ADR-0153](adr/0153-split-fetch-and-delivery-timeouts.md))。
   外部 `@context` の取得(`jsonldContextLoader`)と配送(`apex.deliver`)も同じ検証と IP 固定を通る。
   配送のレスポンス本文は読まずに破棄する。
 - **inbox は送信側の不正が確定したときだけ 4xx を返し、一時的な失敗では 5xx を返す**
@@ -141,6 +142,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   401/408/429、5xx、およびネットワークエラーは一時的な失敗として throw して
   Cloud Tasks のリトライ(`retryConfig`)に委ね、その他の 4xx (400/403/404/410 等) は
   恒久失敗としてリトライせず破棄する(→ [ADR-0114](adr/0114-retry-transient-delivery-failures.md))。
+  試行は最大 8 回で、間隔は 10 秒から倍々に延び、初回から約 18 分で打ち止めになる
+  (→ [ADR-0153](adr/0153-split-fetch-and-delivery-timeouts.md))。
   配送のたびに結果を `deliveries` コレクションへ記録し、`GET /activitypub/deliveries/failed`
   で一覧、`POST /activitypub/deliveries/resend` で再送できる(→ [ADR-0012](adr/0012-delivery-results-in-firestore.md))。
 

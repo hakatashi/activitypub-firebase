@@ -88,6 +88,8 @@ export interface ApexSettings<S extends ApexStore = ApexStore> {
 	store: S;
 	offlineMode?: boolean;
 	requestTimeout?: number;
+	// 配送 (deliver) の POST のタイムアウト。省略時は requestTimeout
+	deliveryTimeout?: number;
 	openRegistrations?: boolean;
 	remoteFetchPolicy?: RemoteFetchPolicy | (() => RemoteFetchPolicy);
 	endpoints?: Record<string, string>;
@@ -117,6 +119,7 @@ export interface ApexCore<S extends ApexStore = ApexStore> {
 	logger: ApexLogger;
 	offlineMode: boolean | undefined;
 	requestTimeout: number;
+	deliveryTimeout: number;
 	utils: ApexUtils;
 }
 

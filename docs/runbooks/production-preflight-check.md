@@ -60,7 +60,7 @@ dev(`activitypub-firebase-dev`)に向けても同じように動くので、ス�
   - サービス名のない監査ログの `Permission denied to enable service [firebaseextensions.googleapis.com]` は、CI のデプロイが API の有効化を試みているだけ
 - inbox の応答の **4xx** を1件ずつ見る。4xx は送信元にとって恒久的な失敗で、フォロワーを失う原因になる(→ #260、ADR-0115)。
   署名の検証に失敗した 401 は、鍵を失ったアカウントからの Delete などで普通に起きるので、送信元で判断する。
-- 失敗・リトライ中の配送: `attempts` が 5(`maxAttempts`)に達した `retrying` は実質的な失敗(→ [federation-testing.md](federation-testing.md))。
+- 失敗・リトライ中の配送: `attempts` が 8(`maxAttempts`)に達した `retrying` は実質的な失敗(→ [federation-testing.md](federation-testing.md))。
   宛先ホストごとに偏っていないか、原因が分かっているかを見る。
 
 ### 4. 外部から見た状態(`external`)
