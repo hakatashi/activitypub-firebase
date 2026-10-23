@@ -86,7 +86,7 @@ export const undoReactions = async (
 	for (const activityIri of await getReactionActivityIris(actorId, kind, note.id)) {
 		const activity = await apex.store.getActivity(activityIri);
 		if (activity === undefined) {
-			await forgetReactionActivity(kind, note.id, activityIri);
+			await forgetReactionActivity(actorId, kind, note.id, activityIri);
 			continue;
 		}
 		await undoReactionActivity(actor, activity, kind);

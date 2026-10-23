@@ -3,11 +3,10 @@ import express from 'express';
 import { apex } from '../apex.js';
 import { domain, mastodonDomain } from '../firebase.js';
 import {
-	LOCAL_USERNAME,
-	localAccountUrl,
-	localActorId,
-	localFollowersId,
-	localProfilePageUrl,
+	localAccountUrlOf,
+	localActorIri,
+	localFollowersIri,
+	localProfilePageUrlOf,
 	localStatusPageUrl,
 } from '../localActor.js';
 import { getIriByMastodonId, isMastodonId } from '../mastodonId.js';
@@ -22,16 +21,18 @@ import {
 import type { PageAuthor } from './publicPageHtml.js';
 import { noteToLanguage, noteToMediaAttachments, noteToVisibility } from './statusAttributes.js';
 
-// リンクプレビュー用に、ローカル actor の投稿とプロフィールの最小限の HTML を返す (→ ADR-0107)。
-// Elk はクローラーからのアクセスをこのパスへ 301 する。
+// リンクプレビュー用に、ローカル actor (主 actor とボット) の投稿とプロフィールの最小限の HTML を返す
+// (→ ADR-0107, ADR-0149)。Elk はクローラーからのアクセスをこのパスへ 301 する。
 const router = express.Router();
 
-const localAcct = `${LOCAL_USERNAME}@${domain}`;
-
-// `hakatashi` と `hakatashi@<AP ドメイン>` の両方を受け付ける (Elk はドメインが違うと後者を使う)。
-const isLocalAcct = (acct: string) => {
-	const lower = acct.toLowerCase();
-	return lower === LOCAL_USERNAME || lower === localAcct;
+// `name` と `name@<AP ドメイン>` の両方を受け付ける (Elk はドメインが違うと後者を使う)。
+// ローカルの acct でなければ undefined。
+const parseLocalAcct = (acct: string): string | undefined => {
+	const [username, host, ...rest] = acct.toLowerCase().split('@');
+	if (username === undefined || rest.length > 0 || (host !== undefined && host !== domain)) {
+		return undefined;
+	}
+	return /^[a-z0-9_]+$/u.test(username) ? username : undefined;
 };
 
 const sendNotFound = (res: express.Response) => {
@@ -55,23 +56,24 @@ const sendHtml = (res: express.Response, html: string) => {
 		.send(html);
 };
 
-const loadLocalActor = async (): Promise<APActor | undefined> => {
-	const actor = await apex.store.getObject(localActorId);
+const loadLocalActor = async (username: string): Promise<APActor | undefined> => {
+	const actor = await apex.store.getObject(localActorIri(username));
 	return isAPActor(actor) ? actor : undefined;
 };
 
-const toAuthor = (actor: APActor): PageAuthor => ({
-	displayName: toStringValue(actor.name) || LOCAL_USERNAME,
-	acct: localAcct,
+const toAuthor = (actor: APActor, username: string): PageAuthor => ({
+	displayName: toStringValue(actor.name) || username,
+	acct: `${username}@${domain}`,
 	avatarUrl: toSafeHttpUrl(getImageUrl(firstOf(actor.icon))),
-	profileUrl: localProfilePageUrl,
+	profileUrl: localProfilePageUrlOf(username),
 });
 
 const siteName = mastodonDomain;
 
 router.get('/@:acct/:id', async (req, res) => {
 	const { acct, id } = req.params;
-	if (!isLocalAcct(acct) || !isMastodonId(id)) {
+	const username = parseLocalAcct(acct);
+	if (username === undefined || !isMastodonId(id)) {
 		sendNotFound(res);
 		return;
 	}
@@ -81,13 +83,13 @@ router.get('/@:acct/:id', async (req, res) => {
 	if (
 		!isAPNote(note) ||
 		note.id === undefined ||
-		toIdArray(note.attributedTo)[0] !== localActorId ||
-		!['public', 'unlisted'].includes(noteToVisibility(note, localFollowersId))
+		toIdArray(note.attributedTo)[0] !== localActorIri(username) ||
+		!['public', 'unlisted'].includes(noteToVisibility(note, localFollowersIri(username)))
 	) {
 		sendNotFound(res);
 		return;
 	}
-	const actor = await loadLocalActor();
+	const actor = await loadLocalActor(username);
 	if (actor === undefined) {
 		sendNotFound(res);
 		return;
@@ -100,10 +102,10 @@ router.get('/@:acct/:id', async (req, res) => {
 		res,
 		renderStatusPage({
 			siteName,
-			author: toAuthor(actor),
-			url: localStatusPageUrl(id),
+			author: toAuthor(actor, username),
+			url: localStatusPageUrl(id, username),
 			activityPubIri: note.id,
-			elkUrl: `${localAccountUrl}/${id}`,
+			elkUrl: `${localAccountUrlOf(username)}/${id}`,
 			published:
 				published instanceof Date
 					? published.toISOString()
@@ -133,11 +135,12 @@ router.get('/@:acct/:id', async (req, res) => {
 });
 
 router.get('/@:acct', async (req, res) => {
-	if (!isLocalAcct(req.params.acct)) {
+	const username = parseLocalAcct(req.params.acct);
+	if (username === undefined) {
 		sendNotFound(res);
 		return;
 	}
-	const actor = await loadLocalActor();
+	const actor = await loadLocalActor(username);
 	if (actor === undefined) {
 		sendNotFound(res);
 		return;
@@ -147,9 +150,9 @@ router.get('/@:acct', async (req, res) => {
 		res,
 		renderProfilePage({
 			siteName,
-			author: toAuthor(actor),
-			activityPubIri: localActorId,
-			elkUrl: localAccountUrl,
+			author: toAuthor(actor, username),
+			activityPubIri: localActorIri(username),
+			elkUrl: localAccountUrlOf(username),
 			summaryHtml,
 			summaryText: htmlToPlainText(summaryHtml),
 		}),

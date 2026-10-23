@@ -201,6 +201,19 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		expect((await getStatus()).favourited).toBe(false);
 	});
 
+	test('projects reactions of other local actors into their own userInfos (ADR-0149)', async () => {
+		const res = await mastodonReq.post(`/api/v1/statuses/${statusId}/reblog`, 'alice-token');
+		expect(res.status).toBe(200);
+
+		const aliceReblogs = await ReactionRelations(escapeFirestoreKey(alice.id), 'reblogs').get();
+		expect(aliceReblogs.docs.map((doc) => doc.data().object)).toEqual([note.id]);
+		expect((await getRelations('reblogs')).size).toBe(0);
+
+		const unreblog = await mastodonReq.post(`/api/v1/statuses/${statusId}/unreblog`, 'alice-token');
+		expect(unreblog.status).toBe(200);
+		expect((await ReactionRelations(escapeFirestoreKey(alice.id), 'reblogs').get()).size).toBe(0);
+	});
+
 	test('a remote Undo cannot remove the local Like from the projection', async () => {
 		await action('favourite');
 		const [likeIri] = await streamActivityIris('Like');

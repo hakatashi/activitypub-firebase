@@ -6,12 +6,12 @@ import { app } from '../../src/activitypub.js';
 import { runPostWorkBeforeSend } from '../../src/postWork.js';
 import * as follows from '../../src/social/follows.js';
 
-describe('apex-inbox event: Follow auto-accept', () => {
+describe('apex-inbox event: Follow', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	test('accepts an incoming Follow via acceptAndPublishFollow', async () => {
+	test('responds to an incoming Follow via respondToFollow (ADR-0150)', async () => {
 		const recipient = {
 			id: 'https://example.com/activitypub/u/hakatashi',
 			followers: ['https://example.com/activitypub/u/hakatashi/followers'],
@@ -25,22 +25,18 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			_meta: { collection: ['https://example.com/activitypub/u/hakatashi/inbox'] },
 		};
 
-		const acceptAndPublishFollowSpy = vi
-			.spyOn(follows, 'acceptAndPublishFollow')
-			.mockResolvedValue(undefined);
+		const respondToFollowSpy = vi.spyOn(follows, 'respondToFollow').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
 
 		await listeners[0]?.({ activity, actor, recipient });
 
-		expect(acceptAndPublishFollowSpy).toHaveBeenCalledWith(recipient, activity);
+		expect(respondToFollowSpy).toHaveBeenCalledWith(recipient, activity);
 	});
 
 	test('does not treat non-Follow activities as follow requests', async () => {
-		const acceptAndPublishFollowSpy = vi
-			.spyOn(follows, 'acceptAndPublishFollow')
-			.mockResolvedValue(undefined);
+		const respondToFollowSpy = vi.spyOn(follows, 'respondToFollow').mockResolvedValue(undefined);
 
 		const listeners = app.listeners('apex-inbox') as ((message: unknown) => Promise<void>)[];
 		expect(listeners).toHaveLength(1);
@@ -52,7 +48,7 @@ describe('apex-inbox event: Follow auto-accept', () => {
 			object: { type: 'Note' },
 		});
 
-		expect(acceptAndPublishFollowSpy).not.toHaveBeenCalled();
+		expect(respondToFollowSpy).not.toHaveBeenCalled();
 	});
 });
 

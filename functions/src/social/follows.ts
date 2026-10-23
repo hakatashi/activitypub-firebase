@@ -5,7 +5,7 @@ import { logger } from 'firebase-functions/v2';
 import type { APObject } from '../apex/index.js';
 import { apex } from '../apex.js';
 import { db, escapeFirestoreKey } from '../firebase.js';
-import { localActorId, localFollowersId, localInboxId } from '../localActor.js';
+import { localActorId } from '../localActor.js';
 import { metaIndexPath } from '../meta.js';
 import { followingVersionRef } from '../projections/follows.js';
 import { mergeIntoTimelineFeeds } from '../projections/timelineFeeds.js';
@@ -15,6 +15,7 @@ import { FollowRelations, Streams } from '../schema.js';
 import type { FollowRelation, FollowRelationSide } from '../schema.js';
 import { markActivityPublic } from '../store/activities.js';
 import { toIdArray } from '../utils.js';
+import { getFollowPolicy, isFollowAllowed } from './bots.js';
 
 // 同じ actor から同じ相手への Follow が複数残ると、followers コレクションに同じ actor が
 // 重複して並ぶ (→ ADR-0075)。新しい Follow を受理するとき、置き換えられる古い Follow を消す。
@@ -256,8 +257,41 @@ export const acceptAndPublishFollow = async (
 	logger.info(`Follow request from ${followerId} accepted`);
 };
 
+// 承認ポリシーで許されない Follow に Reject を返す。followers には入れない (→ ADR-0150)。
+export const rejectAndPublishFollow = async (
+	recipient: APObject,
+	follow: APObject,
+): Promise<void> => {
+	const followerId = toIdArray(follow.actor)[0];
+	assert(followerId !== undefined, 'followerId is undefined');
+	assert(recipient.id !== undefined, 'recipient.id is undefined');
+
+	const object = { ...follow };
+	delete object._meta;
+
+	const reject = await apex.buildActivity('Reject', recipient.id, followerId, {
+		object,
+	});
+	logger.info(`Rejecting follow request from ${followerId} to ${recipient.id}`);
+	await apex.addToOutbox(recipient, reject);
+};
+
+// 受信者の承認ポリシーに従って Follow を承認または拒否する (→ ADR-0150)。
+export const respondToFollow = async (recipient: APObject, follow: APObject): Promise<void> => {
+	assert(recipient.id !== undefined, 'recipient.id is undefined');
+	const followerId = toIdArray(follow.actor)[0];
+	assert(followerId !== undefined, 'followerId is undefined');
+	if (isFollowAllowed(await getFollowPolicy(recipient.id), followerId)) {
+		await acceptAndPublishFollow(recipient, follow);
+	} else {
+		await rejectAndPublishFollow(recipient, follow);
+	}
+};
+
 export interface ReconcilePendingFollowsOptions {
 	dryRun?: boolean;
+	// 対象のローカル actor。既定は主 actor。
+	actorId?: string;
 }
 
 export interface ReconcilePendingFollowsResult {
@@ -273,23 +307,29 @@ export interface ReconcilePendingFollowsResult {
 export const reconcilePendingFollows = async (
 	options: ReconcilePendingFollowsOptions = {},
 ): Promise<ReconcilePendingFollowsResult> => {
-	const { dryRun = false } = options;
+	const { dryRun = false, actorId = localActorId } = options;
 
-	const localActor = await apex.store.getObject(localActorId, true);
+	const localActor = await apex.store.getObject(actorId, true);
 	assert(localActor !== undefined, 'localActor is undefined');
+	const inboxId = toIdArray(localActor.inbox)[0];
+	const followersId = toIdArray(localActor.followers)[0];
+	assert(inboxId !== undefined && followersId !== undefined, 'local actor has no inbox/followers');
+	const followPolicy = await getFollowPolicy(actorId);
 
 	const docs = await Streams.where('type', '==', 'Follow')
-		.where('_meta.collection', 'array-contains', localInboxId)
+		.where('_meta.collection', 'array-contains', inboxId)
 		.get();
 
+	// ポリシーで拒否した Follow は承認待ちとみなさない (→ ADR-0150)。
 	const pendingDocs = docs.docs.filter((doc) => {
 		const follow = doc.data();
 		const objectId = toIdArray(follow.object)[0];
-		if (objectId !== localActorId) {
+		const followerId = toIdArray(follow.actor)[0];
+		if (objectId !== actorId || followerId === undefined) {
 			return false;
 		}
 		const collections = toIdArray(follow._meta?.collection);
-		return !collections.includes(localFollowersId);
+		return !collections.includes(followersId) && isFollowAllowed(followPolicy, followerId);
 	});
 
 	const pendingFollows = pendingDocs.map((doc) => {

@@ -139,7 +139,9 @@ export const noteObjectToStatus = (
 		uri: noteId,
 		// `url` は人間向けの URL。ローカルの Note はリンクプレビュー用の HTML のページ (→ ADR-0107)。
 		// リモートは Note の `url` があればそれ、無ければ IRI。
-		url: isLocalIri(noteId) ? localStatusPageUrl(id) : (toIdArray(note.url)[0] ?? noteId),
+		url: isLocalIri(noteId)
+			? localStatusPageUrl(id, account.username)
+			: (toIdArray(note.url)[0] ?? noteId),
 		...noteToCounts(note, context.meta),
 		...noteToViewerAttributes(note, context.viewer),
 		muted: false,
