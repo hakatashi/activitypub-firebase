@@ -3,6 +3,7 @@ import jsonld from 'jsonld';
 import type { ContextDefinition, JsonLdDocument, Options } from 'jsonld';
 import type { Apex, APObject, ApexRoutes } from '../types.js';
 import asVocab from '../vocab/as.json' with { type: 'json' };
+import identityVocab from '../vocab/identity.json' with { type: 'json' };
 import securityVocab from '../vocab/security.json' with { type: 'json' };
 import webfingerVocab from '../vocab/webfinger.json' with { type: 'json' };
 import {
@@ -479,6 +480,14 @@ const coreContexts: Record<string, RemoteDocument> = {
 	'https://purl.archive.org/socialweb/webfinger': asRemoteDocument({
 		documentUrl: 'https://purl.archive.org/socialweb/webfinger',
 		document: webfingerVocab,
+	}),
+	'https://w3id.org/identity/v1': asRemoteDocument({
+		documentUrl: 'https://w3id.org/identity/v1',
+		document: identityVocab,
+	}),
+	'http://w3id.org/identity/v1': asRemoteDocument({
+		documentUrl: 'http://w3id.org/identity/v1',
+		document: identityVocab,
 	}),
 };
 // cached JSONLD contexts to reduce requests an eliminate

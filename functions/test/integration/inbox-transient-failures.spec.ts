@@ -176,4 +176,24 @@ describe('inbox responses to transient failures and migration side activities', 
 
 		expect(res.status).toBe(503);
 	});
+
+	test('accepts Follow with https://w3id.org/identity/v1 context without network access (ADR-0157, Issue #325)', async () => {
+		const getContextSpy = vi.spyOn(apex.store, 'getContext');
+		const id = 'https://remote.example/activities/follow-identity-v1';
+		const res = await postInbox({
+			'@context': [
+				'https://w3id.org/identity/v1',
+				'https://www.w3.org/ns/activitystreams',
+				'https://w3id.org/security/v1',
+			],
+			id,
+			type: 'Follow',
+			actor: REMOTE_ACTOR_ID,
+			object: RECIPIENT_ID,
+		});
+
+		expect(res.status).toBe(200);
+		expect(await streamCollections(id)).toContain(localInboxId);
+		expect(getContextSpy).not.toHaveBeenCalledWith('https://w3id.org/identity/v1');
+	});
 });
