@@ -22,6 +22,7 @@ Mastodon 互換 API も提供し、Elk などのサードパーティクライ�
 | Firestore の読み取り回数と月額をどう見積もるか | [`docs/runbooks/measure-firestore-reads.md`](docs/runbooks/measure-firestore-reads.md) |
 | 本番のデータ・設定・ログをどう点検するか(移行前) | [`docs/runbooks/production-preflight-check.md`](docs/runbooks/production-preflight-check.md) |
 | pawoo.net からの引っ越しをどう実行・監視するか | [`docs/runbooks/account-migration.md`](docs/runbooks/account-migration.md) |
+| ボット用インスタンスでボットを作り、外部から投稿させる方法 | [`docs/runbooks/bot-instance.md`](docs/runbooks/bot-instance.md) |
 | Claude Code のクラウドセッションで作業するときの注意 | [`docs/runbooks/cloud-session.md`](docs/runbooks/cloud-session.md) |
 
 `third_party/` には仕様書と参考実装が submodule として置かれている

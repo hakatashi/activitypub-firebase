@@ -36,8 +36,9 @@ firebase deploy --only functions,firestore -P activitypub-firebase-dev
   「プロジェクトに indexes ファイルにないインデックスが N 個ある」という警告が出ることがあるが、
   **`--force` を付けて削除しない**(過去の実験的インデックスが残っているだけのことが多い。
   削除するなら、それが不要だと確認してから明示的に判断する)。
-- Hosting(Elk 配信・リダイレクト)を変更した場合のみ `--only hosting` を追加する。
-  通常のバックエンド検証では不要。
+- Hosting(Elk 配信・リダイレクト)を変更した場合のみ `--only hosting:activitypub,hosting:mastodon` を追加する。
+  通常のバックエンド検証では不要。`firebase.json` にはボット用の `bots` ターゲットもあり、dev には割り当てていないので、
+  **`--only hosting` とターゲットを省くと失敗する**。
 
 デプロイ後、[`docs/runbooks/federation-testing.md`](../../../docs/runbooks/federation-testing.md)
 の手順で実際に `mastodon-test.hakatashi.com` との疎通を確認する
@@ -64,12 +65,15 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx bin/denormalizations.ts
 - 調査用に一時スクリプトを `functions/bin/` に置いて実行した場合、恒久的なバックフィルとして
   残す意図がない限り**確認後にファイルを削除する**(コミットしない)。
 
-## 3. 本番へのデプロイ
+## 3. 本番・ボット用インスタンスへのデプロイ
 
 **行わない。** `main` への push で CI(`.github/workflows/main.yml`)が本番 `activitypub-firebase`
 と dev `activitypub-firebase-dev` の両方に自動デプロイする。本番だけを狙って手動デプロイする
 経路は用意しない(事故時の切り分けが難しくなるため)。dev で検証が済んだ変更は、PR を経て
 `main` にマージすることで本番に反映する。
+
+ボット用インスタンス `activitypub-firebase-bots` も CI でデプロイする。手動のデプロイは初回のセットアップなど、
+CI で直せない場合に限る(→ [`docs/runbooks/bot-instance.md`](../../../docs/runbooks/bot-instance.md))。
 
 ## 関連
 

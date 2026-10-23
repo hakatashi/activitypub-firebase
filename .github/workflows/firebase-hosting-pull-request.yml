@@ -37,12 +37,26 @@ jobs:
     if: '${{ github.event.pull_request.head.repo.full_name == github.repository }}'
     runs-on: ubuntu-latest
     strategy:
+      # 1つのプロジェクトの失敗で、ほかのプロジェクトのプレビューを止めない。
+      fail-fast: false
       matrix:
+        # Hosting のターゲットはプロジェクトごとに異なるため、ターゲットを明示する (→ ADR-0152)。
         project:
           - id: activitypub-firebase
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+            target: activitypub
+          - id: activitypub-firebase
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+            target: mastodon
           - id: activitypub-firebase-dev
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+            target: activitypub
+          - id: activitypub-firebase-dev
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+            target: mastodon
+          - id: activitypub-firebase-bots
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_BOTS
+            target: bots
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,3 +66,4 @@ jobs:
           repoToken: '${{secrets.GITHUB_TOKEN}}'
           firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
           projectId: '${{matrix.project.id}}'
+          target: '${{matrix.project.target}}'
