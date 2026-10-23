@@ -22,7 +22,15 @@ import { handleRemotePinActivity } from './social/remotePins.js';
 import { enqueuePingTask } from './tasks.js';
 import { pickSafeHeaders, redactSensitiveBody } from './utils.js';
 import { getDelivery, getFailedDeliveries } from './store/deliveries.js';
-import { BotError, createBot, getBot, listBots, updateBotFollowPolicy } from './social/bots.js';
+import {
+	BotError,
+	createBot,
+	getBot,
+	issueBotOperatorToken,
+	listBots,
+	revokeBotOperatorTokens,
+	updateBotFollowPolicy,
+} from './social/bots.js';
 import {
 	AliasError,
 	addAccountAlias,
@@ -337,6 +345,30 @@ app.get('/activitypub/bots', adminOnly, async (req: express.Request, res: expres
 		sendBotError(res, error);
 	}
 });
+
+// オペレータートークンの発行と失効 (→ ADR-0151)。値は応答でしか返さないので、ログに出さない。
+app.post(
+	'/activitypub/bots/operator-token',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		try {
+			res
+				.status(201)
+				.set('Cache-Control', 'no-store')
+				.json({ accessToken: await issueBotOperatorToken() });
+		} catch (error) {
+			sendBotError(res, error);
+		}
+	},
+);
+
+app.delete(
+	'/activitypub/bots/operator-token',
+	adminOnly,
+	async (req: express.Request, res: express.Response) => {
+		res.json({ revoked: await revokeBotOperatorTokens() });
+	},
+);
 
 app.get(
 	'/activitypub/bots/:username',

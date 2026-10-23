@@ -710,7 +710,7 @@ const timelineViewVersionData = () => ({
 		firebase.firestore.FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
 });
 
-// 検証に使うバージョンのインスタンス内キャッシュ (→ ADR-0154)。キーはローカル actor の IRI。
+// 検証に使うバージョンのインスタンス内キャッシュ (→ ADR-0155)。キーはローカル actor の IRI。
 interface CachedVersion {
 	// `updateTime.valueOf()`
 	time: string;
@@ -726,7 +726,7 @@ const timelineVersionCache = new Map<string, TimelineVersionCacheEntry>();
 const timelineVersionGenerations = new Map<string, number>();
 
 // マーカーと following はバックフィルや inbox からの Accept / Reject でしか他の経路から変わらないので長めにする。
-// 閲覧者のバージョンは、他のインスタンス・他の関数での操作の後の巻き戻りを短くするため短めにする (→ ADR-0154 決定2)。
+// 閲覧者のバージョンは、他のインスタンス・他の関数での操作の後の巻き戻りを短くするため短めにする (→ ADR-0155 決定2)。
 const MARKER_VERSION_MAX_AGE_MS = 3 * 60 * 1000;
 const FOLLOWING_VERSION_MAX_AGE_MS = 3 * 60 * 1000;
 const VIEW_VERSION_MAX_AGE_MS = 60 * 1000;
@@ -741,7 +741,7 @@ const forgetTimelineVersions = (actorId: string) => {
 	timelineVersionGenerations.set(actorId, (timelineVersionGenerations.get(actorId) ?? 0) + 1);
 };
 
-// 書き込みが済んでから、同じインスタンスで覚えているバージョンを捨てる (→ ADR-0154 決定3)。
+// 書き込みが済んでから、同じインスタンスで覚えているバージョンを捨てる (→ ADR-0155 決定3)。
 export const touchTimelineViewVersion = async (actorId: string) => {
 	await timelineViewVersionRef(escapeFirestoreKey(actorId)).set(timelineViewVersionData());
 	forgetTimelineVersions(actorId);
@@ -760,7 +760,7 @@ const isFresh = (cached: CachedVersion | undefined, maxAge: number, now: number)
 	cached !== undefined && now - cached.fetchedAt < maxAge;
 
 // タイムラインのキャッシュを検証するためのバージョンを読む (→ ADR-0139 決定2、ADR-0147 決定2)。
-// 期限内に読んだものはインスタンス内に覚えた値を使う (→ ADR-0154)。
+// 期限内に読んだものはインスタンス内に覚えた値を使う (→ ADR-0155)。
 // キャッシュしてはいけなければ undefined。呼び出し側は組み立ての前に読む。
 export const readTimelineVersion = async (viewerId: string): Promise<string | undefined> => {
 	const key = escapeFirestoreKey(viewerId);

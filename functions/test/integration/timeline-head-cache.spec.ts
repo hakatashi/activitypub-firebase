@@ -231,7 +231,7 @@ describe('timeline head cache (Issue #347, ADR-0139)', () => {
 		expect((await home(query)).map((status) => status.uri)).toEqual([older[0]?.uri]);
 	});
 
-	test('reuses the versions until each of them expires (ADR-0154)', async () => {
+	test('reuses the versions until each of them expires (ADR-0155)', async () => {
 		await saveNote(REMOTE_A);
 		const first = await home();
 		const getAll = vi.spyOn(db, 'getAll');
@@ -257,7 +257,7 @@ describe('timeline head cache (Issue #347, ADR-0139)', () => {
 		expect(versionReads()).toEqual([1, 3]);
 	});
 
-	test('reflects unfollows outside the Mastodon API after the TTL (ADR-0154)', async () => {
+	test('reflects unfollows outside the Mastodon API after the TTL (ADR-0155)', async () => {
 		await saveNote(REMOTE_B);
 		await saveNote(REMOTE_A, { to: [`${REMOTE_A}/followers`], cc: [] });
 		const before = await home();

@@ -303,7 +303,7 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 [ADR-0147](adr/0147-cache-timeline-max-id-pages-in-instance.md))。
 マーカー・`following`・`timelineView` のバージョンを読み(先頭ページはさらにリクエストごとに射影の最新のエントリを読み)、
 変わっていなければキャッシュを返す。バージョンはインスタンス内に覚え、マーカーと `following` は 3 分、`timelineView` は 1 分ごとに読み直す
-(→ [ADR-0154](adr/0154-cache-timeline-versions-with-ttl.md))。先頭ページに新着があれば新着分だけを組み立てて先頭に足し、全体は 15 分で組み立て直す。`timelineView` は、閲覧者が Status の見え方を
+(→ [ADR-0155](adr/0155-cache-timeline-versions-with-ttl.md))。先頭ページに新着があれば新着分だけを組み立てて先頭に足し、全体は 15 分で組み立て直す。`timelineView` は、閲覧者が Status の見え方を
 変えるルート(投稿・削除・お気に入り・ブースト・ブックマーク・ピン・フォロー・プロフィール・リスト)に付けた
 `touchesTimelineView` ミドルウェアが、応答を送る前に書き直し、同じインスタンスで覚えているバージョンを捨てる。
 
@@ -318,6 +318,10 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 UserInfo の `followPolicy` が `allowlist` のボットは、許可リストの actor からの Follow だけを承認し、ほかには `Reject` を返す。
 actor には `manuallyApprovesFollowers: true` を出す。`open` のボットとポリシーを持たない主 actor は、すべて承認する
 (→ [ADR-0150](adr/0150-bot-follow-approval-policy.md))。
+
+外部のプログラムは、通常の Mastodon API にオペレータートークン(`POST /activitypub/bots/operator-token` で発行)と
+`X-Bot-Account: <username>` ヘッダを付けて、どのボットとしても操作できる。`resolveAuth`(`functions/src/mastodon/http/auth.ts`)が
+ヘッダのボットを認証中の actor にする。主 actor にはなれない(→ [ADR-0151](adr/0151-bot-operator-token.md))。
 
 ローカル actor かどうかは `isLocalActorIri`(`functions/src/localActor.ts`)で IRI から判定する。
 リアクションの射影・ステータスの URL・リンクプレビュー用のページは、ボットにも対応している。
@@ -432,12 +436,15 @@ unfavourite / unreblog は射影に載っている Like / Announce をすべて 
 
 ## デプロイ
 
-`.firebaserc` で本番 `activitypub-firebase` と開発 `activitypub-firebase-dev` の2環境を定義。
+`.firebaserc` で本番 `activitypub-firebase`、開発 `activitypub-firebase-dev`、ボット用 `activitypub-firebase-bots` の3環境を定義
+(→ [ADR-0152](adr/0152-bots-instance-in-separate-project.md))。
+Hosting のターゲットは、本番と dev が `activitypub`(`hakatashi.com` などの個人サイトと相乗り)と `mastodon`、
+ボット用が `bots`(ActivityPub と Mastodon API を `bots.activitypub.hakatashi.com` の1ドメインで出し、public は `hosting/bots/`)。
 ドメイン・主 actor・ボット機能の有無は、`functions/src/instanceConfig.ts` の `projectId` ごとの対応表で決まる。
 対応表にない `projectId`(テストのワーカーなど)は dev の設定になる(→ [ADR-0148](adr/0148-instance-config-per-project.md))。
 
 `.github/workflows/main.yml` が main への push でテスト・lint 実行後、
-**両方の環境に同時にデプロイ**する。
+**本番環境 (`activitypub-firebase`) とボット用環境 (`activitypub-firebase-bots`) に順にデプロイ**する(dev 環境 `activitypub-firebase-dev` は手動検証用環境として除外されている。→ [ADR-0154](adr/0154-exclude-dev-environment-from-main-deploy.md))。Hosting はプロジェクトとターゲットの組ごとにデプロイする。
 
 ## 依存関係
 

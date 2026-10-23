@@ -56,8 +56,8 @@ jobs:
         project:
           - id: activitypub-firebase
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
-          - id: activitypub-firebase-dev
-            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+          - id: activitypub-firebase-bots
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_BOTS
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -81,11 +81,17 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
+        # Hosting のターゲットはプロジェクトごとに異なるため、ターゲットを明示する (→ ADR-0152)。
         project:
           - id: activitypub-firebase
             key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
-          - id: activitypub-firebase-dev
-            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV
+            target: activitypub
+          - id: activitypub-firebase
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE
+            target: mastodon
+          - id: activitypub-firebase-bots
+            key: FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_BOTS
+            target: bots
     steps:
       - uses: actions/checkout@v7
         with:
@@ -99,8 +105,9 @@ jobs:
           firebaseServiceAccount: '${{secrets[matrix.project.key]}}'
           channelId: live
           projectId: '${{matrix.project.id}}'
-  smoke-test-dev:
-    name: Smoke test (dev)
+          target: '${{matrix.project.target}}'
+  smoke-test:
+    name: Smoke test
     needs: [deploy-firebase, deploy-hosting]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -108,24 +115,24 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.x
-      - name: Warm up dev actor endpoint
+      - name: Warm up actor endpoint
         run: |
           for i in {1..5}; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" -H "Accept: application/activity+json" https://activitypub-dev.hakatashi.com/activitypub/u/hakatashi)
+            status=$(curl -s -o /dev/null -w "%{http_code}" -H "Accept: application/activity+json" https://hakatashi.com/activitypub/u/hakatashi)
             if [ "$status" = "200" ]; then
-              echo "Dev actor endpoint is up (HTTP 200)"
+              echo "Actor endpoint is up (HTTP 200)"
               exit 0
             fi
-            echo "Waiting for dev actor endpoint (HTTP $status)..."
+            echo "Waiting for actor endpoint (HTTP $status)..."
             sleep 5
           done
-          echo "Dev actor endpoint failed to respond with HTTP 200"
+          echo "Actor endpoint failed to respond with HTTP 200"
           exit 1
       - name: Run activitypub-testing smoke test
-        run: npx activitypub-testing test actor https://activitypub-dev.hakatashi.com/activitypub/u/hakatashi
+        run: npx activitypub-testing test actor https://hakatashi.com/activitypub/u/hakatashi
   notify-deploy-failure:
     name: Notify Deploy Failure
-    needs: [deploy-firebase, deploy-hosting, smoke-test-dev]
+    needs: [deploy-firebase, deploy-hosting, smoke-test]
     if: always() && contains(needs.*.result, 'failure') && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

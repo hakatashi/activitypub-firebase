@@ -163,7 +163,7 @@ curl -sH 'Accept: application/ld+json; profile="https://www.w3.org/ns/activityst
 
 ### activitypub-testing による自動適合性チェック
 
-Actor および各種コレクション (`inbox` / `outbox` / `followers` / `following` / `liked`) の AS2 応答構造と `OrderedCollection` 準拠性は、[`activitypub-testing`](https://codeberg.org/socialweb.coop/activitypub-testing) で一括検証できる(→ [ADR-0043](../adr/0043-smoke-test-dev-with-activitypub-testing.md))。dev への push デプロイ時にも CI のスモークテストジョブで自動実行される。
+Actor および各種コレクション (`inbox` / `outbox` / `followers` / `following` / `liked`) の AS2 応答構造と `OrderedCollection` 準拠性は、[`activitypub-testing`](https://codeberg.org/socialweb.coop/activitypub-testing) で一括検証できる(→ [ADR-0043](../adr/0043-smoke-test-dev-with-activitypub-testing.md)、[ADR-0154](../adr/0154-exclude-dev-environment-from-main-deploy.md))。main への push による本番デプロイ時にも CI のスモークテストジョブで自動実行される。
 
 ```bash
 npx activitypub-testing test actor "$ACTOR"

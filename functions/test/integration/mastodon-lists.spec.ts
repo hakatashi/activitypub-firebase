@@ -286,7 +286,7 @@ describe.each(['scan', 'feed'] as const)(
 					{ id: `${me.id}/follows/${encodeURIComponent(REMOTE_A)}` } as APObject,
 					me.id,
 				);
-				// Mastodon API を通らないフォロー解除は、覚えたバージョンの期限まで反映しない (→ ADR-0154)。
+				// Mastodon API を通らないフォロー解除は、覚えたバージョンの期限まで反映しない (→ ADR-0155)。
 				clearTimelineVersionCache();
 				expect(await getTimeline(`/api/v1/timelines/list/${list.id}`)).toEqual([mine]);
 			});
