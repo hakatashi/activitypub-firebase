@@ -273,7 +273,7 @@ GCLOUD_PROJECT=activitypub-firebase-dev npx tsx functions/bin/migrationStatus.ts
 ## デプロイ
 
 `main` への push で CI が自動デプロイする(`.github/workflows/main.yml`)。
-**本番 `activitypub-firebase` と dev `activitypub-firebase-dev` の両方に同時にデプロイされる。**
+**本番 `activitypub-firebase` とボット用環境 `activitypub-firebase-bots` に順にデプロイされる(dev `activitypub-firebase-dev` には自動デプロイされない。→ [ADR-0154](../adr/0154-exclude-dev-environment-from-main-deploy.md))。**
 
 手動でデプロイする場合:
 
