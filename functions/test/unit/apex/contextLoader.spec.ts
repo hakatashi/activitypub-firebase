@@ -1,7 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { NextFunction, Request, Response } from 'express';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import ActivitypubExpress from '../../../src/apex/index.js';
 import type IApexStore from '../../../src/apex/store/interface.js';
 
@@ -95,11 +95,29 @@ describe('apex jsonldContextLoader and validators.jsonld SSRF protection (ADR-00
 		});
 	});
 
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
 	describe('jsonldContextLoader', () => {
 		test('returns cached core context immediately without network fetch', async () => {
 			const apex = createApex();
 			const result = await apex.jsonldContextLoader('https://www.w3.org/ns/activitystreams');
 			expect(result.documentUrl).toBe('https://www.w3.org/ns/activitystreams');
+			expect(mockGetContext).not.toHaveBeenCalled();
+		});
+
+		test('returns bundled identity/v1 core context without network fetch (ADR-0157, Issue #325)', async () => {
+			const apex = createApex();
+			const httpsResult = await apex.jsonldContextLoader('https://w3id.org/identity/v1');
+			expect(httpsResult.documentUrl).toBe('https://w3id.org/identity/v1');
+			expect(httpsResult.document).toHaveProperty('@context');
+			expect((httpsResult.document as Record<string, unknown>)['@context']).toHaveProperty(
+				'Identity',
+			);
+
+			const httpResult = await apex.jsonldContextLoader('http://w3id.org/identity/v1');
+			expect(httpResult.documentUrl).toBe('http://w3id.org/identity/v1');
 			expect(mockGetContext).not.toHaveBeenCalled();
 		});
 
