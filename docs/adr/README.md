@@ -182,3 +182,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0153](0153-split-fetch-and-delivery-timeouts.md) | 外部への取得と配送のタイムアウトを分け(8 秒・15 秒)、配送の再試行を 8 回に延ばす | Accepted |
 | [0154](0154-exclude-dev-environment-from-main-deploy.md) | main push 時の自動デプロイ先から dev 環境を除外する | Accepted |
 | [0155](0155-cache-timeline-versions-with-ttl.md) | タイムラインのキャッシュの検証に使うバージョンを、数分だけインスタンス内に覚える | Accepted |
+| [0157](0157-cache-npm-and-retry-network-in-ci.md) | CI における npm キャッシュの有効化とネットワークリトライの強化 | Accepted |

@@ -9,6 +9,11 @@ name: Deploy
 concurrency:
   group: ${{ github.event_name == 'push' && 'deploy-main' || format('pr-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  # ネットワーク瞬断による npm ci の失敗を防ぐ (ADR-0157)
+  NPM_CONFIG_FETCH_RETRIES: '5'
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: '20000'
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: '120000'
 jobs:
   test:
     name: Test
@@ -18,6 +23,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.x
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -34,6 +41,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.x
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
       - name: Install Dependencies
         run: npm --prefix functions ci
       - name: Run build
@@ -63,6 +72,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.x
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
       - name: Install dependencies
         run: npm --prefix functions ci
       - name: Deploy to Firebase
@@ -132,7 +143,7 @@ jobs:
         run: npx activitypub-testing test actor https://hakatashi.com/activitypub/u/hakatashi
   notify-deploy-failure:
     name: Notify Deploy Failure
-    needs: [deploy-firebase, deploy-hosting, smoke-test]
+    needs: [test, lint, deploy-firebase, deploy-hosting, smoke-test]
     if: always() && contains(needs.*.result, 'failure') && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
