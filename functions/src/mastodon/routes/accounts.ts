@@ -9,7 +9,7 @@ import { assignMediaMastodonId } from '../../mastodonId.js';
 import { plainTextToHtml } from '../../notes.js';
 import { UserInfo, UserInfos } from '../../schema.js';
 import { deleteStorageFileByUrl, uploadProfileImage } from '../../storage/media.js';
-import { getImageUrl, toIdArray } from '../../utils.js';
+import { getImageUrl, isActorLocked, toIdArray } from '../../utils.js';
 import {
 	authRequired,
 	getAuthActorId,
@@ -364,8 +364,7 @@ router.post(
 
 		const { flags } = await followActor(actor, targetActor);
 
-		const isTargetLocked =
-			targetActor.manuallyApprovesFollowers === true || resolved.userInfo?.locked === true;
+		const isTargetLocked = isActorLocked(targetActor) || resolved.userInfo?.locked === true;
 		const relationship: RelationshipEntity = {
 			id,
 			following: !isTargetLocked,

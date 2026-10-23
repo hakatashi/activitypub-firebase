@@ -138,6 +138,52 @@ describe('actorObjectToAccount', () => {
 		expect(account.username).toBe('remoteuser');
 		expect(account.acct).toBe('remoteuser@remote.example');
 	});
+
+	test('reflects locked / bot / discoverable of a remote actor stored with prefixed keys', async () => {
+		// Mastodon の context で受けた actor は apex がこの形で保存する (→ ADR-0156)。
+		const actor = {
+			id: 'https://remote.example/users/botuser',
+			type: ['Service'],
+			preferredUsername: ['botuser'],
+			'as:manuallyApprovesFollowers': [true],
+			'toot:discoverable': [true],
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(actor, undefined, '00109547043225600043');
+
+		expect(account.locked).toBe(true);
+		expect(account.bot).toBe(true);
+		expect(account.discoverable).toBe(true);
+	});
+
+	test('reflects locked / bot of a remote actor stored with plain keys', async () => {
+		const actor = {
+			id: 'https://remote.example/users/appuser',
+			type: 'Application',
+			preferredUsername: 'appuser',
+			manuallyApprovesFollowers: true,
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(actor, undefined, '00109547043225600044');
+
+		expect(account.locked).toBe(true);
+		expect(account.bot).toBe(true);
+		expect(account.discoverable).toBe(false);
+	});
+
+	test('treats a remote Person without manuallyApprovesFollowers as unlocked and not a bot', async () => {
+		const actor = {
+			id: 'https://remote.example/users/person',
+			type: ['Person'],
+			preferredUsername: ['person'],
+			'as:manuallyApprovesFollowers': [false],
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(actor, undefined, '00109547043225600045');
+
+		expect(account.locked).toBe(false);
+		expect(account.bot).toBe(false);
+	});
 });
 
 describe('actorObjectToAccount sanitization', () => {

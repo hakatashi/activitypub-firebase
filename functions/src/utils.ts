@@ -146,6 +146,24 @@ export const firstOf = <T>(value: T | T[] | undefined | null): T | undefined => 
 
 const ACTOR_TYPE_SET = new Set<string>(ACTOR_TYPES);
 
+// リモートの actor は Mastodon の context で `as:` / `toot:` の語に展開され、apex の context に
+// その語がないため、プレフィックス付きのキーで保存される。ローカルの actor はプレフィックスなしで持つ。
+// どちらで保存されていても同じように読む (→ ADR-0156)。
+const readActorFlag = (actor: object, keys: readonly string[]) =>
+	keys.some((key) => firstOf((actor as Record<string, unknown>)[key]) === true);
+
+export const isActorLocked = (actor: object) =>
+	readActorFlag(actor, ['manuallyApprovesFollowers', 'as:manuallyApprovesFollowers']);
+
+export const isActorDiscoverable = (actor: object) =>
+	readActorFlag(actor, ['discoverable', 'toot:discoverable']);
+
+// Mastodon と同じく、type が Service か Application の actor をボットとみなす。
+const AUTOMATED_ACTOR_TYPES = new Set<string>(['Application', 'Service']);
+
+export const isAutomatedActor = (actor: object) =>
+	objectToTypeArray(actor).some((type) => AUTOMATED_ACTOR_TYPES.has(type));
+
 // 型ガード関数: AS2 の type が配列で届く場合でも正しく絞り込めるようにする (→ ADR-0025)
 export const isAPActor = <T>(object: T): object is T & APActor => {
 	if (typeof object !== 'object' || object === null) {

@@ -36,7 +36,6 @@ export interface JsonLdActor {
 	preferredUsername?: string;
 	name?: string;
 	summary?: string;
-	discoverable?: boolean;
 	url?: unknown;
 	icon?: { url?: string };
 	image?: { url?: string };
