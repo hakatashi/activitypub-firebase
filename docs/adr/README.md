@@ -165,7 +165,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0136](0136-fan-out-home-and-list-timelines-on-write.md) | ホーム・リストのタイムラインを書き込み時に射影し(fan-out on write)、読み出し時に検証する | Accepted |
 | [0137](0137-minimal-oauth-authorize-page.md) | OAuth 承認画面は、スマホで押せる最小限のスタイルだけを付ける | Accepted |
 | [0138](0138-cache-mastodon-id-mapping-in-instance.md) | IRI と Mastodon ID の対応をインスタンス内にキャッシュする | Accepted |
-| [0139](0139-cache-timeline-head-page-in-instance.md) | ホーム・リストのタイムラインの先頭ページを、新着とバージョンを見てインスタンス内にキャッシュする | Accepted (対象と上限は ADR-0147 で Superseded) |
+| [0139](0139-cache-timeline-head-page-in-instance.md) | ホーム・リストのタイムラインの先頭ページを、新着とバージョンを見てインスタンス内にキャッシュする | Accepted (対象と上限は ADR-0147、検証の読み取りの頻度は ADR-0155 で Superseded) |
 | [0140](0140-backfill-remote-outbox-on-profile-view.md) | リモートアカウントの過去の公開投稿を、プロフィール閲覧時に outbox から補完する | Accepted |
 | [0141](0141-ignore-inbox-add-remove.md) | inbox に届いた Add / Remove の副作用を行わない | Accepted |
 | [0142](0142-prefer-shared-inbox-for-all-recipients.md) | 配送は宛先の種類によらず相手の sharedInbox を優先する | Accepted |
@@ -173,7 +173,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0144](0144-receive-remote-pinned-statuses.md) | リモートアカウントのピン留めを `featured` コレクションと `Add` / `Remove` から取り込む | Accepted |
 | [0145](0145-sanitize-html-in-mastodon-api-responses.md) | Mastodon API の応答で、本文・プロフィールの HTML を Mastodon の `MASTODON_STRICT` と同じ許可リストでサニタイズする | Accepted |
 | [0146](0146-order-streams-by-activity-mastodon-id.md) | outbox などのコレクションは、アクティビティの Mastodon ID の降順で並べる | Accepted |
-| [0147](0147-cache-timeline-max-id-pages-in-instance.md) | ホーム・リストのタイムラインの `max_id` だけのページも、バージョンを見てインスタンス内にキャッシュする | Accepted |
+| [0147](0147-cache-timeline-max-id-pages-in-instance.md) | ホーム・リストのタイムラインの `max_id` だけのページも、バージョンを見てインスタンス内にキャッシュする | Accepted (検証の読み取りの頻度は ADR-0155 で Superseded) |
 | [0148](0148-instance-config-per-project.md) | インスタンスの設定を Firebase プロジェクトごとの対応表に持つ | Accepted |
 | [0149](0149-bot-actors-as-additional-local-actors.md) | ボットを、主 actor と同じ形の追加のローカル actor として持つ | Accepted |
 | [0150](0150-bot-follow-approval-policy.md) | ボットのフォローは、ボットごとの許可リストで承認し、それ以外は Reject する | Accepted |
@@ -181,4 +181,5 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0152](0152-bots-instance-in-separate-project.md) | ボット用インスタンスは別の Firebase プロジェクトで、同じリポジトリから同じ Functions をデプロイする | Accepted |
 | [0153](0153-split-fetch-and-delivery-timeouts.md) | 外部への取得と配送のタイムアウトを分け(8 秒・15 秒)、配送の再試行を 8 回に延ばす | Accepted |
 | [0154](0154-exclude-dev-environment-from-main-deploy.md) | main push 時の自動デプロイ先から dev 環境を除外する | Accepted |
+| [0155](0155-cache-timeline-versions-with-ttl.md) | タイムラインのキャッシュの検証に使うバージョンを、数分だけインスタンス内に覚える | Accepted |
 | [0156](0156-read-remote-actor-flags-with-prefixed-keys.md) | リモート actor の locked / bot / discoverable は、プレフィックス付きのキーも読んで Account に反映する | Accepted |
