@@ -384,6 +384,22 @@ export function stripIds(obj: any) {
 	return JSON.parse(JSON.stringify(obj, skipTransient));
 }
 
+// Store が streams に書き足すコレクションの並べ替えキー `_meta.mastodonId` を除く (ADR-0146)。
+// 保存したアクティビティを `_meta` ごと読み直して比較するテストで使う。並べ替えキーしかない `_meta` は丸ごと除く。
+export function stripSortKeys(obj: any) {
+	return JSON.parse(
+		JSON.stringify(obj, (key, value) => {
+			if (key === 'mastodonId') {
+				return undefined;
+			}
+			if (key === '_meta' && Object.keys(value ?? {}).every((metaKey) => metaKey === 'mastodonId')) {
+				return undefined;
+			}
+			return value;
+		}),
+	);
+}
+
 export async function toExternalJSONLD(apex: any, value: any, noContext?: boolean) {
 	value = JSON.parse(apex.stringifyPublicJSONLD(await apex.toJSONLD(value)));
 	if (noContext) {
@@ -418,6 +434,7 @@ export function failIfError(err: any, done: any) {
 (globalThis as any).initApex = initApex;
 (globalThis as any).resetDb = resetDb;
 (globalThis as any).stripIds = stripIds;
+(globalThis as any).stripSortKeys = stripSortKeys;
 (globalThis as any).toExternalJSONLD = toExternalJSONLD;
 (globalThis as any).failOrDone = failOrDone;
 (globalThis as any).failIfError = failIfError;

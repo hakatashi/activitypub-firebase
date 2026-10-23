@@ -2,7 +2,8 @@ import { describe, expect, test, afterEach } from 'vitest';
 import { db, escapeFirestoreKey } from '../../src/firebase.js';
 import type { ObjectMeta } from '../../src/meta.js';
 import { buildMetaIndex } from '../../src/meta.js';
-import { Objects } from '../../src/schema.js';
+import { findMastodonIds, isMastodonId } from '../../src/mastodonId.js';
+import { Objects, Streams } from '../../src/schema.js';
 import {
 	getDelivery,
 	getFailedDeliveries,
@@ -436,17 +437,138 @@ describe('Store', () => {
 			expect(stream).toHaveLength(2);
 		});
 
-		test('includes the Firestore document ID as _id for use as a pagination cursor', async () => {
+		test('includes the Mastodon ID of the activity as _id for use as a pagination cursor', async () => {
 			await store.saveActivity({
 				id: 'https://example.com/activities/cursor-check',
 				type: 'Create',
 				_meta: { collection: ['https://example.com/inbox'] },
 			});
 
+			const mastodonIds = await findMastodonIds(['https://example.com/activities/cursor-check']);
 			const stream = await store.getStream('https://example.com/inbox', null, null);
 			expect(stream).toHaveLength(1);
-			expect(typeof stream[0]?._id).toBe('string');
-			expect(stream[0]?._id.length).toBeGreaterThan(0);
+			expect(stream[0]?._id).toBe(mastodonIds.get('https://example.com/activities/cursor-check'));
+			expect(isMastodonId(stream[0]?._id ?? '')).toBe(true);
+		});
+
+		// AP 仕様 §5: OrderedCollection は常に新しい順 (→ ADR-0146)。IRI の順と published の順をずらしておく。
+		test('orders activities by published (newest first) across pages, regardless of their IRIs', async () => {
+			const published = {
+				'https://example.com/activities/a': '2026-10-14T00:00:00.000Z',
+				'https://example.com/activities/b': '2026-10-21T00:00:00.000Z',
+				'https://example.com/activities/c': '2026-10-01T00:00:00.000Z',
+				'https://example.com/activities/d': '2026-10-18T00:00:00.000Z',
+				'https://example.com/activities/e': '2026-10-10T00:00:00.000Z',
+			};
+			for (const [id, date] of Object.entries(published)) {
+				await store.saveActivity({
+					id,
+					type: 'Create',
+					published: date,
+					_meta: { collection: ['https://example.com/outbox'] },
+				});
+			}
+			const expected = [
+				'https://example.com/activities/b',
+				'https://example.com/activities/d',
+				'https://example.com/activities/a',
+				'https://example.com/activities/e',
+				'https://example.com/activities/c',
+			];
+
+			const collected: string[] = [];
+			let after: string | null = null;
+			for (let i = 0; i < 10; i++) {
+				const page = await store.getStream('https://example.com/outbox', 2, after);
+				if (page.length === 0) {
+					break;
+				}
+				collected.push(...page.map((activity) => activity.id));
+				after = page.at(-1)?._id ?? null;
+			}
+			expect(collected).toEqual(expected);
+
+			const all = await store.getStream('https://example.com/outbox', null, null);
+			expect(all.map((activity) => activity.id)).toEqual(expected);
+		});
+
+		test('orders an activity added to a collection later by its own Mastodon ID', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/old',
+				type: 'Follow',
+				published: '2026-10-01T00:00:00.000Z',
+				_meta: { collection: ['https://example.com/inbox'] },
+			});
+			await store.saveActivity({
+				id: 'https://example.com/activities/new',
+				type: 'Follow',
+				published: '2026-10-02T00:00:00.000Z',
+				_meta: { collection: ['https://example.com/followers'] },
+			});
+			// 既存のアクティビティを別のコレクションに足す経路 (isNew === 'new collection')。
+			await store.saveActivity({
+				id: 'https://example.com/activities/old',
+				type: 'Follow',
+				published: '2026-10-01T00:00:00.000Z',
+				_meta: { collection: ['https://example.com/followers'] },
+			});
+
+			const page = await store.getStream('https://example.com/followers', 10, null);
+			expect(page.map((activity) => activity.id)).toEqual([
+				'https://example.com/activities/new',
+				'https://example.com/activities/old',
+			]);
+		});
+
+		// 以前のカーソル (ドキュメント ID) で辿っている途中のページを壊さない (→ ADR-0146)。
+		test('accepts a legacy document ID cursor', async () => {
+			for (const [suffix, date] of [
+				['1', '2026-10-01T00:00:00.000Z'],
+				['2', '2026-10-02T00:00:00.000Z'],
+				['3', '2026-10-03T00:00:00.000Z'],
+			] as const) {
+				await store.saveActivity({
+					id: `https://example.com/activities/legacy-${suffix}`,
+					type: 'Create',
+					published: date,
+					_meta: { collection: ['https://example.com/outbox'] },
+				});
+			}
+
+			const legacyCursor = escapeFirestoreKey('https://example.com/activities/legacy-2');
+			const page = await store.getStream('https://example.com/outbox', 10, legacyCursor);
+			expect(page.map((activity) => activity.id)).toEqual([
+				'https://example.com/activities/legacy-1',
+			]);
+
+			expect(
+				await store.getStream(
+					'https://example.com/outbox',
+					10,
+					escapeFirestoreKey('https://example.com/missing'),
+				),
+			).toEqual([]);
+			expect(await store.getStream('https://example.com/outbox', 10, 'not/a/document')).toEqual([]);
+		});
+
+		// 全件取得は配送先の解決に使うので、バックフィル前のドキュメントも落とさない (→ ADR-0146)。
+		test('limit === null still returns activities without _meta.mastodonId', async () => {
+			await store.saveActivity({
+				id: 'https://example.com/activities/with-key',
+				type: 'Follow',
+				_meta: { collection: ['https://example.com/followers'] },
+			});
+			await Streams.doc(escapeFirestoreKey('https://example.com/activities/without-key')).set({
+				id: 'https://example.com/activities/without-key',
+				type: 'Follow',
+				_meta: { collection: ['https://example.com/followers'] },
+			});
+
+			const stream = await store.getStream('https://example.com/followers', null, null);
+			expect(stream.map((activity) => activity.id)).toEqual([
+				'https://example.com/activities/with-key',
+				'https://example.com/activities/without-key',
+			]);
 		});
 
 		test('pages through a collection using the _id cursor without duplicates or gaps', async () => {

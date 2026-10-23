@@ -20,7 +20,6 @@ object が Note のもの(Mastodon のピン留め)には 400 を返している
 
 - inbox が `Create` / `Announce` に埋め込まれた別オリジンのオブジェクトを、検証せずに保存する(なりすましが可能)
   → [#362](https://github.com/hakatashi/activitypub-firebase/issues/362)
-- outbox などの `OrderedCollection` が新しい順に並んでいない → [#359](https://github.com/hakatashi/activitypub-firebase/issues/359)
 
 ### リモートの取得が恒久的な 4xx で失敗しても、inbox が 500 を返す
 

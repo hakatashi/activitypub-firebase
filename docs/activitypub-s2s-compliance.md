@@ -40,7 +40,7 @@
 
 | 節 | 要件 | 水準 | 判定 | 根拠 |
 |---|---|---|---|---|
-| §5 | 仕様の `OrderedCollection` は常に新しい順に示す | MUST | ❌ | `store/index.ts` の `getStream` はドキュメント ID(ランダムな ID を含む IRI)順。本番の outbox で順序の乱れを確認 → [#359](https://github.com/hakatashi/activitypub-firebase/issues/359) |
+| §5 | 仕様の `OrderedCollection` は常に新しい順に示す | MUST | ✅ | `store/index.ts` の `getStream` はアクティビティの Mastodon ID(`published` 基準)の降順で、ページのカーソルも同じキー([ADR-0146](adr/0146-order-streams-by-activity-mastodon-id.md))。`test/unit/store.spec.ts` |
 | §5.1 | outbox は `OrderedCollection` | MUST | ✅ | `apex/pub/collection.ts` の `buildCollection` / `getOutbox` |
 | §5.2 | inbox は `OrderedCollection` | MUST | ✅ | 同上(`getInbox`) |
 | §5.2 | inbox の中身を要求者の権限で絞る | SHOULD | ✅ | `getCollection` は認可がなければ公開のものだけを返す。`test/integration/inbox-public.spec.ts` |
