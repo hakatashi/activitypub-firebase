@@ -9,6 +9,7 @@ import type express from 'express';
 import { apex } from '../../apex.js';
 import { toFirestoreKey, unescapeFirestoreKey } from '../../firebase.js';
 import { UserInfos } from '../../schema.js';
+import { BOT_OPERATOR_UID, resolveBotUserInfo } from '../../social/bots.js';
 import { oauth } from '../oauth.js';
 import { assertIsAPActor } from '../presenters/account.js';
 
@@ -83,6 +84,20 @@ const resolveAuth = async (req: express.Request, res: express.Response) => {
 	const uid = token.user?.userId;
 	if (typeof uid !== 'string') {
 		throw new AuthenticationError('This method requires an authenticated user', 401);
+	}
+
+	// オペレータートークンは X-Bot-Account のボットとして扱う (→ ADR-0151)。
+	if (uid === BOT_OPERATOR_UID) {
+		const result = await resolveBotUserInfo(req.get('x-bot-account'));
+		if (result.status !== 'ok') {
+			throw new AuthenticationError(
+				result.status === 'forbidden'
+					? 'X-Bot-Account is not a bot'
+					: 'X-Bot-Account header must name a bot on this instance',
+				result.status === 'forbidden' ? 403 : 401,
+			);
+		}
+		return { userInfo: result.userInfo, actorId: result.actorId, scope: token.scope };
 	}
 
 	const userInfoDocs = await UserInfos.where('uid', '==', uid).get();

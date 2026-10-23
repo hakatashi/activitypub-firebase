@@ -17,7 +17,8 @@ uid の UserInfo は1件であることを前提にしている。ボットの U
    `update_credentials` などが、そのままボットの操作になる。独自の投稿エンドポイントは作らない。
 2. インスタンスごとに「オペレータートークン」を発行する。`accessTokens` に予約された uid `bot-operator` で保存し、
    無期限にする(ADR-0133)。発行は管理エンドポイント `POST /activitypub/bots/operator-token`(`adminOnly`)で行い、
-   値は応答で1度だけ返す。失効は `POST /oauth/revoke`。
+   値は応答で1度だけ返す。失効は `DELETE /activitypub/bots/operator-token` で、発行済みのものをすべて消す
+   (OAuth のクライアントを持たないので `POST /oauth/revoke` は使えない)。
 3. `resolveAuth` は、uid が `bot-operator` で、インスタンスのボット機能が有効なとき、ヘッダ
    `X-Bot-Account: <username>` の `userInfos` を直接引く。`bot: true` でなければ(主 actor を含む)403、
    ヘッダがない・未知のときは 401 にする。それ以外のトークンの経路は変えない。
