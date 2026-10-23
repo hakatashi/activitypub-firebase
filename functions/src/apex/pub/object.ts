@@ -1,5 +1,6 @@
 import type { Apex, APObject } from '../types.js';
 import { first, firstString, isAPObject, isHashtag, isRecord } from '../values.js';
+import { PermanentFetchError } from './fetchErrors.js';
 
 // find object in local DB or fetch from origin server
 export const resolveObject = async function (
@@ -29,7 +30,12 @@ export const resolveObject = async function (
 			}
 		}
 	} else {
-		const iri = new URL(String(id));
+		let iri: URL;
+		try {
+			iri = new URL(String(id));
+		} catch (err) {
+			throw new PermanentFetchError(`Invalid object IRI ${String(id)}`, undefined, { cause: err });
+		}
 		// remove any hash from url
 		const objectId = `${iri.protocol}//${iri.host}${iri.pathname}${iri.search}`;
 		cached =
@@ -46,7 +52,7 @@ export const resolveObject = async function (
 		// resolve remote object from id
 		object = await this.requestObject(String(id));
 		if (!object) {
-			throw new TypeError(`Failed to resolve object ${String(id)}`);
+			throw new PermanentFetchError(`Failed to resolve object ${String(id)}`);
 		}
 	}
 	// local collections are generated on-demand; not cached

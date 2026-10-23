@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
-import { isTransientFailure } from '../pub/fetchErrors.js';
+import { isPermanentFetchFailure, isTransientFailure } from '../pub/fetchErrors.js';
 import type { APObject } from '../types.js';
 import {
 	errorMessage,
@@ -54,6 +54,10 @@ const getLocalActivityOrObject = async (apex: ReturnType<typeof getApex>, id: st
 export const activityObject = (req: Request, res: Response, next: NextFunction): void => {
 	const apex = getApex(req);
 	const resLocal = getLocals(res);
+	if (resLocal.status !== undefined) {
+		next();
+		return;
+	}
 	const activity: unknown = req.body;
 	if (!apex.validateActivity(activity) || !isAPObject(activity)) {
 		next();
@@ -104,7 +108,18 @@ export const activityObject = (req: Request, res: Response, next: NextFunction):
 			resLocal.object = resolvedObj ?? undefined;
 			next();
 		})
-		.catch(next);
+		.catch((err: unknown) => {
+			if (isPermanentFetchFailure(err)) {
+				apex.logger.warn(
+					'Failed to resolve activity object permanently, ignoring activity:',
+					errorMessage(err),
+				);
+				resLocal.status = 200;
+				next();
+				return;
+			}
+			next(err);
+		});
 };
 
 // `id` のない Add / Remove に仮の `id` を振り、一時的なアクティビティとして扱う。仮の `id` は保存も公開もしない
@@ -157,6 +172,10 @@ export const actor = (req: Request, res: Response, next: NextFunction): void => 
 
 export const inboxActivity = (req: Request, res: Response, next: NextFunction): void => {
 	const resLocal = getLocals(res);
+	if (resLocal.status !== undefined) {
+		next();
+		return;
+	}
 	const { object, actor: activityActor, target: recipient } = resLocal;
 	if (!recipient || !activityActor) {
 		next();

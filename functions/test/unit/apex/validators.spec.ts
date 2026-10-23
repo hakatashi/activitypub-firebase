@@ -1,6 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { describe, expect, test, vi } from 'vitest';
 import ActivitypubExpress from '../../../src/apex/index.js';
+import { PermanentFetchError, TransientFetchError } from '../../../src/apex/pub/fetchErrors.js';
 import type IApexStore from '../../../src/apex/store/interface.js';
 
 describe('apex validators for Like and Announce (ADR-0047)', () => {
@@ -230,6 +231,94 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 
 			expect(res.locals.apex.object).toBeUndefined();
 		});
+
+		test('sets status 200 and ignores activity when resolving object fails with PermanentFetchError (ADR-0158)', async () => {
+			const announceActivity = {
+				id: 'https://remote.example/s/announce-1',
+				type: 'Announce',
+				actor: [ACTOR_ID],
+				object: ['https://third-party.example/notes/401'],
+			};
+
+			const resolveObjectSpy = vi
+				.spyOn(apex, 'resolveObject')
+				.mockRejectedValueOnce(new PermanentFetchError('Request failed with status code 401', 401));
+
+			const { req, res } = createMockReqRes(announceActivity);
+			await runMiddleware(apex.net.validators.activityObject, req, res);
+
+			expect(res.locals.apex.status).toBe(200);
+			expect(res.locals.apex.object).toBeUndefined();
+			expect(apex.logger.warn).toHaveBeenCalledWith(
+				'Failed to resolve activity object permanently, ignoring activity:',
+				expect.stringContaining('401'),
+			);
+
+			resolveObjectSpy.mockRestore();
+		});
+
+		test('propagates error when resolving object fails with TransientFetchError (ADR-0115)', async () => {
+			const announceActivity = {
+				id: 'https://remote.example/s/announce-1',
+				type: 'Announce',
+				actor: [ACTOR_ID],
+				object: ['https://third-party.example/notes/500'],
+			};
+
+			const transientError = new TransientFetchError('Request failed with status code 500');
+			const resolveObjectSpy = vi
+				.spyOn(apex, 'resolveObject')
+				.mockRejectedValueOnce(transientError);
+
+			const { req, res } = createMockReqRes(announceActivity);
+			await expect(runMiddleware(apex.net.validators.activityObject, req, res)).rejects.toThrow(
+				transientError,
+			);
+
+			expect(res.locals.apex.status).toBeUndefined();
+
+			resolveObjectSpy.mockRestore();
+		});
+
+		test('propagates unexpected non-fetch errors (e.g. database error) without setting status 200', async () => {
+			const announceActivity = {
+				id: 'https://remote.example/s/announce-1',
+				type: 'Announce',
+				actor: [ACTOR_ID],
+				object: ['https://third-party.example/notes/db-err'],
+			};
+
+			const dbError = new Error('Firestore transaction aborted');
+			const resolveObjectSpy = vi.spyOn(apex, 'resolveObject').mockRejectedValueOnce(dbError);
+
+			const { req, res } = createMockReqRes(announceActivity);
+			await expect(runMiddleware(apex.net.validators.activityObject, req, res)).rejects.toThrow(
+				dbError,
+			);
+
+			expect(res.locals.apex.status).toBeUndefined();
+
+			resolveObjectSpy.mockRestore();
+		});
+
+		test('skips object resolution when status is already set', async () => {
+			const announceActivity = {
+				id: 'https://remote.example/s/announce-1',
+				type: 'Announce',
+				actor: [ACTOR_ID],
+				object: ['https://third-party.example/notes/1'],
+			};
+
+			const resolveObjectSpy = vi.spyOn(apex, 'resolveObject');
+
+			const { req, res } = createMockReqRes(announceActivity, { status: 200 });
+			await runMiddleware(apex.net.validators.activityObject, req, res);
+
+			expect(resolveObjectSpy).not.toHaveBeenCalled();
+			expect(res.locals.apex.status).toBe(200);
+
+			resolveObjectSpy.mockRestore();
+		});
 	});
 
 	describe('inboxActivity', () => {
@@ -330,6 +419,27 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 			await runMiddleware(apex.net.validators.inboxActivity, req, res);
 
 			expect(res.locals.apex.status).toBe(400);
+			expect(res.locals.apex.activity).toBeUndefined();
+		});
+
+		test('skips validation and preserves status when status is already set to 200 (ADR-0158)', async () => {
+			const announceActivity = {
+				id: 'https://remote.example/s/announce-1',
+				type: 'Announce',
+				actor: [ACTOR_ID],
+				object: ['https://third-party.example/notes/401'],
+			};
+
+			const { req, res } = createMockReqRes(announceActivity, {
+				target: recipient,
+				actor,
+				object: undefined,
+				status: 200,
+			});
+
+			await runMiddleware(apex.net.validators.inboxActivity, req, res);
+
+			expect(res.locals.apex.status).toBe(200);
 			expect(res.locals.apex.activity).toBeUndefined();
 		});
 	});
