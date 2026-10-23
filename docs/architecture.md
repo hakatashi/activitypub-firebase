@@ -176,7 +176,7 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `userInfos` | エスケープした actor IRI | Mastodon 用のユーザーメタ情報(`functions/src/schema.ts`) |
 | `userInfos/{actor}/bookmarks`, `pins` | エスケープした Note IRI | ブックマーク・ピン留め(→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md))。`pins` はリモート actor のピン留めも同じ形で持つ(→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md))。ブックマークは一覧のカーソル `cursorId` を持つ(→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
 | `userInfos/{actor}/followers`, `following` | エスケープした相手の actor IRI | フォロー関係の射影。Follow を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0082](adr/0082-project-follow-relations-in-store.md)) |
-| `userInfos/{actor}/projectionVersions` | 射影の名前(`following` / `timelineFeeds` / `timelineView`) | 射影のバージョン。`updateTime` を読み取り側のキャッシュの無効化に使う(→ [ADR-0135](adr/0135-cache-following-by-projection-version.md))。`timelineFeeds` はタイムラインの射影から読むためのマーカー(→ [ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md))。`timelineView` は閲覧者が Status の見え方を変える API を呼ぶたびに書き直す、タイムラインの先頭ページのキャッシュのバージョン(→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md)) |
+| `userInfos/{actor}/projectionVersions` | 射影の名前(`following` / `timelineFeeds` / `timelineView`) | 射影のバージョン。`updateTime` を読み取り側のキャッシュの無効化に使う(→ [ADR-0135](adr/0135-cache-following-by-projection-version.md))。`timelineFeeds` はタイムラインの射影から読むためのマーカー(→ [ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md))。`timelineView` は閲覧者が Status の見え方を変える API を呼ぶたびに書き直す、タイムラインのキャッシュのバージョン(→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md)) |
 | `userInfos/{actor}/favourites`, `reblogs` | エスケープした Note IRI | お気に入り・ブーストの射影。ローカル actor の Like / Announce を書き換える Store の処理と同じトランザクションで差分更新する(→ [ADR-0084](adr/0084-project-favourites-and-reblogs.md)) |
 | `userInfos/{actor}/lists` | リスト ID(作成時刻から作る Mastodon ID 形式の値) | リスト。タイトル・`replies_policy`・`exclusive` とメンバーの actor IRI の配列。API が直接書く(→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
 | `userInfos/{actor}/homeFeed` / `userInfos/{actor}/lists/{リスト ID}/feed` | Note / Announce の Mastodon ID | ホーム・リストのタイムラインの射影。Note / Announce の新規保存と同じトランザクションで書く候補で、読み出し時に判定し直す(→ [ADR-0136](adr/0136-fan-out-home-and-list-timelines-on-write.md)) |
@@ -295,10 +295,11 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 各 200 件まで射影へ入れ、リストの削除ではリストの射影ごと消す。
 `userInfos/{actor}/projectionVersions/timelineFeeds` がある間だけ射影から読み、無ければ従来どおり `objects` /
 `streams` を作者で絞って読む。射影の組み立て直しとこのマーカーの書き込みは `functions/bin/backfillTimelineFeeds.ts` で行う。
-射影から読めるとき、カーソルの無い先頭ページは組み立て済みの Status のままインスタンス内にキャッシュする
-(`functions/src/mastodon/presenters/timelineHeadCache.ts`、→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md))。
-リクエストごとにマーカー・`following`・`timelineView` のバージョンと射影の最新のエントリを読み、変わっていなければキャッシュを返す。
-新着があれば新着分だけを組み立てて先頭に足し、全体は 15 分で組み立て直す。`timelineView` は、閲覧者が Status の見え方を
+射影から読めるとき、カーソルの無い先頭ページと `max_id` だけのページは組み立て済みの Status のままインスタンス内にキャッシュする
+(`functions/src/mastodon/presenters/timelineHeadCache.ts`、→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md)、
+[ADR-0147](adr/0147-cache-timeline-max-id-pages-in-instance.md))。
+リクエストごとにマーカー・`following`・`timelineView` のバージョン(先頭ページはさらに射影の最新のエントリ)を読み、
+変わっていなければキャッシュを返す。先頭ページに新着があれば新着分だけを組み立てて先頭に足し、全体は 15 分で組み立て直す。`timelineView` は、閲覧者が Status の見え方を
 変えるルート(投稿・削除・お気に入り・ブースト・ブックマーク・ピン・フォロー・プロフィール・リスト)に付けた
 `touchesTimelineView` ミドルウェアが、応答を送る前に書き直す。
 
@@ -340,7 +341,7 @@ following の射影(承認待ちを含む)にあれば、同じトランザク�
 | `presenters/status.ts` | Note / Announce → Status の変換、閲覧者のインタラクション状態の解決、タイムライン・スレッドの Status 化 |
 | `presenters/list.ts` | リスト → List エンティティの変換と、リストのメンバー一覧のページング(アカウント ID の降順。→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
 | `presenters/tag.ts` | タグ名 → Tag エンティティの変換(→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
-| `presenters/timelineHeadCache.ts` | ホーム・リストのタイムラインの先頭ページのインスタンス内キャッシュ(→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md)) |
+| `presenters/timelineHeadCache.ts` | ホーム・リストのタイムラインの先頭ページと `max_id` のページのインスタンス内キャッシュ(→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md)、[ADR-0147](adr/0147-cache-timeline-max-id-pages-in-instance.md)) |
 | `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `authIfPresent` / `getOptionalViewer`)と有効なスコープの一覧 |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |

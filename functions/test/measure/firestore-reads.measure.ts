@@ -226,6 +226,7 @@ describe('Firestore reads per request', () => {
 
 		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138、ADR-0139) が空の状態、2 回目は効いた状態。
 		// タイムラインは、先頭ページのキャッシュ (ADR-0139) だけを捨てて組み立て直す回 (rebuild) も測る。
+		// 2 ページ目 (ADR-0147) は、組み立てる回 (rebuild) とキャッシュが効いた回を測る。
 		const timelinePaths = {
 			home: '/api/v1/timelines/home?limit=20',
 			list: `/api/v1/timelines/list/${list!.id}?limit=20`,
@@ -236,7 +237,11 @@ describe('Firestore reads per request', () => {
 			await measure(`${label} (cold)`, path);
 			clearTimelineHeadCache();
 			await measure(`${label} (rebuild)`, path);
-			await measure(label, path);
+			const head = await measure(label, path);
+			// Phanpy が自動更新のたびに取り直す 2 ページ目 (ADR-0147)。
+			const olderPath = `${path}&max_id=${head.at(-1)!.id}`;
+			await measure(`${label} page 2 (rebuild)`, olderPath);
+			await measure(`${label} page 2`, olderPath);
 			// 新着が 1 件あるとき (ADR-0139 決定4)。リストのメンバーの Note なので、ホームとリストの両方に載る。
 			await apex.store.saveObject({
 				id: `${remotes[0]}/notes/new-${label}`,

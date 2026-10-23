@@ -719,6 +719,26 @@ export interface TimelineHeadState {
 	latestEntryId: string | null;
 }
 
+// タイムラインのキャッシュを検証するためのバージョンを読む (→ ADR-0139 決定2、ADR-0147 決定2)。
+// キャッシュしてはいけなければ undefined。呼び出し側は組み立ての前に読む。
+export const readTimelineVersion = async (viewerId: string): Promise<string | undefined> => {
+	const key = escapeFirestoreKey(viewerId);
+	const viewRef = timelineViewVersionRef(key);
+	const [marker, following, view] = await db.getAll(
+		timelineFeedsMarkerRef(key),
+		followingVersionRef(key),
+		viewRef,
+	);
+	if (marker?.updateTime === undefined || following?.updateTime === undefined) {
+		return undefined;
+	}
+	// 一度も操作していなければ作る。これより後の操作はすべてこれを書き直すので、作った時点から使える。
+	const viewTime = view?.updateTime ?? (await viewRef.set(timelineViewVersionData())).writeTime;
+	return [marker.updateTime, following.updateTime, viewTime]
+		.map((time) => time.valueOf())
+		.join(' ');
+};
+
 // 先頭ページのキャッシュを検証するための状態を読む (→ ADR-0139 決定2)。キャッシュしてはいけなければ undefined。
 // 呼び出し側は組み立ての前に読む。間に挟まった書き込みは、次の呼び出しでバージョンか最新のエントリの違いとして現れる。
 export const readTimelineHeadState = async (
@@ -728,20 +748,12 @@ export const readTimelineHeadState = async (
 	const key = escapeFirestoreKey(viewerId);
 	const feed =
 		target.kind === 'home' ? HomeFeed(key) : ListFeed(key, toFirestoreKey(target.listId));
-	const viewRef = timelineViewVersionRef(key);
-	const [[marker, following, view], latest] = await Promise.all([
-		db.getAll(timelineFeedsMarkerRef(key), followingVersionRef(key), viewRef),
+	const [version, latest] = await Promise.all([
+		readTimelineVersion(viewerId),
 		feed.orderBy('id', 'desc').limit(1).get(),
 	]);
-	if (marker?.updateTime === undefined || following?.updateTime === undefined) {
+	if (version === undefined) {
 		return undefined;
 	}
-	// 一度も操作していなければ作る。これより後の操作はすべてこれを書き直すので、作った時点から使える。
-	const viewTime = view?.updateTime ?? (await viewRef.set(timelineViewVersionData())).writeTime;
-	return {
-		version: [marker.updateTime, following.updateTime, viewTime]
-			.map((time) => time.valueOf())
-			.join(' '),
-		latestEntryId: latest.docs[0]?.data().id ?? null,
-	};
+	return { version, latestEntryId: latest.docs[0]?.data().id ?? null };
 };
