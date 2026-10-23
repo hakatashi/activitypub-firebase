@@ -140,7 +140,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0111](0111-retry-unaccepted-follow-and-500-on-sync-failure.md) | 未承認 Follow の再送を受理し、同期処理の失敗時は 500 を返す | Accepted |
 | [0112](0112-do-not-deliver-collection-updates.md) | コレクションの変更時に Update を配送しない | Accepted |
 | [0113](0113-temporary-min-instances-during-migration.md) | アカウント移行時の一時的な最小インスタンス数設定 | Accepted (切り替え方法は ADR-0116 で Superseded) |
-| [0114](0114-retry-transient-delivery-failures.md) | 配送時の 401 / 408 / 429 を一時エラーとして再試行する | Accepted |
+| [0114](0114-retry-transient-delivery-failures.md) | 配送時の 401 / 408 / 429 を一時エラーとして再試行する | Accepted (再試行回数の部分は ADR-0153 で一部 Superseded) |
 | [0115](0115-inbox-4xx-only-for-sender-faults.md) | inbox は送信側の不正が確定したときだけ 4xx を返す | Accepted |
 | [0116](0116-dotenv-for-functions-params.md) | Functions パラメータの dotenv 管理と CI デプロイ | Accepted |
 | [0117](0117-bundle-webfinger-core-context.md) | WebFinger JSON-LD コンテキストのバンドルとリソース割り当て検証 | Accepted |
@@ -179,3 +179,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0150](0150-bot-follow-approval-policy.md) | ボットのフォローは、ボットごとの許可リストで承認し、それ以外は Reject する | Accepted |
 | [0151](0151-bot-operator-token.md) | ボットの投稿は Mastodon API で受け、1つのオペレータートークンと `X-Bot-Account` ヘッダで actor を選ぶ | Accepted |
 | [0152](0152-bots-instance-in-separate-project.md) | ボット用インスタンスは別の Firebase プロジェクトで、同じリポジトリから同じ Functions をデプロイする | Accepted |
+| [0153](0153-split-fetch-and-delivery-timeouts.md) | 外部への取得と配送のタイムアウトを分け(8 秒・15 秒)、配送の再試行を 8 回に延ばす | Accepted |

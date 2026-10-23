@@ -156,6 +156,8 @@ const ActivitypubExpress = <S extends ApexStore>(settings: ApexSettings<S>): Ape
 		logger,
 		offlineMode: normalizedSettings.offlineMode,
 		requestTimeout: normalizedSettings.requestTimeout ?? 5000,
+		deliveryTimeout:
+			normalizedSettings.deliveryTimeout ?? normalizedSettings.requestTimeout ?? 5000,
 	};
 	// pub の関数は呼び出し時に this (= apex) のプロパティを読むので、束縛の時点では
 	// 組み立て途中のオブジェクトを渡してよい

@@ -58,7 +58,8 @@ export const isRetriableDeliveryStatusCode = (statusCode: number): boolean =>
 export const deliveryTask = onTaskDispatched<unknown>(
 	{
 		retryConfig: {
-			maxAttempts: 5,
+			// 間隔は 10・20・40・80・160・320・480 秒 (→ ADR-0153)
+			maxAttempts: 8,
 			minBackoffSeconds: 10,
 			maxBackoffSeconds: 3600,
 			maxDoublings: 4,
@@ -67,7 +68,7 @@ export const deliveryTask = onTaskDispatched<unknown>(
 			maxConcurrentDispatches: 10,
 			maxDispatchesPerSecond: 5,
 		},
-		// apex.requestTimeout(既定5秒)より十分長く取り、
+		// apex.deliveryTimeout(15秒)より十分長く取り、
 		// タイムアウトの取り合いにならないようにする
 		timeoutSeconds: 60,
 	},

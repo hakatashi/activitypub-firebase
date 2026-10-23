@@ -1,7 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { generateKeyPairSync, verify } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import ActivitypubExpress from '../../../src/apex/index.js';
 import type IApexStore from '../../../src/apex/store/interface.js';
 
@@ -22,6 +22,7 @@ describe('apex federation (undici)', () => {
 	};
 	let mockStatusCode = 200;
 	let mockResponseBody = '{"id":"https://remote.example/o/1","type":"Note"}';
+	let mockDelayMs = 0;
 
 	const mockStore = {} as IApexStore;
 
@@ -70,8 +71,10 @@ describe('apex federation (undici)', () => {
 					headers: req.headers,
 					body,
 				};
-				res.writeHead(mockStatusCode, { 'Content-Type': 'application/activity+json' });
-				res.end(mockResponseBody);
+				setTimeout(() => {
+					res.writeHead(mockStatusCode, { 'Content-Type': 'application/activity+json' });
+					res.end(mockResponseBody);
+				}, mockDelayMs);
 			});
 		});
 
@@ -168,6 +171,40 @@ describe('apex federation (undici)', () => {
 			const address = 'http://127.0.0.1:1';
 
 			await expect(apex.deliver(actorId, activity, address, privateKey)).rejects.toThrow();
+		});
+
+		describe('deliveryTimeout', () => {
+			const actorId = 'https://example.com/u/alice#main-key';
+			const activity = '{"type":"Like"}';
+
+			afterEach(() => {
+				mockDelayMs = 0;
+			});
+
+			test('rejects when the response takes longer than deliveryTimeout', async () => {
+				mockStatusCode = 202;
+				// undici のタイムアウトの精度は 1 秒程度なので、待ち時間はそれより十分長く取る
+				mockDelayMs = 2500;
+				const apex = createApex({ requestTimeout: 10_000, deliveryTimeout: 100 });
+
+				await expect(
+					apex.deliver(actorId, activity, `${serverUrl}/inbox`, privateKey),
+				).rejects.toThrow();
+			});
+
+			test('waits for deliveryTimeout instead of requestTimeout', async () => {
+				mockStatusCode = 202;
+				mockDelayMs = 1500;
+				const apex = createApex({ requestTimeout: 100, deliveryTimeout: 5000 });
+
+				const result = await apex.deliver(actorId, activity, `${serverUrl}/inbox`, privateKey);
+				expect(result?.statusCode).toBe(202);
+			});
+
+			test('defaults to requestTimeout', () => {
+				expect(createApex({ requestTimeout: 1234 }).deliveryTimeout).toBe(1234);
+				expect(createApex().deliveryTimeout).toBe(5000);
+			});
 		});
 
 		test('returns null when delivering to unsafe addresses (localhost, private IP, metadata)', async () => {

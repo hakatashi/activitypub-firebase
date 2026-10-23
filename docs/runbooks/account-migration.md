@@ -162,7 +162,7 @@ mkdir -p ~/migration   # 旧アカウントのデータと各時点の記録を�
 
    - **Go の基準:** 60 秒のタイムアウトと 30 秒前後の応答がなく、actor の取得と移行フォームが**安定して 10 秒未満**で返る。
      満たさなければ延期する(延期しても失うものはない。別名は無害で、事前配送の効果は数日なら残る)。
-   - 10 秒未満でも、こちらの `requestTimeout`(5 秒)を超える応答が混じるなら、Move の直後に署名の検証の一部が失敗し、
+   - 10 秒未満でも、こちらの `requestTimeout`(8 秒。2026-10-17 の時点では 5 秒)を超える応答が混じるなら、Move の直後に署名の検証の一部が失敗し、
      inbox が旧サーバーに 5xx を返すことを見込んでおく(「5. 問題が起きたときの対処」)。
      2026-10-17 は actor の取得が 2〜6 秒中心(最大 7.7 秒)の状態で Go とした。
    - 張り付いて監視できる時間から逆算して Move の期限を決め、それまでに基準を満たさなければ延期する。
@@ -265,7 +265,7 @@ gcloud tasks list --queue=deliveryTask --location=asia-northeast1 --project=$GCL
 | `accept_delivery_failed`、相手で follow_request のまま | `deliveries/resend` で Accept を再送する。原因(相手の 5xx、署名)を `deliveries/failed` の `statusCode` / `error` で見る |
 | `follow_received_not_projected` | `reconcilePendingFollows.ts` で承認し直す。`activitypub` Function の ERROR ログで承認が失敗した原因を見る |
 | inbox が 5xx を返している | 相手は再送してくるので、慌てない。原因を特定し、直してデプロイする(下記の凍結の例外)。2026-10-13 のリハーサルでは、inbox が18分間 503 を返す最中に Move しても、復旧後に全員が移ってきた(Mastodon は復旧から約10分、Misskey は約30分以内) |
-| 旧サーバーのフォロワーの Follow に inbox が 500(`Headers Timeout Error` / `TransientFetchError`) | 旧サーバーが遅く、actor をキャッシュしていないフォロワーの署名者の取得が `requestTimeout`(5 秒)を超えている。**相手の再送で回収できるので、何もしない。** 2026-10-17 は Move の直後に pawoo.net へ 500 を 84 件返したが、約1時間で全員が移ってきた(→ [#326](https://github.com/hakatashi/activitypub-firebase/issues/326)) |
+| 旧サーバーのフォロワーの Follow に inbox が 500(`Headers Timeout Error` / `TransientFetchError`) | 旧サーバーが遅く、actor をキャッシュしていないフォロワーの署名者の取得が `requestTimeout`(当時は 5 秒、今は 8 秒。→ ADR-0153)を超えている。**相手の再送で回収できるので、何もしない。** 2026-10-17 は Move の直後に pawoo.net へ 500 を 84 件返したが、約1時間で全員が移ってきた(→ [#326](https://github.com/hakatashi/activitypub-firebase/issues/326)) |
 | Follow に inbox が 503(`Dereferencing a URL did not result in a valid JSON-LD object`) | `@context` に `https://w3id.org/identity/v1` が入っている(GoToSocial 系)。#325 を直すまでは取得できずに 503 が続く。本番の Firestore の `contexts` には 2026-10-17 に Misskey が同梱しているもの(`third_party/misskey/packages/backend/src/core/activitypub/misc/contexts.ts` の `id_v1`)を手で入れてあるので、本番では起きないはず。別の context で同じことが起きたら、ユーザーの承認を得て同じ形式(`Store#saveContext`)で入れる(→ [#325](https://github.com/hakatashi/activitypub-firebase/issues/325)) |
 | フォロワーではない相手の `Block` に inbox が 500 | 旧アカウントをブロックしていた人のブロックが、Mastodon の Move の処理で移行先に引き継がれて届いている。署名者が取れない(相手が 401 を返す、旧サーバーで削除・凍結済みで 410)と 500 になる。フォロワーではないので、引っ越しには影響しない(→ [#327](https://github.com/hakatashi/activitypub-firebase/issues/327)) |
 | inbox が 4xx を返している | そのフォロワーは失われた可能性が高い。`userAgent` と時刻からサーバーを特定し、個別に連絡する候補にする。原因は直してデプロイする(凍結の例外) |
