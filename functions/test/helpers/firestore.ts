@@ -4,6 +4,7 @@ import { escapeFirestoreKey } from '../../src/firebase.js';
 import { clearTimelineHeadCache } from '../../src/mastodon/presenters/timelineHeadCache.js';
 import { clearMastodonIdCache } from '../../src/mastodonId.js';
 import { timelineFeedsMarkerRef } from '../../src/projections/timelineFeeds.js';
+import { clearTimelineVersionCache } from '../../src/social/timelines.js';
 
 /**
  * テスト用 Firestore エミュレータのリセットヘルパー。
@@ -24,9 +25,10 @@ export const resetFirestore = async (): Promise<void> => {
 	if (!res.ok) {
 		throw new Error(`Failed to reset Firestore emulator: ${res.status} ${res.statusText}`);
 	}
-	// 消えた対応・タイムラインをキャッシュから返さないようにする (→ ADR-0138、ADR-0139)。
+	// 消えた対応・タイムラインをキャッシュから返さないようにする (→ ADR-0138、ADR-0139、ADR-0154)。
 	clearMastodonIdCache();
 	clearTimelineHeadCache();
+	clearTimelineVersionCache();
 };
 
 /**

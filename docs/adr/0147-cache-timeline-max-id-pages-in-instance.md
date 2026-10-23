@@ -1,6 +1,6 @@
 # ADR-0147: ホーム・リストのタイムラインの `max_id` だけのページも、バージョンを見てインスタンス内にキャッシュする
 
-- **Status:** Accepted
+- **Status:** Accepted (検証の読み取りの頻度は ADR-0154 で Superseded)
 - **Date:** 2026-10-23
 - **Supersedes:** [ADR-0139](0139-cache-timeline-head-page-in-instance.md) の対象 (決定1) と上限 (決定6)
 

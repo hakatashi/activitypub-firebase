@@ -1,6 +1,6 @@
 # ADR-0139: ホーム・リストのタイムラインの先頭ページを、新着とバージョンを見てインスタンス内にキャッシュする
 
-- **Status:** Accepted (対象と上限は ADR-0147 で Superseded)
+- **Status:** Accepted (対象と上限は ADR-0147、検証の読み取りの頻度は ADR-0154 で Superseded)
 - **Date:** 2026-10-21
 
 ## 背景

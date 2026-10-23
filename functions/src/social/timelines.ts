@@ -1,5 +1,9 @@
 import assert from 'node:assert';
-import type { CollectionReference, QueryDocumentSnapshot } from '@google-cloud/firestore';
+import type {
+	CollectionReference,
+	DocumentReference,
+	QueryDocumentSnapshot,
+} from '@google-cloud/firestore';
 import { chunk, uniq } from 'lodash-es';
 import type { APActor } from 'activitypub-types';
 import type { APObject } from '../apex/index.js';
@@ -706,8 +710,41 @@ const timelineViewVersionData = () => ({
 		firebase.firestore.FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
 });
 
+// 検証に使うバージョンのインスタンス内キャッシュ (→ ADR-0154)。キーはローカル actor の IRI。
+interface CachedVersion {
+	// `updateTime.valueOf()`
+	time: string;
+	fetchedAt: number;
+}
+interface TimelineVersionCacheEntry {
+	marker?: CachedVersion;
+	following?: CachedVersion;
+	view?: CachedVersion;
+}
+const timelineVersionCache = new Map<string, TimelineVersionCacheEntry>();
+// 捨てるたびに増やす。捨てる前に読み始めた読み取りの結果を覚えないために使う。
+const timelineVersionGenerations = new Map<string, number>();
+
+// マーカーと following はバックフィルや inbox からの Accept / Reject でしか他の経路から変わらないので長めにする。
+// 閲覧者のバージョンは、他のインスタンス・他の関数での操作の後の巻き戻りを短くするため短めにする (→ ADR-0154 決定2)。
+const MARKER_VERSION_MAX_AGE_MS = 3 * 60 * 1000;
+const FOLLOWING_VERSION_MAX_AGE_MS = 3 * 60 * 1000;
+const VIEW_VERSION_MAX_AGE_MS = 60 * 1000;
+
+export const clearTimelineVersionCache = () => {
+	timelineVersionCache.clear();
+	timelineVersionGenerations.clear();
+};
+
+const forgetTimelineVersions = (actorId: string) => {
+	timelineVersionCache.delete(actorId);
+	timelineVersionGenerations.set(actorId, (timelineVersionGenerations.get(actorId) ?? 0) + 1);
+};
+
+// 書き込みが済んでから、同じインスタンスで覚えているバージョンを捨てる (→ ADR-0154 決定3)。
 export const touchTimelineViewVersion = async (actorId: string) => {
 	await timelineViewVersionRef(escapeFirestoreKey(actorId)).set(timelineViewVersionData());
+	forgetTimelineVersions(actorId);
 };
 
 export type TimelineTarget = { kind: 'home' } | { kind: 'list'; listId: string };
@@ -719,24 +756,56 @@ export interface TimelineHeadState {
 	latestEntryId: string | null;
 }
 
+const isFresh = (cached: CachedVersion | undefined, maxAge: number, now: number) =>
+	cached !== undefined && now - cached.fetchedAt < maxAge;
+
 // タイムラインのキャッシュを検証するためのバージョンを読む (→ ADR-0139 決定2、ADR-0147 決定2)。
+// 期限内に読んだものはインスタンス内に覚えた値を使う (→ ADR-0154)。
 // キャッシュしてはいけなければ undefined。呼び出し側は組み立ての前に読む。
 export const readTimelineVersion = async (viewerId: string): Promise<string | undefined> => {
 	const key = escapeFirestoreKey(viewerId);
 	const viewRef = timelineViewVersionRef(key);
-	const [marker, following, view] = await db.getAll(
-		timelineFeedsMarkerRef(key),
-		followingVersionRef(key),
-		viewRef,
-	);
-	if (marker?.updateTime === undefined || following?.updateTime === undefined) {
+	const now = Date.now();
+	const generation = timelineVersionGenerations.get(viewerId) ?? 0;
+	const cached = timelineVersionCache.get(viewerId) ?? {};
+	const versions: {
+		name: keyof TimelineVersionCacheEntry;
+		ref: DocumentReference;
+		maxAge: number;
+	}[] = [
+		{ name: 'marker', ref: timelineFeedsMarkerRef(key), maxAge: MARKER_VERSION_MAX_AGE_MS },
+		{ name: 'following', ref: followingVersionRef(key), maxAge: FOLLOWING_VERSION_MAX_AGE_MS },
+		{ name: 'view', ref: viewRef, maxAge: VIEW_VERSION_MAX_AGE_MS },
+	];
+	const stale = versions.filter(({ name, maxAge }) => !isFresh(cached[name], maxAge, now));
+	const fetched: TimelineVersionCacheEntry = { ...cached };
+	if (stale.length > 0) {
+		const snapshots = await db.getAll(...stale.map(({ ref }) => ref));
+		for (const [index, { name }] of stale.entries()) {
+			let time = snapshots[index]?.updateTime;
+			// 一度も操作していなければ作る。これより後の操作はすべてこれを書き直すので、作った時点から使える。
+			if (time === undefined && name === 'view') {
+				time = (await viewRef.set(timelineViewVersionData())).writeTime;
+			}
+			if (time === undefined) {
+				delete fetched[name];
+			} else {
+				fetched[name] = { time: time.valueOf(), fetchedAt: now };
+			}
+		}
+		// 読んでいる間に捨てられていれば、読んだ値は書き込みの前のものかもしれないので覚えない。
+		if ((timelineVersionGenerations.get(viewerId) ?? 0) === generation) {
+			timelineVersionCache.set(viewerId, fetched);
+		}
+	}
+	if (
+		fetched.marker === undefined ||
+		fetched.following === undefined ||
+		fetched.view === undefined
+	) {
 		return undefined;
 	}
-	// 一度も操作していなければ作る。これより後の操作はすべてこれを書き直すので、作った時点から使える。
-	const viewTime = view?.updateTime ?? (await viewRef.set(timelineViewVersionData())).writeTime;
-	return [marker.updateTime, following.updateTime, viewTime]
-		.map((time) => time.valueOf())
-		.join(' ');
+	return [fetched.marker.time, fetched.following.time, fetched.view.time].join(' ');
 };
 
 // 先頭ページのキャッシュを検証するための状態を読む (→ ADR-0139 決定2)。キャッシュしてはいけなければ undefined。

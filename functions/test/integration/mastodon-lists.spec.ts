@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/apex.js';
 import { resolveAccountIds } from '../../src/mastodon/presenters/account.js';
+import { clearTimelineVersionCache } from '../../src/social/timelines.js';
 import {
 	addAccessToken,
 	createLocalActor,
@@ -285,6 +286,8 @@ describe.each(['scan', 'feed'] as const)(
 					{ id: `${me.id}/follows/${encodeURIComponent(REMOTE_A)}` } as APObject,
 					me.id,
 				);
+				// Mastodon API を通らないフォロー解除は、覚えたバージョンの期限まで反映しない (→ ADR-0154)。
+				clearTimelineVersionCache();
 				expect(await getTimeline(`/api/v1/timelines/list/${list.id}`)).toEqual([mine]);
 			});
 

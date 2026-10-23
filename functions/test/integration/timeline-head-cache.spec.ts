@@ -1,6 +1,7 @@
 import type { APObject } from '../../src/apex/index.js';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
+import { db } from '../../src/firebase.js';
 import { clearTimelineHeadCache } from '../../src/mastodon/presenters/timelineHeadCache.js';
 import { createList } from '../../src/social/lists.js';
 import {
@@ -228,6 +229,53 @@ describe('timeline head cache (Issue #347, ADR-0139)', () => {
 		const unfollow = await mastodonReq.post(`/api/v1/accounts/${account[0]!.id}/unfollow`, TOKEN);
 		expect(unfollow.status).toBe(200);
 		expect((await home(query)).map((status) => status.uri)).toEqual([older[0]?.uri]);
+	});
+
+	test('reuses the versions until each of them expires (ADR-0154)', async () => {
+		await saveNote(REMOTE_A);
+		const first = await home();
+		const getAll = vi.spyOn(db, 'getAll');
+		// 検証のために読んだバージョンの件数を、`getAll` の呼び出しごとに返す。
+		const versionReads = () =>
+			getAll.mock.calls
+				.map((refs) =>
+					refs.filter((ref) => 'path' in ref && ref.path.includes('/projectionVersions/')),
+				)
+				.filter((refs) => refs.length > 0)
+				.map((refs) => refs.length);
+		expect(await home()).toEqual(first);
+		expect(versionReads()).toEqual([]);
+
+		// 閲覧者のバージョンは 1 分、マーカーと following は 3 分で読み直す。
+		const now = Date.now();
+		vi.spyOn(Date, 'now').mockReturnValue(now + 61 * 1000);
+		expect(await home()).toEqual(first);
+		expect(versionReads()).toEqual([1]);
+
+		vi.spyOn(Date, 'now').mockReturnValue(now + 3 * 60 * 1000 + 1000);
+		expect(await home()).toEqual(first);
+		expect(versionReads()).toEqual([1, 3]);
+	});
+
+	test('reflects unfollows outside the Mastodon API after the TTL (ADR-0154)', async () => {
+		await saveNote(REMOTE_B);
+		await saveNote(REMOTE_A, { to: [`${REMOTE_A}/followers`], cc: [] });
+		const before = await home();
+		expect(before).toHaveLength(2);
+
+		// inbox からの Reject などを模して、このインスタンスのキャッシュを捨てずに following を書き換える。
+		const activity = {
+			id: `${me.id}/follows/${encodeURIComponent(REMOTE_A)}`,
+			type: 'Follow',
+			actor: me.id,
+			object: REMOTE_A,
+		} as APObject;
+		await apex.store.updateActivityMeta(activity, 'collection', `${me.id}/following`, true);
+		expect(await home()).toEqual(before);
+
+		const now = Date.now();
+		vi.spyOn(Date, 'now').mockReturnValue(now + 3 * 60 * 1000 + 1000);
+		expect((await home()).map((status) => status.uri)).toEqual([before[1]?.uri]);
 	});
 
 	test('does not cache pages with since_id', async () => {
