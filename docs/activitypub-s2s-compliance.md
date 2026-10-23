@@ -24,7 +24,7 @@
 | §3.1 | S2S のアクティビティは `id` を持つ(一時的なものを除く) | MUST | ✅ | `buildActivity` が必ず `id` を振る |
 | §3.2 | `Accept: application/ld+json; profile="…activitystreams"` に AS の表現を返す | MUST | ✅ | `apex/net/validators.ts` の `jsonld`、`apex/net/responders.ts`。本番で 200 と同じ `Content-Type` を確認 |
 | §3.2 | `Accept: application/activity+json` にも AS の表現を返す | SHOULD | ✅ | 同上(`apex/pub/consts.ts` の `jsonldTypes`) |
-| §3.2 | 取得する側は `Accept` に `application/ld+json; profile=…` を指定する | MUST | ❌ | `apex/pub/federation.ts` の `requestObject` は `application/activity+json` だけを送る → [#360](https://github.com/hakatashi/activitypub-firebase/issues/360) |
+| §3.2 | 取得する側は `Accept` に `application/ld+json; profile=…` を指定する | MUST | ✅ | `apex/pub/federation.ts` の `requestObject`(`apex/pub/consts.ts` の `jsonldAcceptType`)。相互運用のため `application/activity+json` も併記する。`test/unit/apex/requestObject.spec.ts` |
 | §3.2 | 認可に失敗した要求は適切なコード(または 403)で失敗させる。存在を隠すなら 404 でもよい | SHOULD / MAY | ✅ | `apex/net/security.ts` の `requireAuthorizedOrPublic` が公開でないオブジェクト・アクティビティに 403。GET の HTTP 署名による認可はしないので、非公開のものは誰にも返さない |
 
 ## §4 actor
@@ -58,7 +58,7 @@
 |---|---|---|---|---|
 | §7 | 送るアクティビティは `id` を持つ | SHOULD | ✅ | `buildActivity` |
 | §7 | POST の `Content-Type` は `application/ld+json; profile=…` | MUST | ✅ | `apex/pub/federation.ts` の `deliver`(`jsonldOutgoingType`)。`test/unit/apex/deliver.spec.ts` |
-| §7 | GET の `Accept` は `application/ld+json; profile=…` | MUST | ❌ | §3.2 と同じ → [#360](https://github.com/hakatashi/activitypub-firebase/issues/360) |
+| §7 | GET の `Accept` は `application/ld+json; profile=…` | MUST | ✅ | §3.2 と同じ |
 | §7 | `application/activity+json` を同じものとして解釈する | SHOULD | ✅ | `jsonldTypes`(`validators.jsonld` と `activitypub.ts` の本文の解析) |
 | §7 | `Create` / `Update` / `Delete` / `Follow` / `Like` / `Block` / `Undo` に `object`、`Add` / `Remove` に `target` を付けて配送する | MUST | ✅ | `buildActivity` の呼び出し元(`notes.ts`、`social/follows.ts`、`social/reactions.ts`、`mastodon/routes/statusActions.ts`、`mastodon/routes/accounts.ts`)はすべて `object` を渡す。`Add` / `Remove` / `Block` は送らない |
 | §7 | HTTP のキャッシュ(RFC 7234)を、受け取る側・送る側の両方で尊重する | SHOULD | ❌ | 応答には `ETag` が付き条件付き GET に 304 を返すが、リモートの取得は `Cache-Control` / `ETag` を見ない → [#366](https://github.com/hakatashi/activitypub-firebase/issues/366) |

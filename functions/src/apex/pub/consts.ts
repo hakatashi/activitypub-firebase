@@ -14,5 +14,9 @@ export const jsonldTypes = [
 export const jsonldOutgoingType =
 	'application/ld+json; profile="https://www.w3.org/ns/activitystreams"';
 
+// リモートのオブジェクトを取得するときの Accept。仕様 (AP §3.2, §7) は ld+json; profile=... を MUST とするが、
+// activity+json しか見ない実装もあるので相互運用のため両方を送る
+export const jsonldAcceptType = `application/activity+json, ${jsonldOutgoingType}`;
+
 // since we use json-ld procedding, it will always appear this way regardless of input format
 export const publicAddress = 'as:Public';
