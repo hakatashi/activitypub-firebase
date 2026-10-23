@@ -67,7 +67,9 @@ describe('apex requestObject (SSRF-safe)', () => {
 			id: `${origin}/o/1`,
 			type: 'Note',
 		});
-		expect(accept).toBe('application/activity+json');
+		expect(accept).toBe(
+			'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+		);
 	});
 
 	test('rejects an unsafe URL without connecting', async () => {

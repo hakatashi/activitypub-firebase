@@ -218,7 +218,9 @@ describe('apex federation (undici)', () => {
 
 			expect(lastReceivedRequest.method).toBe('GET');
 			expect(lastReceivedRequest.url).toBe('/o/test-note');
-			expect(lastReceivedRequest.headers.accept).toBe('application/activity+json');
+			expect(lastReceivedRequest.headers.accept).toBe(
+				'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+			);
 			expect(lastReceivedRequest.headers.signature).toContain(
 				'keyId="https://example.com/u/system#main-key"',
 			);

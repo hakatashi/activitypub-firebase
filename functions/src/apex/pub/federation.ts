@@ -5,6 +5,7 @@ import { request } from 'undici';
 import type { Dispatcher } from 'undici';
 import type { Apex, APObject } from '../types.js';
 import { errorMessage, firstString, isAPObject, isHashtag, isRecord, toArray } from '../values.js';
+import { jsonldAcceptType } from './consts.js';
 import { responseStatusError, withTransientFetchErrors } from './fetchErrors.js';
 import {
 	assertSafeUrl,
@@ -205,7 +206,7 @@ export const requestObject = async function (
 
 	for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
 		const headers: Record<string, string> = {
-			Accept: 'application/activity+json',
+			Accept: jsonldAcceptType,
 			'User-Agent': this.makeUserAgentString(),
 		};
 		const privateKey = this.systemUser?._meta?.privateKey;
