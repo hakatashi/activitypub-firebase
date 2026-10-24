@@ -2,6 +2,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import ActivitypubExpress from '../../../src/apex/index.js';
+import { PermanentFetchError, TransientFetchError } from '../../../src/apex/pub/fetchErrors.js';
 import type IApexStore from '../../../src/apex/store/interface.js';
 
 describe('apex net/security verifySignature', () => {
@@ -1452,6 +1453,137 @@ describe('apex net/security verifySignature', () => {
 
 				expect(apex.resolveObject).not.toHaveBeenCalledWith(KEY_ID, false, true);
 				expect(res.status).toHaveBeenCalledWith(403);
+				expect(next).not.toHaveBeenCalled();
+			});
+		});
+	});
+
+	describe('permanent signer fetch error (ADR-0159)', () => {
+		const body = { type: 'Block', actor: ACTOR_ID, object: 'https://example.com/u/hakatashi' };
+		const keylessSigner = { id: ACTOR_ID, type: 'Person' };
+
+		const makeCavageReq = () => {
+			const digest = computeDigest(body);
+			const { signature, date } = apex.computeHttpSignatureHeaders({
+				method: 'post',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKeyPem: privateKey,
+				digest,
+			});
+			return makeReq({ headers: { host: 'example.com', date, digest, signature }, body });
+		};
+
+		const makeRfc9421Req = async () => {
+			const rfcHeaders = await apex.computeRfc9421SignatureHeaders({
+				method: 'POST',
+				url: 'https://example.com/u/hakatashi/inbox',
+				keyId: KEY_ID,
+				privateKey,
+				body,
+			});
+			return makeReq({ headers: { host: 'example.com', ...rfcHeaders }, body });
+		};
+
+		const resolveWithUncachedError = (error: Error) =>
+			vi
+				.fn()
+				.mockImplementation((...args: unknown[]) =>
+					args[3] ? Promise.resolve(undefined) : Promise.reject(error),
+				);
+
+		describe.each([
+			['draft-cavage', () => Promise.resolve(makeCavageReq())],
+			['RFC 9421', makeRfc9421Req],
+		] as const)('%s', (_name, makeSignedReq) => {
+			test('returns 200 and ignores activity when initial signer fetch fails with PermanentFetchError (401)', async () => {
+				const req = await makeSignedReq();
+				apex.resolveObject = resolveWithUncachedError(
+					new PermanentFetchError('Request failed with status code 401', 401),
+				);
+				const res = makeRes();
+				const next = vi.fn();
+
+				await apex.net.security.verifySignature(req, res, next);
+
+				expect(res.status).toHaveBeenCalledWith(200);
+				expect(res.send).toHaveBeenCalledOnce();
+				expect(next).not.toHaveBeenCalled();
+				expect(apex.logger.warn).toHaveBeenCalledWith(
+					expect.stringContaining('Failed to resolve signer permanently'),
+					expect.any(PermanentFetchError),
+				);
+			});
+
+			test('returns 200 and ignores activity when initial signer fetch fails with PermanentFetchError (410)', async () => {
+				const req = await makeSignedReq();
+				apex.resolveObject = resolveWithUncachedError(
+					new PermanentFetchError('Request failed with status code 410', 410),
+				);
+				const res = makeRes();
+				const next = vi.fn();
+
+				await apex.net.security.verifySignature(req, res, next);
+
+				expect(res.status).toHaveBeenCalledWith(200);
+				expect(res.send).toHaveBeenCalledOnce();
+				expect(next).not.toHaveBeenCalled();
+			});
+
+			test('returns 500 when initial signer fetch fails with TransientFetchError (500)', async () => {
+				const req = await makeSignedReq();
+				apex.resolveObject = resolveWithUncachedError(
+					new TransientFetchError('Request failed with status code 500'),
+				);
+				const res = makeRes();
+				const next = vi.fn();
+
+				await apex.net.security.verifySignature(req, res, next);
+
+				expect(res.status).toHaveBeenCalledWith(500);
+				expect(next).not.toHaveBeenCalled();
+			});
+
+			test('returns 200 when refreshing a keyless cached signer fails with PermanentFetchError', async () => {
+				const req = await makeSignedReq();
+				apex.resolveObject = vi
+					.fn()
+					.mockImplementation((_id: unknown, _meta: unknown, refresh: unknown) =>
+						refresh
+							? Promise.reject(new PermanentFetchError('Request failed with status code 404', 404))
+							: Promise.resolve(keylessSigner),
+					);
+				const res = makeRes();
+				const next = vi.fn();
+
+				await apex.net.security.verifySignature(req, res, next);
+
+				expect(res.status).toHaveBeenCalledWith(200);
+				expect(res.send).toHaveBeenCalledOnce();
+				expect(next).not.toHaveBeenCalled();
+			});
+
+			test('returns 200 when key rotation refresh fails with PermanentFetchError', async () => {
+				const req = await makeSignedReq();
+				const signerWithOtherKey = {
+					id: ACTOR_ID,
+					type: 'Person',
+					publicKey: [{ id: KEY_ID, owner: ACTOR_ID, publicKeyPem: [otherPublicKey] }],
+				};
+				apex.resolveObject = vi
+					.fn()
+					.mockImplementation((_id: unknown, _meta: unknown, refresh: unknown) =>
+						refresh
+							? Promise.reject(new PermanentFetchError('Request failed with status code 401', 401))
+							: Promise.resolve(signerWithOtherKey),
+					);
+				const res = makeRes();
+				const next = vi.fn();
+
+				await apex.net.security.verifySignature(req, res, next);
+
+				expect(res.status).toHaveBeenCalledWith(200);
+				expect(res.send).toHaveBeenCalledOnce();
 				expect(next).not.toHaveBeenCalled();
 			});
 		});
