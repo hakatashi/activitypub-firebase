@@ -4,7 +4,8 @@
 	"description": "サードパーティ Mastodon クライアント(Elk / Phanpy)で dev 環境を操作して確認する",
 	"type": "module",
 	"scripts": {
-		"start": "node run.mjs"
+		"start": "node run.mjs",
+		"test": "node run.mjs"
 	},
 	"dependencies": {
 		"playwright": "1.63.0"
