@@ -8,6 +8,7 @@ import {
 import type { RequestDescriptor, VerificationPolicy, Verifier } from 'http-message-sig';
 import { first, isRecord } from '../values.js';
 import type { APObject } from '../types.js';
+import { isPermanentFetchFailure } from '../pub/fetchErrors.js';
 import { getApex, getLocals } from './locals.js';
 
 export interface SignatureHeader {
@@ -429,7 +430,7 @@ const verifyRfc9421 = async (req: Request, res: Response, next: NextFunction): P
 				signer = await apex.resolveObject(keyId);
 			}
 		} catch (err) {
-			if (err instanceof TombstoneIgnoredError) {
+			if (err instanceof TombstoneIgnoredError || isPermanentFetchFailure(err)) {
 				throw err;
 			}
 			apex.logger.warn('error resolving signer for signature verification', err);
@@ -482,6 +483,14 @@ const verifyRfc9421 = async (req: Request, res: Response, next: NextFunction): P
 				try {
 					resolvedSigner = await apex.resolveObject(resolvedKeyId, false, true);
 				} catch (refreshErr) {
+					if (isPermanentFetchFailure(refreshErr)) {
+						apex.logger.warn(
+							'Failed to refresh key permanently for RFC 9421 signature verification, ignoring activity:',
+							refreshErr,
+						);
+						res.status(200).send();
+						return;
+					}
 					apex.logger.warn('error refreshing key for signature verification', refreshErr);
 					res.status(500).send();
 					return;
@@ -534,6 +543,14 @@ const verifyRfc9421 = async (req: Request, res: Response, next: NextFunction): P
 					res.status(403).send('Invalid http signature');
 					return;
 				}
+				if (isPermanentFetchFailure(err.cause)) {
+					apex.logger.warn(
+						'Failed to resolve signer permanently for RFC 9421 signature verification, ignoring activity:',
+						err.cause,
+					);
+					res.status(200).send();
+					return;
+				}
 				apex.logger.warn('Resolver failed during RFC 9421 signature verification', err.cause);
 				res.status(500).send();
 				return;
@@ -542,6 +559,14 @@ const verifyRfc9421 = async (req: Request, res: Response, next: NextFunction): P
 				`Request rejected: RFC 9421 verification error (${err.code}): ${err.message}`,
 			);
 			res.status(403).send('Invalid http signature');
+			return;
+		}
+		if (isPermanentFetchFailure(err)) {
+			apex.logger.warn(
+				'Failed to resolve signer permanently for RFC 9421 signature verification, ignoring activity:',
+				err,
+			);
+			res.status(200).send();
 			return;
 		}
 		apex.logger.warn('Unexpected error during RFC 9421 verification', err);
@@ -742,6 +767,14 @@ export const verifySignature = async (
 			signer = await apex.resolveObject(sigHead.keyId);
 		}
 	} catch (err) {
+		if (isPermanentFetchFailure(err)) {
+			apex.logger.warn(
+				'Failed to resolve signer permanently for signature verification, ignoring activity:',
+				err,
+			);
+			res.status(200).send();
+			return;
+		}
 		apex.logger.warn('error resolving signer for signature verification', err);
 		res.status(500).send();
 		return;
@@ -756,6 +789,14 @@ export const verifySignature = async (
 		try {
 			signer = await apex.resolveObject(sigHead.keyId, false, true);
 		} catch (err) {
+			if (isPermanentFetchFailure(err)) {
+				apex.logger.warn(
+					'Failed to refresh keyless signer permanently for signature verification, ignoring activity:',
+					err,
+				);
+				res.status(200).send();
+				return;
+			}
 			apex.logger.warn('error refreshing keyless signer for signature verification', err);
 			res.status(500).send();
 			return;
@@ -780,6 +821,14 @@ export const verifySignature = async (
 		try {
 			signer = await apex.resolveObject(sigHead.keyId, false, true);
 		} catch (err) {
+			if (isPermanentFetchFailure(err)) {
+				apex.logger.warn(
+					'Failed to refresh key permanently for signature verification, ignoring activity:',
+					err,
+				);
+				res.status(200).send();
+				return;
+			}
 			apex.logger.warn('error refreshing key for signature verification', err);
 			res.status(500).send();
 			return;
