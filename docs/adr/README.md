@@ -190,3 +190,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0161](0161-rotate-key-id-with-generation.md) | 鍵ローテーション時に keyId を更新し、配送時は actor の publicKey.id を参照する | Accepted |
 | [0162](0162-external-media-urls-for-bots.md) | ボットの投稿で外部 URL 直リンク画像を添付できるようにする | Accepted |
 | [0163](0163-deploy-dev-and-smoke-test-on-pr.md) | PR 時の dev への Functions デプロイとスモークテスト自動化 | Accepted |
+| [0164](0164-client-e2e-in-ci.md) | PR CI で Elk / Phanpy のクライアント E2E テストを実行する | Accepted |
