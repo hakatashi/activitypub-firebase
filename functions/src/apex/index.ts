@@ -22,6 +22,7 @@ export type {
 } from './store/interface.js';
 export { assertSafeUrl, makePinnedAgent, maxRedirects, readBodyWithLimit } from './pub/ssrf.js';
 export { getLocals } from './net/locals.js';
+export { publicKeyIdOf, publicKeyPemOf } from './net/security.js';
 
 // bind pub methods at top level so their 'this' is apex instance.
 // Object.fromEntries はキーごとの型を失うため、ここでだけ型アサーションを許す (→ ADR-0051)。

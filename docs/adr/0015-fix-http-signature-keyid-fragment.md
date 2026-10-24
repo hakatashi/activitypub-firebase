@@ -1,6 +1,6 @@
 # ADR-0015: 配送の HTTP Signature keyId に `#main-key` を付与する
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0161
 - **Date:** 2026-09-05
 
 ## 背景

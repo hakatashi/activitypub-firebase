@@ -181,4 +181,30 @@ describe('apex requestObject (SSRF-safe)', () => {
 		);
 		expect(headers.date).toBeDefined();
 	});
+
+	test('signs the request using systemUser.publicKey.id (ADR-0161)', async () => {
+		let headers: IncomingMessage['headers'] = {};
+		handler = (req, res) => {
+			headers = req.headers;
+			json(res, { id: `${origin}/o/1`, type: 'Note' });
+		};
+		const { privateKey } = generateKeyPairSync('rsa', {
+			modulusLength: 2048,
+			publicKeyEncoding: { type: 'spki', format: 'pem' },
+			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+		});
+		const apex = makeApex({
+			systemUser: {
+				id: 'https://hakatashi.com/activitypub/u/hakatashi',
+				type: 'Person',
+				publicKey: [{ id: 'https://hakatashi.com/activitypub/u/hakatashi#main-key-2' }],
+				_meta: { privateKey },
+			},
+		});
+		await request(apex, `${origin}/o/1`);
+		expect(headers.signature).toContain(
+			'keyId="https://hakatashi.com/activitypub/u/hakatashi#main-key-2"',
+		);
+		expect(headers.date).toBeDefined();
+	});
 });

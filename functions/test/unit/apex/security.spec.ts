@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import ActivitypubExpress from '../../../src/apex/index.js';
 import { PermanentFetchError, TransientFetchError } from '../../../src/apex/pub/fetchErrors.js';
+import { publicKeyIdOf } from '../../../src/apex/net/security.js';
 import type IApexStore from '../../../src/apex/store/interface.js';
 
 describe('apex net/security verifySignature', () => {
@@ -1586,6 +1587,50 @@ describe('apex net/security verifySignature', () => {
 				expect(res.send).toHaveBeenCalledOnce();
 				expect(next).not.toHaveBeenCalled();
 			});
+		});
+	});
+
+	describe('publicKeyIdOf', () => {
+		test('extracts key id when publicKey is a single object', () => {
+			const signer = {
+				id: ACTOR_ID,
+				publicKey: { id: `${ACTOR_ID}#main-key-2`, owner: ACTOR_ID },
+			};
+			expect(publicKeyIdOf(signer)).toBe(`${ACTOR_ID}#main-key-2`);
+		});
+
+		test('extracts key id when publicKey is an array of objects', () => {
+			const signer = {
+				id: ACTOR_ID,
+				publicKey: [{ id: `${ACTOR_ID}#main-key-3`, owner: ACTOR_ID }],
+			};
+			expect(publicKeyIdOf(signer)).toBe(`${ACTOR_ID}#main-key-3`);
+		});
+
+		test('extracts key id when key.id is an array (JSON-LD expanded)', () => {
+			const signer = {
+				id: ACTOR_ID,
+				publicKey: [{ id: [`${ACTOR_ID}#main-key-4`], owner: [ACTOR_ID] }],
+			};
+			expect(publicKeyIdOf(signer)).toBe(`${ACTOR_ID}#main-key-4`);
+		});
+
+		test('extracts key id from additionalPublicKeys when publicKey has no id', () => {
+			const signer = {
+				id: ACTOR_ID,
+				publicKey: {},
+				additionalPublicKeys: [{ id: `${ACTOR_ID}#ed-key-1`, owner: ACTOR_ID }],
+			};
+			expect(publicKeyIdOf(signer)).toBe(`${ACTOR_ID}#ed-key-1`);
+		});
+
+		test('returns undefined when publicKey is missing or invalid', () => {
+			expect(publicKeyIdOf(null)).toBeUndefined();
+			expect(publicKeyIdOf(undefined)).toBeUndefined();
+			expect(publicKeyIdOf('string')).toBeUndefined();
+			expect(publicKeyIdOf({ id: ACTOR_ID })).toBeUndefined();
+			expect(publicKeyIdOf({ id: ACTOR_ID, publicKey: {} })).toBeUndefined();
+			expect(publicKeyIdOf({ id: ACTOR_ID, publicKey: [{}] })).toBeUndefined();
 		});
 	});
 });
