@@ -24,15 +24,18 @@ const { values } = parseArgs({
 	options: {
 		username: { type: 'string' },
 		keyId: { type: 'string' },
+		'key-id': { type: 'string' },
 		dryRun: { type: 'boolean' },
+		'dry-run': { type: 'boolean' },
 	},
 	strict: false,
 });
 
 const username = typeof values.username === 'string' ? values.username : LOCAL_USERNAME;
 const actorId = localActorIri(username, domain);
-const customKeyId = typeof values.keyId === 'string' ? values.keyId : undefined;
-const dryRun = values.dryRun === true;
+const rawKeyId = values['key-id'] ?? values.keyId;
+const customKeyId = typeof rawKeyId === 'string' ? rawKeyId : undefined;
+const dryRun = values['dry-run'] === true || values.dryRun === true;
 
 const main = async () => {
 	const result = await rotateActorKey({
