@@ -67,7 +67,7 @@
 | GET | `/api/v1/statuses/:id/favourited_by` / `reblogged_by` | ✅ | 認証は任意。Status が見えなければ 404(ブースト ID なら元の投稿が対象)。streams の Like / Announce を全件読み、アクティビティの Mastodon ID をカーソルに新しい順で `Link` ヘッダでページング。既定 40 / 最大 80。同じ actor は 1 件に寄せ、ブーストは public / unlisted のみ。手元に届いた分だけ (→ [ADR-0101](adr/0101-favourited-by-and-reblogged-by.md)) |
 | GET | `/api/v1/favourites` | ✅ | `read:favourites` 必須。お気に入りした順(新しい順)。カーソルは射影の `cursorId`(最新の Like の Mastodon ID)で `Link` ヘッダでページング。既定 20 / 最大 40。閲覧できないもの・Tombstone は飛ばす (→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
 | GET | `/api/v1/bookmarks` | ✅ | `read:bookmarks` 必須。ブックマークした順(新しい順)。カーソルはブックマークの `cursorId`。それ以外は favourites と同じ (→ [ADR-0100](adr/0100-cursor-for-favourites-and-bookmarks.md)) |
-| POST | `/api/v1/statuses/:id/pin` / `unpin` | ✅ | `write:accounts` 必須。自分の投稿のみ(上限5件)、`userInfos/{actor}/pins` 保存・削除、Status 返却 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)) |
+| POST | `/api/v1/statuses/:id/pin` / `unpin` | ✅ | `write:accounts` 必須。自分の投稿のみ(上限5件)、`userInfos/{actor}/pins` 保存・削除、フォロワーへ `Add` / `Remove` を配送 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0160](adr/0160-featured-collection-and-pins-delivery.md))、Status 返却 |
 | POST | `/api/v2/media` | ✅ | `write:media` 必須。同期的に画像処理(EXIF除去・サムネイル・blurhash)を行い Cloud Storage に保存、MediaAttachment 返却 (→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
 | POST | `/api/v1/media` | ✅ | `write:media` 必須。v2 と同一処理で 200 返却 (→ [ADR-0091](adr/0091-media-upload-and-storage.md)) |
 | GET | `/api/v1/media/:id` | ✅ | `write:media` 必須。自分のメディアのみ取得可能 (他人は 404) |

@@ -60,7 +60,7 @@
 | §7 | POST の `Content-Type` は `application/ld+json; profile=…` | MUST | ✅ | `apex/pub/federation.ts` の `deliver`(`jsonldOutgoingType`)。`test/unit/apex/deliver.spec.ts` |
 | §7 | GET の `Accept` は `application/ld+json; profile=…` | MUST | ✅ | §3.2 と同じ |
 | §7 | `application/activity+json` を同じものとして解釈する | SHOULD | ✅ | `jsonldTypes`(`validators.jsonld` と `activitypub.ts` の本文の解析) |
-| §7 | `Create` / `Update` / `Delete` / `Follow` / `Like` / `Block` / `Undo` に `object`、`Add` / `Remove` に `target` を付けて配送する | MUST | ✅ | `buildActivity` の呼び出し元(`notes.ts`、`social/follows.ts`、`social/reactions.ts`、`mastodon/routes/statusActions.ts`、`mastodon/routes/accounts.ts`)はすべて `object` を渡す。`Add` / `Remove` / `Block` は送らない |
+| §7 | `Create` / `Update` / `Delete` / `Follow` / `Like` / `Block` / `Undo` に `object`、`Add` / `Remove` に `target` を付けて配送する | MUST | ✅ | `buildActivity` の呼び出し元(`notes.ts`、`social/follows.ts`、`social/reactions.ts`、`mastodon/routes/statusActions.ts`、`mastodon/routes/accounts.ts`)はすべて `object` を渡す。ピン留め・解除時の `Add` / `Remove` は `target` (`featured`) と `object` を付けてフォロワーへ配送する (→ [ADR-0160](adr/0160-featured-collection-and-pins-delivery.md))。`Block` は送らない |
 | §7 | HTTP のキャッシュ(RFC 7234)を、受け取る側・送る側の両方で尊重する | SHOULD | ❌ | 応答には `ETag` が付き条件付き GET に 304 を返すが、リモートの取得は `Cache-Control` / `ETag` を見ない → [#366](https://github.com/hakatashi/activitypub-firebase/issues/366) |
 | §7.1 | 配送先を `to` / `bto` / `cc` / `bcc` / `audience` から決める | — | ✅ | `apex/pub/utils.ts` の `audienceFromActivity` |
 | §7.1 | 宛先がコレクションなら参照して各要素の inbox を探す | MUST | ✅ | `address`。自分の followers はローカルで展開する。リモートのコレクションは埋め込みの `items` / `orderedItems` だけを見る(投稿でリモートのコレクションを宛先にすることはない) |

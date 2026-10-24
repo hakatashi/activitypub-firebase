@@ -39,7 +39,7 @@ export type ActorStreamName = (typeof actorStreamNames)[number];
 export type ActivityStreamName = (typeof activityStreamNames)[number];
 
 export interface CollectionInfo {
-	name: 'collections' | ActorStreamName | ActivityStreamName;
+	name: 'collections' | ActorStreamName | ActivityStreamName | 'featured';
 	actor?: string;
 	id?: string;
 	activity?: string;
@@ -156,6 +156,15 @@ export const iriToCollectionInfoFactory = function (
 		tests.push((iri) => {
 			const actor = re.exec(iri)?.[1];
 			return actor ? { name, actor } : undefined;
+		});
+	}
+	if (this.settings.routes.featured) {
+		const re = new RegExp(
+			`^${baseUrl}${this.settings.routes.featured.replace(pActor, '([^/]+)')}$`,
+		);
+		tests.push((iri) => {
+			const actor = re.exec(iri)?.[1];
+			return actor ? { name: 'featured', actor } : undefined;
 		});
 	}
 	// activity object streams
@@ -376,7 +385,7 @@ export const nameToActorStreamsFactory = (
 	baseUrl: string,
 	routes: ApexRoutes,
 	actorParam: string,
-): ((name: string) => Record<ActorStreamName, string>) => {
+): ((name: string) => Record<ActorStreamName, string> & { featured?: string }) => {
 	const colonParam = `:${actorParam}`;
 	return (name) => {
 		const stream = (s: ActorStreamName) => `${baseUrl}${routes[s]}`.replace(colonParam, name);
@@ -389,6 +398,9 @@ export const nameToActorStreamsFactory = (
 			blocked: stream('blocked'),
 			rejected: stream('rejected'),
 			rejections: stream('rejections'),
+			...(routes.featured
+				? { featured: `${baseUrl}${routes.featured}`.replace(colonParam, name) }
+				: {}),
 		};
 	};
 };

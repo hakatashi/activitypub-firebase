@@ -131,6 +131,8 @@ import されるため、`functions/src/activitypub.ts` との import サイク�
   設定・確認・解除は管理者エンドポイント(`GET` / `POST` / `DELETE /activitypub/aliases`、`X-Hakatashi-Token` 認証)または `functions/bin/manageAliases.ts` スクリプトで行う。追加・削除時には入力(`acct` または URI)の WebFinger / actor 取得による検証が行われ、完了時にフォロワーへ `Update(Person)` が配送される(→ [ADR-0121](adr/0121-actor-aliases-via-also-known-as.md))。また、`apex.ts` の context に `alsoKnownAs` (`as:alsoKnownAs`) および受信用に `movedTo` (`as:movedTo`) が定義されている。
 - **アカウント移行の進捗突き合わせと事前配送 (`migrationStatus.ts`)**:
   旧アカウントのフォロワー一覧 (`GET /api/v1/accounts/:id/followers`) を JSON ファイルに保存・読み込み可能にし、フォロワー射影 (`userInfos/{actor}/followers`)、受信した `Follow` (`Streams`)、および `Accept` の配送結果 (`deliveries`) と突き合わせて進捗をドメイン別に集計・表示する。また、相手サーバーの `UnavailableDomain` 記録を解除するため、フォロワー所在サーバーの sharedInbox (なければ inbox) へ事前 `Update(Person)` を配送する (→ [ADR-0125](adr/0125-migration-progress-reconciliation-and-pre-delivery.md))。
+- **ピン留め投稿コレクション (`featured`) と `Add` / `Remove` 配送**:
+  ローカル actor の `featured` プロパティに `/activitypub/u/:actor/collections/featured` を公開し、JSON-LD context に `toot:featured` を定義する。ピン留め一覧は `OrderedCollection` として返され、第三者からの要求では非公開の投稿が除外される。Mastodon API でのピン留め・ピン留め解除、およびピン留めされた投稿の削除時には、フォロワーへ `Add` / `Remove` アクティビティを配送する (→ [ADR-0160](adr/0160-featured-collection-and-pins-delivery.md))。
 - `offlineMode: true` で初期化しており、apex 内蔵の配送ループ(`setInterval` による
   常駐処理)は起動しない。配送は `Store#deliveryEnqueue`(`functions/src/store/index.ts`)が
   受信者1件につき1つの Cloud Tasks タスクを発行する方式に置き換えている
@@ -342,6 +344,7 @@ actor には `manuallyApprovesFollowers: true` を出す。`open` のボット�
 | `remoteActorCounts.ts` | リモート actor の件数・最終投稿日の取得と `_meta` への保存、古いときの取得依頼(→ [ADR-0104](adr/0104-remote-actor-counts-via-background-refresh.md)) |
 | `remoteActorResolution.ts` | 手元にないリモート actor の取得依頼(Account の組み立て・inbox での `Create` / `Announce` 受信時)とタスクでの取得(→ [ADR-0106](adr/0106-resolve-missing-remote-actors-in-background.md)) |
 | `remotePins.ts` | リモート actor のピン留めの取り込み(inbox の `Add` / `Remove` の照合と、`featured` コレクションからの同期・その依頼。→ [ADR-0144](adr/0144-receive-remote-pinned-statuses.md)) |
+| `pins.ts` | 自分のピン留め投稿の取得 (featured コレクションの OrderedCollection 生成、非公開投稿の秘匿) と、ピン留め・解除時の Add / Remove アクティビティのフォロワー配送 (→ [ADR-0160](adr/0160-featured-collection-and-pins-delivery.md)) |
 | `visibility.ts` | Note の可視性判定(`isNoteVisibleTo`, `isNotePublicTimelineEligible`, `noteToVisibility`) |
 | `archive.ts` | Mastodon アーカイブ (`outbox.json`・`media_attachments/`) からの投稿履歴 (`Create`・`Announce`) および添付メディアの Cloud Storage へのインポート (配送抑止、自リプライスレッド結合、公開範囲維持、Snowflake ID からのミリ秒・Mastodon ID 復元、サムネイル・blurhash 補完。→ [ADR-0126](adr/0126-import-post-history-from-mastodon-archive.md)、[ADR-0127](adr/0127-import-archive-media-attachments.md)) |
 | `import.ts` | Mastodon エクスポート CSV からのフォロー関係・ブックマーク・リストのインポート (→ [ADR-0124](adr/0124-import-following-and-bookmarks-from-csv.md)、[ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |

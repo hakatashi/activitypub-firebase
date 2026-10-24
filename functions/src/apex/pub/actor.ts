@@ -34,6 +34,7 @@ export const createActor = async function (
 		liked: routes.liked,
 		inbox: routes.inbox,
 		outbox: routes.outbox,
+		...(routes.featured ? { featured: routes.featured } : {}),
 		preferredUsername: username,
 		name: displayName,
 		summary,

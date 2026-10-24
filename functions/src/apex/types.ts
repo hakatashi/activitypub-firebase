@@ -62,6 +62,7 @@ export interface ApexRoutes {
 	rejected: string;
 	shares: string;
 	likes: string;
+	featured?: string;
 }
 
 export type JsonLdContext = string | Record<string, unknown>;
