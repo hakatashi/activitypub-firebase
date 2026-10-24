@@ -8,6 +8,7 @@ import type { APObject } from '../../apex/index.js';
 import { getOrAssignMastodonId } from '../../mastodonId.js';
 import { addBookmark, removeBookmark } from '../../social/bookmarks.js';
 import { getReactionActivityIris, undoReactions } from '../../social/reactions.js';
+import { publishPinActivity } from '../../social/pins.js';
 import { getAttributedTo, toIdArray } from '../../utils.js';
 import { authRequired, getOptionalViewer, scopeRequired } from '../http/auth.js';
 import { UnprocessableError } from '../http/errors.js';
@@ -205,7 +206,8 @@ router.post(
 		const noteKey = escapeFirestoreKey(note.id);
 		const pinsCollection = UserInfos.doc(actorKey).collection('pins');
 		const pinsSnap = await pinsCollection.get();
-		if (!pinsSnap.docs.some((doc) => doc.id === noteKey) && pinsSnap.size >= 5) {
+		const alreadyPinned = pinsSnap.docs.some((doc) => doc.id === noteKey);
+		if (!alreadyPinned && pinsSnap.size >= 5) {
 			throw new UnprocessableError(
 				'Validation failed: You have already pinned the maximum number of posts (5)',
 			);
@@ -214,6 +216,10 @@ router.post(
 		await pinsCollection
 			.doc(noteKey)
 			.set({ noteIri: note.id, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+
+		if (!alreadyPinned) {
+			await publishPinActivity(actor, note, 'Add');
+		}
 
 		const status = await getStatusById(id, actor);
 		assert(status !== undefined, 'status is undefined');
@@ -233,7 +239,11 @@ router.post(
 		if (!isAnnounce) {
 			const actorKey = escapeFirestoreKey(actor.id);
 			const noteKey = escapeFirestoreKey(note.id);
-			await UserInfos.doc(actorKey).collection('pins').doc(noteKey).delete();
+			const pinDoc = await UserInfos.doc(actorKey).collection('pins').doc(noteKey).get();
+			if (pinDoc.exists) {
+				await pinDoc.ref.delete();
+				await publishPinActivity(actor, note, 'Remove');
+			}
 		}
 
 		const status = await getStatusById(id, actor);

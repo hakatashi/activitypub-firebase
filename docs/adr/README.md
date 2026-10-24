@@ -186,3 +186,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0157](0157-bundle-identity-v1-core-context.md) | identity/v1 JSON-LD コンテキストの静的バンドル | Accepted |
 | [0158](0158-discard-inbox-activity-on-permanent-object-fetch-failure.md) | inbox は第三者オブジェクトの恒久的な取得失敗時に 2xx で受け取って捨てる | Accepted |
 | [0159](0159-discard-inbox-activity-on-permanent-signer-fetch-failure.md) | inbox は署名者の恒久的な取得失敗時に 2xx で受け取って捨てる | Accepted |
+| [0160](0160-featured-collection-and-pins-delivery.md) | 自分のピン留め投稿を `featured` コレクションとして公開し、`Add` / `Remove` を配送する | Accepted |

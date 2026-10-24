@@ -51,8 +51,8 @@ app.use(defaultImagesRouter);
 // リンクプレビュー用の最小限の HTML (→ ADR-0107)。
 app.use(publicPagesRouter);
 
-// メディアアップロード処理は mediaUploadApi (2GiB) に分離したため、mastodonApi は 256MiB で軽量稼働する (→ ADR-0093)。
-export const mastodonApi = https.onRequest({ memory: '256MiB' }, app);
+// メディアアップロード処理は mediaUploadApi (2GiB) に分離した。フォロワー多数時の宛先解決 (ADR-0120) での OOM を防ぐため 512MiB を割り当てる。
+export const mastodonApi = https.onRequest({ memory: '512MiB' }, app);
 
 export { mediaUploadApi } from './mediaUploadApi.js';
 

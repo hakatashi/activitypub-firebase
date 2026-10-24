@@ -51,12 +51,18 @@ export const localRejectionsIri = (
 	customDomain: string = domain,
 ): string => `https://${customDomain}${routes.rejections.replace(':actor', username)}`;
 
+export const localFeaturedIri = (
+	username: string = LOCAL_USERNAME,
+	customDomain: string = domain,
+): string => `https://${customDomain}${routes.featured.replace(':actor', username)}`;
+
 export const localActorId = localActorIri();
 export const localFollowersId = localFollowersIri();
 export const localFollowingId = localFollowingIri();
 export const localInboxId = localInboxIri();
 export const localOutboxId = localOutboxIri();
 export const localRejectionsId = localRejectionsIri();
+export const localFeaturedId = localFeaturedIri();
 
 const localActorIriPrefix = `https://${domain}${routes.actor.replace(':actor', '')}`;
 

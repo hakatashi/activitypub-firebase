@@ -13,4 +13,5 @@ export const routes = {
 	rejected: '/activitypub/u/:actor/rejected',
 	shares: '/activitypub/s/:id/shares',
 	likes: '/activitypub/s/:id/likes',
+	featured: '/activitypub/u/:actor/collections/featured',
 };

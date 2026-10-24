@@ -1,6 +1,9 @@
 import type { APObject } from './apex/index.js';
 import { apex } from './apex.js';
 import type { NoteTag } from './mastodon/statusContent.js';
+import { escapeFirestoreKey } from './firebase.js';
+import { UserInfos } from './schema.js';
+import { publishPinActivity } from './social/pins.js';
 import { requestPreviewCard } from './social/previewCards.js';
 import { toIdArray } from './utils.js';
 
@@ -149,6 +152,14 @@ export const htmlToPlainText = (html: string) =>
 export const deleteNote = async (actor: APObject, note: APObject) => {
 	const tombstone = await apex.buildTombstone(note);
 	await apex.store.updateObject(tombstone, actor.id, true);
+
+	const actorKey = escapeFirestoreKey(actor.id);
+	const noteKey = escapeFirestoreKey(note.id);
+	const pinDoc = await UserInfos.doc(actorKey).collection('pins').doc(noteKey).get();
+	if (pinDoc.exists) {
+		await pinDoc.ref.delete();
+		await publishPinActivity(actor, note, 'Remove');
+	}
 
 	const followersIri = toIdArray(actor.followers)[0];
 	const noteTo = toIdArray(note.to);

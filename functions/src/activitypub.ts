@@ -4,6 +4,7 @@ import express from 'express';
 import { https, logger, params } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex, onApexInbox, onApexOutbox, routes } from './apex.js';
+import { getLocals } from './apex/index.js';
 import { domain, mastodonDomain } from './firebase.js';
 import {
 	LOCAL_DISPLAY_NAME,
@@ -12,10 +13,13 @@ import {
 	LOCAL_SUMMARY,
 	LOCAL_USERNAME,
 	localActorId,
+	localFeaturedId,
+	localFeaturedIri,
 } from './localActor.js';
 import { publishNote } from './notes.js';
 import { runPostWorkBeforeSend } from './postWork.js';
 import { respondToFollow } from './social/follows.js';
+import { getFeaturedCollection } from './social/pins.js';
 import { requestPreviewCard } from './social/previewCards.js';
 import { requestResolutionOfObjectActors } from './social/remoteActorResolution.js';
 import { handleRemotePinActivity } from './social/remotePins.js';
@@ -164,7 +168,40 @@ app.get(
 		}
 		next();
 	},
-	apex.net.actor.get,
+	apex.net.validators.jsonld,
+	apex.net.validators.targetActor,
+	(req: express.Request, res: express.Response, next: express.NextFunction) => {
+		const locals = getLocals(res);
+		if (locals.target && !locals.target.featured) {
+			const actorName = req.params.actor;
+			if (typeof actorName === 'string') {
+				locals.target.featured = localFeaturedIri(actorName);
+			}
+		}
+		next();
+	},
+	apex.net.responders.target,
+);
+
+app.get(
+	routes.featured,
+	apex.net.validators.jsonld,
+	apex.net.validators.targetActor,
+	apex.net.security.verifyAuthorization,
+	async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+		const locals = getLocals(res);
+		if (!locals.target) {
+			next();
+			return;
+		}
+		try {
+			locals.result = await getFeaturedCollection(locals.target, locals.authorized);
+			next();
+		} catch (err) {
+			next(err);
+		}
+	},
+	apex.net.responders.result,
 );
 
 app.get(routes.followers, apex.net.followers.get);
@@ -233,6 +270,11 @@ app.get(
 		const actorWithMeta = await apex.store.getObject(localActorId, true);
 		assert(actor !== undefined, 'actor is undefined');
 		assert(actorWithMeta !== undefined, 'actorWithMeta is undefined');
+		if (!actor.featured) {
+			actor.featured = localFeaturedId;
+			actorWithMeta.featured = localFeaturedId;
+			await apex.store.saveObject(actorWithMeta);
+		}
 		await apex.publishUpdate(actorWithMeta, actor);
 		res.json('ok');
 	},

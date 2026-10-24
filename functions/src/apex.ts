@@ -57,6 +57,7 @@ export const apex = ActivitypubExpress({
 			focalPoint: { '@container': '@list', '@id': 'toot:focalPoint' },
 			alsoKnownAs: { '@id': 'as:alsoKnownAs', '@type': '@id' },
 			movedTo: { '@id': 'as:movedTo', '@type': '@id' },
+			featured: { '@id': 'toot:featured', '@type': '@id' },
 		},
 	],
 });
