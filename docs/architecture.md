@@ -449,6 +449,8 @@ Hosting のターゲットは、本番と dev が `activitypub`(`hakatashi.com` 
 `.github/workflows/main.yml` が main への push でテスト・lint 実行後、
 **本番環境 (`activitypub-firebase`) とボット用環境 (`activitypub-firebase-bots`) に順にデプロイ**する(dev 環境 `activitypub-firebase-dev` は手動検証用環境として除外されている。→ [ADR-0154](adr/0154-exclude-dev-environment-from-main-deploy.md))。Hosting はプロジェクトとターゲットの組ごとにデプロイする。
 
+PR 時には `.github/workflows/dev-smoke-test.yml` により、同一リポジトリのブランチおよび Dependabot の PR を対象として dev 環境 (`activitypub-firebase-dev`) に Functions ごとデプロイし、`activitypub-testing`、署名付き inbox 疎通、Mastodon API (`verify_credentials`, `timelines/home`) のスモークテストを直列 (`concurrency: group: deploy-dev`) で実行する (→ [ADR-0163](adr/0163-deploy-dev-and-smoke-test-on-pr.md))。
+
 ## 依存関係
 
 `firebase-functions` / `firebase-admin` / `@node-oauth/oauth2-server` / `express` /

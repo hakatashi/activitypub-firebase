@@ -1,0 +1,68 @@
+name: Deploy to Dev and Smoke Test
+
+on:
+  pull_request:
+  pull_request_target:
+
+# dev は1環境のため、 concurrency で直列化する (cancel-in-progress: false)。
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  check_access:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (
+        (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]') ||
+        (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]')
+      )
+    outputs:
+      status: ${{ steps.check.conclusion }}
+    steps:
+      - id: check
+        name: Check if the PR author has access to the Firebase project
+        env:
+          FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV }}
+        continue-on-error: true
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV" ]; then
+            echo "The FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV secret is not set."
+            exit 1
+          fi
+
+  deploy_and_smoke_test:
+    name: Deploy and Smoke Test (dev)
+    needs: check_access
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          submodules: recursive
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+      - name: Install dependencies
+        run: npm --prefix functions ci
+      - name: Deploy to Firebase Dev
+        uses: w9jds/firebase-action@v15.34.0
+        with:
+          args: deploy --only functions,firestore,storage
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV }}
+          PROJECT_ID: activitypub-firebase-dev
+      - name: Run activitypub-testing smoke test
+        run: npx activitypub-testing test actor https://activitypub-dev.hakatashi.com/activitypub/u/hakatashi
+      - name: Run integration smoke test
+        run: npm --prefix functions run smoke-test
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV }}
+          GCLOUD_PROJECT: activitypub-firebase-dev

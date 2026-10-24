@@ -20,6 +20,7 @@
 		"test:changed:main": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --changed origin/main\"",
 		"test:only": "node bin/run-test.js",
 		"measure:reads": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --config vitest.measure.config.ts\"",
+		"smoke-test": "cross-env GCLOUD_PROJECT=activitypub-firebase-dev tsx bin/smokeTest.ts",
 		"test:watch": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest\""
 	},
 	"dependencies": {
@@ -70,6 +71,7 @@
 		"supertest": "^6.3.4",
 		"ts-node": "^10.9.2",
 		"tsconfig-paths": "^4.2.0",
+		"tsx": "^4.23.15",
 		"typescript": "^5.9.3",
 		"vite": "^7.3.6",
 		"vitest": "^4.1.11"
