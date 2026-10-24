@@ -54,6 +54,31 @@ describe('deliveryTask', () => {
 		});
 	});
 
+	test('delivers with dynamic keyId from actor.publicKey.id (ADR-0161)', async () => {
+		const customKeyId = `${actorId}#main-key-2`;
+		await apex.store.updateObject(
+			{
+				id: actorId,
+				type: 'Person',
+				preferredUsername: 'hakatashi',
+				publicKey: [{ id: customKeyId, owner: actorId, publicKeyPem: 'mock-pem' }],
+				_meta: { privateKey: 'test-private-key' },
+			},
+			actorId,
+			true,
+		);
+
+		const deliverSpy = vi
+			.spyOn(apex, 'deliver')
+			.mockResolvedValue({ statusCode: 202, headers: {} });
+
+		await expect(
+			deliveryTask.run(makeDeliveryTaskRequest({ data: { actorId, body, address } })),
+		).resolves.toBeUndefined();
+
+		expect(deliverSpy).toHaveBeenCalledWith(customKeyId, body, address, 'test-private-key');
+	});
+
 	test.each([400, 403, 404, 410, 422])(
 		'discards the task without throwing on a permanent-failure %i response',
 		async (statusCode) => {

@@ -68,7 +68,7 @@
 | §7.1 | 最終的な配送先を重複除去する | MUST | ✅ | `address` の末尾の `Set`。`test/unit/apex/activity.spec.ts` の `de-dupes shared inboxes` |
 | §7.1 | アクティビティの actor 自身を配送先から除く | MUST | ❌ | 通常の配送は送信者の inbox を除く(`activity.spec.ts`)。**inbox からの転送では、転送するアクティビティの actor(リモート)を除かない** → [#361](https://github.com/hakatashi/activitypub-firebase/issues/361) |
 | §7.1 | 配送先は宛先の actor の `inbox` | — | ⚠️ | 宛先の種類によらず sharedInbox を優先する([ADR-0142](adr/0142-prefer-shared-inbox-for-all-recipients.md)) |
-| §7.1 | 送信するユーザーの認可を付けて POST する | — | ✅ | actor の鍵で HTTP 署名する(`deliver`、keyId は `#main-key` → [ADR-0015](adr/0015-fix-http-signature-keyid-fragment.md)) |
+| §7.1 | 送信するユーザーの認可を付けて POST する | — | ✅ | actor の鍵で HTTP 署名する(`deliver`、keyId は actor の `publicKey.id` → [ADR-0161](adr/0161-rotate-key-id-with-generation.md)) |
 | §7.1 | 連合しないサーバーへの配送は 405 になる | SHOULD | ➖ | 受信側の要件。連合するサーバーである |
 | §7.1 | 配送は非同期に行い、ネットワークエラーなら再試行する | SHOULD | ✅ | Cloud Tasks の `deliveryTask`(`tasks.ts`、[ADR-0003](adr/0003-delivery-via-cloud-tasks.md)、[ADR-0114](adr/0114-retry-transient-delivery-failures.md))。`test/unit/tasks.spec.ts` |
 | §7.1.1 | outbox に入ったアクティビティを、actor が所有する個人・コレクションの宛先へ配送する | SHOULD | ✅ | Mastodon API からの投稿は `apex.addToOutbox` → `publishActivity` で配送する。自分の followers とカスタムコレクションを展開する |

@@ -40,7 +40,7 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0012](0012-delivery-results-in-firestore.md) | 配送結果を `deliveries` コレクションに記録する | Accepted |
 | [0013](0013-scoped-postwork-middleware.md) | `postWork` はレスポンス前に実行し続け、パッチをリクエストスコープに閉じる | Accepted |
 | [0014](0014-self-hosted-federation-test-instance.md) | 連合の検証相手として Mastodon を自前ホストする | Accepted |
-| [0015](0015-fix-http-signature-keyid-fragment.md) | 配送の HTTP Signature keyId に `#main-key` を付与する | Accepted |
+| [0015](0015-fix-http-signature-keyid-fragment.md) | 配送の HTTP Signature keyId に `#main-key` を付与する | Superseded by ADR-0161 |
 | [0016](0016-fix-update-activity-meta-array-corruption.md) | `updateActivityMeta` の `_meta.collection` 破損を修正する | Superseded by ADR-0017 |
 | [0017](0017-meta-collection-as-array.md) | `_meta.collection` を Firestore 上でも配列として保存する | Accepted |
 | [0018](0018-eslint-to-oxlint-oxfmt.md) | Lint/Format を ESLint から oxlint + oxfmt に置き換える | Accepted |
@@ -187,3 +187,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0158](0158-discard-inbox-activity-on-permanent-object-fetch-failure.md) | inbox は第三者オブジェクトの恒久的な取得失敗時に 2xx で受け取って捨てる | Accepted |
 | [0159](0159-discard-inbox-activity-on-permanent-signer-fetch-failure.md) | inbox は署名者の恒久的な取得失敗時に 2xx で受け取って捨てる | Accepted |
 | [0160](0160-featured-collection-and-pins-delivery.md) | 自分のピン留め投稿を `featured` コレクションとして公開し、`Add` / `Remove` を配送する | Accepted |
+| [0161](0161-rotate-key-id-with-generation.md) | 鍵ローテーション時に keyId を更新し、配送時は actor の publicKey.id を参照する | Accepted |

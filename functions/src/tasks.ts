@@ -4,6 +4,7 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { z } from 'zod';
 import { taskQueueName } from './firebase.js';
 import { apex } from './apex.js';
+import { publicKeyIdOf } from './apex/index.js';
 import { toError } from './utils.js';
 import { recordDeliveryResult } from './store/deliveries.js';
 import { refreshRemoteActorCounts } from './social/remoteActorCounts.js';
@@ -139,10 +140,10 @@ export const deliveryTask = onTaskDispatched<unknown>(
 
 		let result;
 		try {
-			// HTTP Signature の keyId には公開鍵の id (`${actorId}#main-key`, apex `pub/actor.js`)
-			// を渡す必要がある。actorId をそのまま渡すと本家 Mastodon 側の鍵解決が失敗する
-			// (→ ADR-0015)
-			result = await apex.deliver(`${actorId}#main-key`, body, address, privateKey);
+			// HTTP Signature の keyId には公開鍵の id を渡す。
+			// actor の publicKey.id から動的に取得し、なければ従来通り `#main-key` へフォールバック (→ ADR-0161)
+			const keyId = publicKeyIdOf(actor) ?? `${actorId}#main-key`;
+			result = await apex.deliver(keyId, body, address, privateKey);
 		} catch (err: unknown) {
 			// message だけを取り出した新しい Error に包み直してから rethrow し、
 			// Cloud Functions のエラーログへ機微情報が漏れないようにする。

@@ -178,6 +178,30 @@ export const verifyHttpSignature = (
 	}
 };
 
+export const publicKeyIdOf = (signer: unknown): string | undefined => {
+	if (!isRecord(signer)) {
+		return undefined;
+	}
+	const keys: unknown[] = [];
+	if (Array.isArray(signer.publicKey)) {
+		keys.push(...signer.publicKey);
+	} else if (isRecord(signer.publicKey)) {
+		keys.push(signer.publicKey);
+	}
+	if (Array.isArray(signer.additionalPublicKeys)) {
+		keys.push(...signer.additionalPublicKeys);
+	}
+	for (const key of keys) {
+		if (isRecord(key)) {
+			const id = first(key.id);
+			if (typeof id === 'string' && id) {
+				return id;
+			}
+		}
+	}
+	return undefined;
+};
+
 export const publicKeyPemOf = (signer: unknown, keyId?: string): string | undefined => {
 	if (!isRecord(signer)) {
 		return undefined;

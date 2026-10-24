@@ -148,6 +148,34 @@ describe('apex federation (undici)', () => {
 			expect(isValid).toBe(true);
 		});
 
+		test('appends #main-key when actorId has no fragment (ADR-0161)', async () => {
+			mockStatusCode = 200;
+			mockResponseBody = 'ok';
+			const apex = createApex();
+			const actorId = 'https://example.com/u/alice';
+			const activity = JSON.stringify({ id: 'https://example.com/s/1', type: 'Create' });
+			const address = `${serverUrl}/inbox`;
+
+			await apex.deliver(actorId, activity, address, privateKey);
+
+			const sigHeader = lastReceivedRequest.headers.signature as string;
+			expect(sigHeader).toContain('keyId="https://example.com/u/alice#main-key"');
+		});
+
+		test('preserves existing fragment in actorId (ADR-0161)', async () => {
+			mockStatusCode = 200;
+			mockResponseBody = 'ok';
+			const apex = createApex();
+			const actorId = 'https://example.com/u/alice#main-key-2';
+			const activity = JSON.stringify({ id: 'https://example.com/s/1', type: 'Create' });
+			const address = `${serverUrl}/inbox`;
+
+			await apex.deliver(actorId, activity, address, privateKey);
+
+			const sigHeader = lastReceivedRequest.headers.signature as string;
+			expect(sigHeader).toContain('keyId="https://example.com/u/alice#main-key-2"');
+		});
+
 		test('resolves with status code on 4xx / 5xx responses (does not throw)', async () => {
 			const apex = createApex();
 			const actorId = 'https://example.com/u/alice#main-key';

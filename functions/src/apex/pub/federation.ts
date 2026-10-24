@@ -6,6 +6,7 @@ import type { Dispatcher } from 'undici';
 import type { Apex, APObject } from '../types.js';
 import { errorMessage, firstString, isAPObject, isHashtag, isRecord, toArray } from '../values.js';
 import { jsonldAcceptType } from './consts.js';
+import { publicKeyIdOf } from '../net/security.js';
 import {
 	PermanentFetchError,
 	responseStatusError,
@@ -215,15 +216,19 @@ export const requestObject = async function (
 		};
 		const privateKey = this.systemUser?._meta?.privateKey;
 		if (this.systemUser && privateKey) {
-			const { date, signature } = computeHttpSignatureHeaders({
-				method: 'get',
-				url,
-				// keyId には公開鍵の id (`#main-key`) を渡す必要がある
-				keyId: `${this.systemUser.id}#main-key`,
-				privateKeyPem: privateKey,
-			});
-			headers.Date = date;
-			headers.Signature = signature;
+			const keyId =
+				publicKeyIdOf(this.systemUser) ??
+				(typeof this.systemUser.id === 'string' ? `${this.systemUser.id}#main-key` : undefined);
+			if (keyId) {
+				const { date, signature } = computeHttpSignatureHeaders({
+					method: 'get',
+					url,
+					keyId,
+					privateKeyPem: privateKey,
+				});
+				headers.Date = date;
+				headers.Signature = signature;
+			}
 		}
 
 		const agent = makePinnedAgent(addresses);
@@ -449,10 +454,11 @@ export const deliver = async function (
 		'User-Agent': this.makeUserAgentString(),
 	};
 	if (signingKey) {
+		const keyId = actorId.includes('#') ? actorId : `${actorId}#main-key`;
 		const { signature } = computeHttpSignatureHeaders({
 			method: 'post',
 			url,
-			keyId: actorId,
+			keyId,
 			privateKeyPem: signingKey,
 			date,
 			digest,
