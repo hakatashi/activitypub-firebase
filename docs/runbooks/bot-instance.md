@@ -56,7 +56,24 @@ ID=$(curl -s -G -H "Authorization: Bearer $OP" -H 'X-Bot-Account: weather' $H/ap
 curl -s -X POST -H "Authorization: Bearer $OP" -H 'X-Bot-Account: weather' $H/api/v1/statuses/$ID/reblog
 ```
 
-- メディアは `POST /api/v2/media` でアップロードし、`media_ids[]` で添付する。
+- メディアは `POST /api/v2/media` でアップロードして `media_ids[]` で添付するか、ボット限定で `media_urls` を使って外部 URL の直リンク画像を直接添付できる (→ ADR-0162)。
+  ```bash
+  # 外部画像の直リンク添付 (POST /api/v2/media 不要)
+  curl -s -X POST -H "Authorization: Bearer $OP" -H 'X-Bot-Account: weather' \
+    -H 'Content-Type: application/json' $H/api/v1/statuses -d '{
+      "status": "気象レーダー画像です",
+      "media_urls": [
+        {
+          "url": "https://example.com/radar.png",
+          "description": "雨雲レーダー",
+          "mime_type": "image/png",
+          "width": 1200,
+          "height": 800,
+          "blurhash": "LEHLk~WB2yk8pyo0adR*.7kCMdnj"
+        }
+      ]
+    }'
+  ```
 - masto.js などのライブラリでは、リクエストに追加のヘッダとして `X-Bot-Account` を渡す。
 - ヘッダがない・未知のボットなら 401、ボットでない actor(インスタンス actor など)なら 403。
 - ボットとして読む API(ホーム、通知など)は正しく動かない(→ [`known-issues.md`](../known-issues.md))。
