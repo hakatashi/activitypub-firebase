@@ -4,10 +4,13 @@ import type { NextFunction, Request, Response } from 'express';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import ActivitypubExpress from '../../../src/apex/index.js';
 import {
+	isPermanentFetchFailure,
 	isTransientFailure,
 	isTransientStatus,
+	PermanentFetchError,
 	TransientFetchError,
 } from '../../../src/apex/pub/fetchErrors.js';
+import { UnsafeUrlError } from '../../../src/apex/pub/ssrf.js';
 import type IApexStore from '../../../src/apex/store/interface.js';
 
 // inbox が一時的な失敗で 4xx を返さないための、リモート取得失敗の分類 (ADR-0115)
@@ -123,6 +126,27 @@ describe('transient remote fetch failures (ADR-0115)', () => {
 			expect(isTransientFailure(new Error('invalid'))).toBe(false);
 			expect(isTransientFailure(undefined)).toBe(false);
 			expect(isTransientFailure('string error')).toBe(false);
+		});
+	});
+
+	describe('isPermanentFetchFailure', () => {
+		test('identifies PermanentFetchError and UnsafeUrlError', () => {
+			const permanent = new PermanentFetchError('not found', 404);
+			expect(isPermanentFetchFailure(permanent)).toBe(true);
+			expect(isPermanentFetchFailure(new Error('wrapped', { cause: permanent }))).toBe(true);
+			expect(isPermanentFetchFailure(new UnsafeUrlError('blocked'))).toBe(true);
+		});
+
+		test('returns false when error is transient even if wrapped in generic error', () => {
+			const transient = new TransientFetchError('timeout');
+			expect(isPermanentFetchFailure(transient)).toBe(false);
+			expect(isPermanentFetchFailure(new Error('wrapped', { cause: transient }))).toBe(false);
+		});
+
+		test('returns false for generic errors (e.g. database error)', () => {
+			expect(isPermanentFetchFailure(new Error('Firestore error'))).toBe(false);
+			expect(isPermanentFetchFailure(undefined)).toBe(false);
+			expect(isPermanentFetchFailure('string error')).toBe(false);
 		});
 	});
 

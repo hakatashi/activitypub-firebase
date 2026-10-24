@@ -3,7 +3,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { activitypub, app } from '../../src/activitypub.js';
 import { apex } from '../../src/apex.js';
-import { TransientFetchError } from '../../src/apex/pub/fetchErrors.js';
+import { PermanentFetchError, TransientFetchError } from '../../src/apex/pub/fetchErrors.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { localInboxId } from '../../src/localActor.js';
 import { Objects, Streams } from '../../src/schema.js';
@@ -195,5 +195,76 @@ describe('inbox responses to transient failures and migration side activities', 
 		expect(res.status).toBe(200);
 		expect(await streamCollections(id)).toContain(localInboxId);
 		expect(getContextSpy).not.toHaveBeenCalledWith('https://w3id.org/identity/v1');
+	});
+
+	test('accepts Announce with 200 and discards it when third-party object fails with 401 (ADR-0158, Issue #322)', async () => {
+		const targetNoteId = 'https://cardinal.example/notes/117439778278908516';
+		vi.spyOn(apex, 'requestObject').mockImplementation((id: string) => {
+			if (id === targetNoteId) {
+				return Promise.reject(new PermanentFetchError('Request failed with status code 401', 401));
+			}
+			return Promise.reject(new Error(`unexpected fetch ${id}`));
+		});
+
+		const id = 'https://remote.example/activities/announce-401';
+		const res = await postInbox({
+			'@context': 'https://www.w3.org/ns/activitystreams',
+			id,
+			type: 'Announce',
+			actor: REMOTE_ACTOR_ID,
+			object: targetNoteId,
+			to: ['https://www.w3.org/ns/activitystreams#Public'],
+		});
+
+		expect(res.status).toBe(200);
+		// discarded: not stored in streams or inbox collection
+		expect(await streamCollections(id)).toBeUndefined();
+	});
+
+	test('accepts Like with 200 and discards it when third-party object fails with 404 (ADR-0158, Issue #322)', async () => {
+		const targetNoteId = 'https://nijimiss.example/notes/01M4YWS3N2HDZBRSY6Y58HHZ5A';
+		vi.spyOn(apex, 'requestObject').mockImplementation((id: string) => {
+			if (id === targetNoteId) {
+				return Promise.reject(new PermanentFetchError('Request failed with status code 404', 404));
+			}
+			return Promise.reject(new Error(`unexpected fetch ${id}`));
+		});
+
+		const id = 'https://remote.example/activities/like-404';
+		const res = await postInbox({
+			'@context': 'https://www.w3.org/ns/activitystreams',
+			id,
+			type: 'Like',
+			actor: REMOTE_ACTOR_ID,
+			object: targetNoteId,
+			to: ['https://www.w3.org/ns/activitystreams#Public'],
+		});
+
+		expect(res.status).toBe(200);
+		// discarded: not stored in streams
+		expect(await streamCollections(id)).toBeUndefined();
+	});
+
+	test('returns 500 when third-party object fails with transient error (ADR-0115, Issue #322)', async () => {
+		const targetNoteId = 'https://cardinal.example/notes/transient-500';
+		vi.spyOn(apex, 'requestObject').mockImplementation((id: string) => {
+			if (id === targetNoteId) {
+				return Promise.reject(new TransientFetchError('Request failed with status code 500'));
+			}
+			return Promise.reject(new Error(`unexpected fetch ${id}`));
+		});
+
+		const id = 'https://remote.example/activities/announce-500';
+		const res = await postInbox({
+			'@context': 'https://www.w3.org/ns/activitystreams',
+			id,
+			type: 'Announce',
+			actor: REMOTE_ACTOR_ID,
+			object: targetNoteId,
+			to: ['https://www.w3.org/ns/activitystreams#Public'],
+		});
+
+		expect(res.status).toBe(500);
+		expect(await streamCollections(id)).toBeUndefined();
 	});
 });

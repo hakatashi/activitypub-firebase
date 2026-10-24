@@ -6,7 +6,11 @@ import type { Dispatcher } from 'undici';
 import type { Apex, APObject } from '../types.js';
 import { errorMessage, firstString, isAPObject, isHashtag, isRecord, toArray } from '../values.js';
 import { jsonldAcceptType } from './consts.js';
-import { responseStatusError, withTransientFetchErrors } from './fetchErrors.js';
+import {
+	PermanentFetchError,
+	responseStatusError,
+	withTransientFetchErrors,
+} from './fetchErrors.js';
 import {
 	assertSafeUrl,
 	makePinnedAgent,
@@ -239,7 +243,9 @@ export const requestObject = async function (
 				const { location } = response.headers;
 				await response.body.dump();
 				if (typeof location !== 'string' || !location) {
-					throw new Error(`Redirect from ${url.toString()} is missing Location header`);
+					throw new PermanentFetchError(
+						`Redirect from ${url.toString()} is missing Location header`,
+					);
 				}
 				({ url, addresses } = await assertSafeUrl(new URL(location, url).toString(), guardOptions));
 				continue;
@@ -251,14 +257,20 @@ export const requestObject = async function (
 			}
 
 			const body = await readBodyWithLimit(response.body, response.headers);
-			return await this.fromJSONLD(JSON.parse(body));
+			try {
+				return await this.fromJSONLD(JSON.parse(body));
+			} catch (err) {
+				throw new PermanentFetchError(`Failed to parse remote JSON-LD from ${id}`, undefined, {
+					cause: err,
+				});
+			}
 		} finally {
 			await agent.close();
 		}
 	}
 
 	this.logger.warn({ type: 'ssrfBlockedTooManyRedirects', url: id });
-	throw new Error(`Too many redirects while fetching ${id}`);
+	throw new PermanentFetchError(`Too many redirects while fetching ${id}`);
 };
 
 const topLevelRefProps = ['inReplyTo', 'object', 'target', 'tag'] as const;

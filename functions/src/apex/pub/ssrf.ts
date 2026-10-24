@@ -5,11 +5,16 @@ import ipaddr from 'ipaddr.js';
 import { Agent } from 'undici';
 import type { Dispatcher } from 'undici';
 import type { ApexLogger } from '../types.js';
-import { TransientFetchError } from './fetchErrors.js';
+import { PermanentFetchError, TransientFetchError } from './fetchErrors.js';
 
 // リモートが指定した任意の URL への到達 (SSRF) を防ぐための検証。
 // 「どのアドレスを内部とみなすか」は運用環境ごとに変わりうるため policy として注入できる。
-export class UnsafeUrlError extends Error {}
+export class UnsafeUrlError extends Error {
+	constructor(message: string, options?: ErrorOptions) {
+		super(message, options);
+		this.name = 'UnsafeUrlError';
+	}
+}
 
 // 省略した項目は厳格なデフォルト (https のみ / unicast のみ / DNS 解決) になる。
 export interface RemoteFetchPolicy {
@@ -131,7 +136,7 @@ export const readBodyWithLimit = async (
 			// noop
 		});
 		body.destroy();
-		throw new Error(`Response too large: ${String(contentLength)} bytes`);
+		throw new PermanentFetchError(`Response too large: ${String(contentLength)} bytes`);
 	}
 	const chunks: Buffer[] = [];
 	let total = 0;
@@ -152,7 +157,7 @@ export const readBodyWithLimit = async (
 		throw new TransientFetchError('Failed to read response body', { cause: err });
 	}
 	if (exceeded) {
-		throw new Error(`Response exceeded ${limit} bytes`);
+		throw new PermanentFetchError(`Response exceeded ${limit} bytes`);
 	}
 	return Buffer.concat(chunks).toString('utf-8');
 };

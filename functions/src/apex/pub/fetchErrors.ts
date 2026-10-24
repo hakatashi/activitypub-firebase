@@ -3,14 +3,34 @@ import { isRecord } from '../values.js';
 // リモート取得が、こちら側・第三者側の一時的な障害 (ネットワークエラー、タイムアウト、DNS 解決の失敗、
 // 相手の 5xx / 408 / 429) で失敗したことを表す。同じリクエストでも再試行すれば成功しうるため、
 // inbox はこれが原因の失敗に 4xx ではなく 5xx を返す (→ ADR-0115)。
-export class TransientFetchError extends Error {}
+export class TransientFetchError extends Error {
+	constructor(message: string, options?: ErrorOptions) {
+		super(message, options);
+		this.name = 'TransientFetchError';
+	}
+}
+
+// リモート取得が、相手の 4xx (401/404/410 など)、SSRF 拒否、レスポンスのパース失敗、サイズ超過など
+// 再試行しても成功しない恒久的な理由で失敗したことを表す (→ ADR-0158)。
+export class PermanentFetchError extends Error {
+	constructor(
+		message: string,
+		public readonly statusCode?: number,
+		options?: ErrorOptions,
+	) {
+		super(message, options);
+		this.name = 'PermanentFetchError';
+	}
+}
 
 export const isTransientStatus = (statusCode: number): boolean =>
 	statusCode >= 500 || statusCode === 408 || statusCode === 429;
 
 export const responseStatusError = (statusCode: number): Error => {
 	const message = `Request failed with status code ${statusCode}`;
-	return isTransientStatus(statusCode) ? new TransientFetchError(message) : new Error(message);
+	return isTransientStatus(statusCode)
+		? new TransientFetchError(message)
+		: new PermanentFetchError(message, statusCode);
 };
 
 // 接続失敗やタイムアウトなど、応答を得る前の失敗は一時的な失敗として包む
@@ -29,7 +49,28 @@ const maxCauseDepth = 10;
 export const isTransientFailure = (err: unknown): boolean => {
 	let current = err;
 	for (let depth = 0; depth < maxCauseDepth && isRecord(current); depth++) {
-		if (current instanceof TransientFetchError) {
+		if (
+			current instanceof TransientFetchError ||
+			(typeof current.name === 'string' && current.name === 'TransientFetchError')
+		) {
+			return true;
+		}
+		current = current.cause ?? (isRecord(current.details) ? current.details.cause : undefined);
+	}
+	return false;
+};
+
+export const isPermanentFetchFailure = (err: unknown): boolean => {
+	if (isTransientFailure(err)) {
+		return false;
+	}
+	let current = err;
+	for (let depth = 0; depth < maxCauseDepth && isRecord(current); depth++) {
+		if (
+			current instanceof PermanentFetchError ||
+			(typeof current.name === 'string' &&
+				(current.name === 'PermanentFetchError' || current.name === 'UnsafeUrlError'))
+		) {
 			return true;
 		}
 		current = current.cause ?? (isRecord(current.details) ? current.details.cause : undefined);
