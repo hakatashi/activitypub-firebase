@@ -188,3 +188,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0159](0159-discard-inbox-activity-on-permanent-signer-fetch-failure.md) | inbox は署名者の恒久的な取得失敗時に 2xx で受け取って捨てる | Accepted |
 | [0160](0160-featured-collection-and-pins-delivery.md) | 自分のピン留め投稿を `featured` コレクションとして公開し、`Add` / `Remove` を配送する | Accepted |
 | [0161](0161-rotate-key-id-with-generation.md) | 鍵ローテーション時に keyId を更新し、配送時は actor の publicKey.id を参照する | Accepted |
+| [0162](0162-external-media-urls-for-bots.md) | ボットの投稿で外部 URL 直リンク画像を添付できるようにする | Accepted |

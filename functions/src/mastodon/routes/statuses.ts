@@ -17,7 +17,8 @@ import type { MediaAttachmentRecord } from '../../schema.js';
 import * as webfinger from '../../webfinger.js';
 import { getAttributedTo, isAPAnnounce, isAPNote, toError, toIdArray } from '../../utils.js';
 import { authRequired, getAuthUserInfo, getOptionalViewer, scopeRequired } from '../http/auth.js';
-import { NotFoundError, UnprocessableError } from '../http/errors.js';
+import { ForbiddenError, NotFoundError, UnprocessableError } from '../http/errors.js';
+import { externalMediaToNoteAttachment, normalizeExternalMediaList } from '../externalMedia.js';
 import { loadViewer, loadVisibleStatus } from '../http/loaders.js';
 import { touchesTimelineView } from '../http/middlewares.js';
 import { isPresent, toBoolean } from '../http/params.js';
@@ -48,6 +49,8 @@ export const createStatusBodySchema = z.object({
 	language: z.string().nullish(),
 	media_ids: z.unknown().optional(),
 	'media_ids[]': z.unknown().optional(),
+	media_urls: z.unknown().optional(),
+	'media_urls[]': z.unknown().optional(),
 	poll: z.unknown().optional(),
 	scheduled_at: z.unknown().optional(),
 });
@@ -80,8 +83,18 @@ router.post(
 			}
 		}
 
+		const rawMediaUrls = body.media_urls ?? (body as Record<string, unknown>)['media_urls[]'];
+		const externalMediaList = normalizeExternalMediaList(rawMediaUrls);
+		if (externalMediaList.length > 0) {
+			const authUser = getAuthUserInfo(res);
+			if (!authUser.bot) {
+				throw new ForbiddenError('This feature is only available for bot accounts');
+			}
+		}
+
+		const totalMediaAttachments = mediaIds.length + externalMediaList.length;
 		const maxMediaAttachments = instanceV2.configuration.statuses.max_media_attachments;
-		if (mediaIds.length > maxMediaAttachments) {
+		if (totalMediaAttachments > maxMediaAttachments) {
 			throw new UnprocessableError(
 				`Validation failed: Cannot attach more than ${maxMediaAttachments} files`,
 			);
@@ -121,7 +134,7 @@ router.post(
 		const spoilerText = body.spoiler_text?.trim() ?? '';
 		// 本文が空で注意書きがあれば、注意書きを本文に回す (Mastodon と同じ)。
 		const text = body.status?.trim() || spoilerText;
-		if (text === '' && mediaRecords.length === 0) {
+		if (text === '' && mediaRecords.length === 0 && externalMediaList.length === 0) {
 			throw new UnprocessableError("Validation failed: Text can't be blank");
 		}
 		const maxCharacters = instanceV2.configuration.statuses.max_characters;
@@ -173,7 +186,7 @@ router.post(
 				mastodonDomain,
 			});
 
-			const attachments: NoteAttachment[] = mediaRecords.map((record) => {
+			const internalAttachments: NoteAttachment[] = mediaRecords.map((record) => {
 				const attachment: NoteAttachment = {
 					type: 'Document',
 					mediaType: record.mimeType,
@@ -196,6 +209,11 @@ router.post(
 				};
 				return attachment;
 			});
+
+			const externalAttachments: NoteAttachment[] = externalMediaList.map(
+				externalMediaToNoteAttachment,
+			);
+			const attachments = [...internalAttachments, ...externalAttachments];
 
 			await publishNote(actor, {
 				id: noteIri,
