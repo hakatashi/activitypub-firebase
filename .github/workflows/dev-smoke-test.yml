@@ -72,6 +72,9 @@ jobs:
     needs: [check_access, deploy_and_smoke_test]
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
+    env:
+      NUXT_STORAGE_DRIVER: fs
+      NUXT_STORAGE_FS_BASE: /tmp/elk-storage
     steps:
       - uses: actions/checkout@v7
         with:
@@ -93,19 +96,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/elk/.output
-          key: elk-build-${{ steps.submodules.outputs.elk_sha }}
+          key: elk-build-${{ runner.os }}-${{ steps.submodules.outputs.elk_sha }}
       - name: Cache Phanpy build
         id: cache-phanpy
         uses: actions/cache@v4
         with:
           path: third_party/phanpy/dist
-          key: phanpy-build-${{ steps.submodules.outputs.phanpy_sha }}
+          key: phanpy-build-${{ runner.os }}-${{ steps.submodules.outputs.phanpy_sha }}
       - name: Build Elk
         if: steps.cache-elk.outputs.cache-hit != 'true'
         run: |
           cd third_party/elk
           pnpm i --frozen-lockfile
           pnpm run build
+        env:
+          NUXT_STORAGE_DRIVER: fs
       - name: Build Phanpy
         if: steps.cache-phanpy.outputs.cache-hit != 'true'
         run: |
@@ -119,6 +124,7 @@ jobs:
           npx --prefix tools/client-e2e playwright install --with-deps chromium
       - name: Run client E2E test
         run: |
+          mkdir -p /tmp/elk-storage
           PORT=5314 node third_party/elk/.output/server/index.mjs > /tmp/elk.log 2>&1 &
           ELK_PID=$!
           npx --yes serve -s third_party/phanpy/dist -l 5315 > /tmp/phanpy.log 2>&1 &
