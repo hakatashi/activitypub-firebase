@@ -71,7 +71,17 @@ describe('isKnownBenignRequest', () => {
 			failure: 'net::ERR_FAILED',
 		}, SERVER);
 		assert.ok(match);
-		assert.match(match.reason, /External media/);
+		assert.match(match.reason, /External third-party resource/);
+	});
+
+	it('matches external resource rate limits or HTTP errors', () => {
+		const match = isKnownBenignRequest({
+			method: 'GET',
+			status: 429,
+			url: 'https://opengraph.githubassets.com/654cfb039e74c6f4e4a2151451c7009907c745c5818d5c851be95ad8b08d64ed/hakatashi/activitypub-firebase/issues/320',
+		}, SERVER);
+		assert.ok(match);
+		assert.match(match.reason, /External third-party resource/);
 	});
 
 	it('matches GCS avatar edge cache failures', () => {

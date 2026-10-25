@@ -21,22 +21,25 @@ export const isKnownBenignRequest = (entry, serverHost = 'mastodon-dev.hakatashi
 		return { reason: 'Blob URL cleanup' };
 	}
 
-	// 3. リモートメディアの CORS / 接続失敗 (Phanpy: crossOrigin 付きで画像を読むため外部ホスト等で発生)
-	// および Cloud Storage のエッジキャッシュ伝播前の古いエラー
+	// 3. 外部ホストへのリクエストの失敗 (リモートの画像・アバター・OGP プレビューカード、外部サービスのレート制限や CORS など)
+	if (parsedUrl && parsedUrl.host !== serverHost && !parsedUrl.host.startsWith('127.0.0.1')) {
+		return { reason: `External third-party resource failure (${parsedUrl.host})` };
+	}
+
+	// 4. Cloud Storage のエッジキャッシュ伝播前の古いエラー等によるメディア取得失敗
 	if (
 		entry.failure === 'net::ERR_FAILED' ||
 		entry.failure === 'net::ERR_NAME_NOT_RESOLVED' ||
 		entry.failure === 'net::ERR_BLOCKED_BY_ORB'
 	) {
-		const isRemote = parsedUrl && parsedUrl.host !== serverHost && !parsedUrl.host.startsWith('127.0.0.1');
 		const isMediaOrAvatar =
 			urlStr.includes('/accounts/avatars/') ||
 			urlStr.includes('/headers/') ||
 			urlStr.includes('/system/') ||
 			urlStr.includes('/media_attachments/') ||
 			urlStr.includes('/identicon/');
-		if (isRemote || isMediaOrAvatar) {
-			return { reason: 'External media CORS / GCS cache edge failure' };
+		if (isMediaOrAvatar) {
+			return { reason: 'GCS cache edge failure' };
 		}
 	}
 
