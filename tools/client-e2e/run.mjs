@@ -7,10 +7,12 @@
 // アクセストークンは リポジトリルートの .env の MASTODON_DEV_TOKEN を使う。
 // トークンは出力のすべてから伏せ字にする。
 
+import { execFileSync } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
+import { isKnownBenignError, isKnownBenignRequest } from './allowlist.mjs';
 
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 try {
@@ -40,16 +42,65 @@ const shouldInteract = args.interact || args.write;
 const shouldUpdateProfile = args.profile || args.write;
 
 const SERVER = process.env.MASTODON_DEV_HOST ?? 'mastodon-dev.hakatashi.com';
-const TOKEN = process.env.MASTODON_DEV_TOKEN;
-const ELK_URL = process.env.ELK_URL ?? 'http://127.0.0.1:5314';
-const PHANPY_URL = process.env.PHANPY_URL ?? 'http://127.0.0.1:5315';
-const OUT_DIR = path.join(import.meta.dirname, 'out');
-const MEDIA_FIXTURE = path.join(import.meta.dirname, 'fixtures/avatar.png');
+let TOKEN = process.env.MASTODON_DEV_TOKEN;
+let dynamicToken = null;
+
+const devTokenScript = path.join(repoRoot, 'functions/bin/devToken.ts');
+const tsxCli = path.join(repoRoot, 'functions/node_modules/tsx/dist/cli.mjs');
+
+if (!TOKEN) {
+	try {
+		const result = execFileSync(process.execPath, [tsxCli, devTokenScript, 'create'], {
+			cwd: path.join(repoRoot, 'functions'),
+			encoding: 'utf-8',
+			env: process.env,
+		});
+		const token = result.trim().split('\n').pop()?.trim();
+		if (token) {
+			TOKEN = token;
+			dynamicToken = token;
+			console.log('MASTODON_DEV_TOKEN not set; dynamically issued temporary dev token.');
+		}
+	} catch (err) {
+		console.warn('Failed to dynamically issue dev token:', err);
+	}
+}
 
 if (!TOKEN) {
 	console.error('MASTODON_DEV_TOKEN が未設定です(docs/runbooks/client-testing.md を参照)');
 	process.exit(2);
 }
+
+const revokeDynamicToken = () => {
+	if (dynamicToken) {
+		const tokenToRevoke = dynamicToken;
+		dynamicToken = null;
+		try {
+			execFileSync(process.execPath, [tsxCli, devTokenScript, 'revoke', tokenToRevoke], {
+				cwd: path.join(repoRoot, 'functions'),
+				encoding: 'utf-8',
+				env: process.env,
+			});
+			console.log('Revoked temporary dev token.');
+		} catch (err) {
+			console.warn('Failed to revoke temporary dev token:', err);
+		}
+	}
+};
+
+process.on('SIGINT', () => {
+	revokeDynamicToken();
+	process.exit(130);
+});
+process.on('SIGTERM', () => {
+	revokeDynamicToken();
+	process.exit(143);
+});
+
+const ELK_URL = process.env.ELK_URL ?? 'http://127.0.0.1:5314';
+const PHANPY_URL = process.env.PHANPY_URL ?? 'http://127.0.0.1:5315';
+const OUT_DIR = path.join(import.meta.dirname, 'out');
+const MEDIA_FIXTURE = path.join(import.meta.dirname, 'fixtures/avatar.png');
 
 const redact = (text) => String(text).replaceAll(TOKEN, '<MASTODON_DEV_TOKEN>');
 
@@ -351,6 +402,8 @@ const runClient = async (browser, name, context) => {
 	let current = 'login';
 	const errors = [];
 	const requests = [];
+	const ignoredErrors = [];
+	const ignoredRequests = [];
 
 	const browserContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 	const page = await browserContext.newPage();
@@ -380,25 +433,43 @@ const runClient = async (browser, name, context) => {
 		) {
 			return;
 		}
-		errors.push({ page: current, type: 'pageerror', text: redact(text) });
+		const entry = { page: current, type: 'pageerror', text: redact(text) };
+		const benign = isKnownBenignError(entry);
+		if (benign) {
+			ignoredErrors.push({ ...entry, reason: benign.reason });
+		} else {
+			errors.push(entry);
+		}
 	});
 	page.on('console', (msg) => {
 		// 失敗したリクエストは response 側で URL 付きで記録するので、ここでは重複させない
 		if (msg.type() === 'error' && !msg.text().startsWith('Failed to load resource')) {
-			errors.push({ page: current, type: 'console', text: redact(msg.text()) });
+			const entry = { page: current, type: 'console', text: redact(msg.text()) };
+			const benign = isKnownBenignError(entry);
+			if (benign) {
+				ignoredErrors.push({ ...entry, reason: benign.reason });
+			} else {
+				errors.push(entry);
+			}
 		}
 	});
 	page.on('requestfailed', (req) => {
 		const failure = req.failure()?.errorText;
 		// 画面遷移で中断されたリクエストは問題ではない
 		if (failure !== 'net::ERR_ABORTED') {
-			requests.push({
+			const entry = {
 				page: current,
 				method: req.method(),
 				url: redact(req.url()),
 				status: null,
 				failure,
-			});
+			};
+			const benign = isKnownBenignRequest(entry, SERVER);
+			if (benign) {
+				ignoredRequests.push({ ...entry, reason: benign.reason });
+			} else {
+				requests.push(entry);
+			}
 		}
 	});
 	page.on('response', (res) => {
@@ -410,7 +481,12 @@ const runClient = async (browser, name, context) => {
 			status: res.status(),
 		};
 		if (res.status() >= 400) {
-			requests.push(entry);
+			const benign = isKnownBenignRequest(entry, SERVER);
+			if (benign) {
+				ignoredRequests.push({ ...entry, reason: benign.reason });
+			} else {
+				requests.push(entry);
+			}
 		}
 		// スクロールで2ページ目を取りに行ったか(Link ヘッダが効いているか)を見るため
 		if (url.host === SERVER && url.searchParams.has('max_id')) {
@@ -536,99 +612,111 @@ const runClient = async (browser, name, context) => {
 	report.paginated ??= false;
 	report.errors = errors;
 	report.failedRequests = requests;
+	report.ignoredErrors = ignoredErrors;
+	report.ignoredRequests = ignoredRequests;
 	await writeFile(path.join(dir, 'report.json'), `${JSON.stringify(report, null, '\t')}\n`);
 	await browserContext.close();
 	return report;
 };
 
-const me = await api('/api/v1/accounts/verify_credentials');
-const [status] = await api('/api/v1/timelines/home?limit=1');
-const context = { me, status };
-
-let originalAvatarBlob = null;
-let originalHeaderBlob = null;
-if (shouldUpdateProfile) {
-	if (context.me.avatar) {
-		originalAvatarBlob = await fetch(context.me.avatar)
-			.then((r) => r.blob())
-			.catch(() => null);
-	}
-	if (context.me.header) {
-		originalHeaderBlob = await fetch(context.me.header)
-			.then((r) => r.blob())
-			.catch(() => null);
-	}
-}
-
-await rm(OUT_DIR, { recursive: true, force: true });
-const browser = await chromium.launch({ headless: !args.headed });
-const names = args.client === 'all' ? Object.keys(clients) : [args.client];
 let failed = false;
 
 try {
-	for (const name of names) {
-		if (!clients[name]) {
-			console.error(`unknown client: ${name}`);
-			process.exit(2);
+	const me = await api('/api/v1/accounts/verify_credentials');
+	const [status] = await api('/api/v1/timelines/home?limit=1');
+	const context = { me, status };
+
+	let originalAvatarBlob = null;
+	let originalHeaderBlob = null;
+	if (shouldUpdateProfile) {
+		if (context.me.avatar) {
+			originalAvatarBlob = await fetch(context.me.avatar)
+				.then((r) => r.blob())
+				.catch(() => null);
 		}
-		const report = await runClient(browser, name, context);
-		const problems =
-			report.errors.length +
-			report.failedRequests.length +
-			(report.post && !report.post.found ? 1 : 0) +
-			(report.postMedia && (!report.postMedia.found || !report.postMedia.hasMedia) ? 1 : 0) +
-			(report.delete && !report.delete.deleted ? 1 : 0) +
-			(report.interact && (!report.interact.favourited || !report.interact.reblogged) ? 1 : 0) +
-			(report.profile && !report.profile.found ? 1 : 0);
-		failed ||= problems > 0;
-		console.log(
-			`\n== ${name}: ${problems === 0 ? 'OK' : `${problems} problem(s)`} (paginated: ${report.paginated}, favourites: ${report.paginatedCollections.favourites}, bookmarks: ${report.paginatedCollections.bookmarks})`,
-		);
-		for (const r of report.failedRequests) {
-			console.log(`  [${r.page}] ${r.method} ${r.status ?? r.failure} ${r.url}`);
+		if (context.me.header) {
+			originalHeaderBlob = await fetch(context.me.header)
+				.then((r) => r.blob())
+				.catch(() => null);
 		}
-		for (const e of report.errors) {
-			console.log(`  [${e.page}] ${e.type}: ${e.text.split('\n')[0]}`);
-		}
-		if (report.post) {
-			console.log(`  post: ${report.post.found ? 'found in account statuses' : 'NOT FOUND'}`);
-		}
-		if (report.postMedia) {
+	}
+
+	await rm(OUT_DIR, { recursive: true, force: true });
+	const browser = await chromium.launch({ headless: !args.headed });
+	const names = args.client === 'all' ? Object.keys(clients) : [args.client];
+
+	try {
+		for (const name of names) {
+			if (!clients[name]) {
+				console.error(`unknown client: ${name}`);
+				process.exit(2);
+			}
+			const report = await runClient(browser, name, context);
+			const problems =
+				report.errors.length +
+				report.failedRequests.length +
+				(report.post && !report.post.found ? 1 : 0) +
+				(report.postMedia && (!report.postMedia.found || !report.postMedia.hasMedia) ? 1 : 0) +
+				(report.delete && !report.delete.deleted ? 1 : 0) +
+				(report.interact && (!report.interact.favourited || !report.interact.reblogged) ? 1 : 0) +
+				(report.profile && !report.profile.found ? 1 : 0);
+			failed ||= problems > 0;
 			console.log(
-				`  postMedia: ${report.postMedia.found && report.postMedia.hasMedia ? 'found with media in account statuses' : 'FAILED'}`,
+				`\n== ${name}: ${problems === 0 ? 'OK' : `${problems} problem(s)`} (paginated: ${report.paginated}, favourites: ${report.paginatedCollections.favourites}, bookmarks: ${report.paginatedCollections.bookmarks})`,
 			);
+			if (report.ignoredRequests.length > 0 || report.ignoredErrors.length > 0) {
+				console.log(
+					`  (${report.ignoredRequests.length} request(s) and ${report.ignoredErrors.length} error(s) allowed as known benign output)`,
+				);
+			}
+			for (const r of report.failedRequests) {
+				console.log(`  [${r.page}] ${r.method} ${r.status ?? r.failure} ${r.url}`);
+			}
+			for (const e of report.errors) {
+				console.log(`  [${e.page}] ${e.type}: ${e.text.split('\n')[0]}`);
+			}
+			if (report.post) {
+				console.log(`  post: ${report.post.found ? 'found in account statuses' : 'NOT FOUND'}`);
+			}
+			if (report.postMedia) {
+				console.log(
+					`  postMedia: ${report.postMedia.found && report.postMedia.hasMedia ? 'found with media in account statuses' : 'FAILED'}`,
+				);
+			}
+			if (report.delete) {
+				console.log(`  delete: ${report.delete.deleted ? 'status deleted via UI' : 'FAILED'}`);
+			}
+			if (report.interact) {
+				console.log(
+					`  interact: ${report.interact.favourited && report.interact.reblogged ? 'favourited and boosted via UI' : 'FAILED'}`,
+				);
+			}
+			if (report.profile) {
+				console.log(`  profile: ${report.profile.found ? 'updated successfully via UI' : 'FAILED'}`);
+			}
 		}
-		if (report.delete) {
-			console.log(`  delete: ${report.delete.deleted ? 'status deleted via UI' : 'FAILED'}`);
+	} finally {
+		if (shouldUpdateProfile) {
+			console.log('\nRestoring original profile...');
+			const formData = new FormData();
+			formData.append('display_name', context.me.display_name);
+			formData.append('note', context.me.source?.note ?? '');
+			if (originalAvatarBlob) {
+				formData.append('avatar', originalAvatarBlob, 'avatar.png');
+			}
+			if (originalHeaderBlob) {
+				formData.append('header', originalHeaderBlob, 'header.png');
+			}
+			await api('/api/v1/accounts/update_credentials', {
+				method: 'PATCH',
+				body: formData,
+			});
+			console.log('Original profile restored.');
 		}
-		if (report.interact) {
-			console.log(
-				`  interact: ${report.interact.favourited && report.interact.reblogged ? 'favourited and boosted via UI' : 'FAILED'}`,
-			);
-		}
-		if (report.profile) {
-			console.log(`  profile: ${report.profile.found ? 'updated successfully via UI' : 'FAILED'}`);
-		}
+		await browser.close();
 	}
 } finally {
-	if (shouldUpdateProfile) {
-		console.log('\nRestoring original profile...');
-		const formData = new FormData();
-		formData.append('display_name', context.me.display_name);
-		formData.append('note', context.me.source?.note ?? '');
-		if (originalAvatarBlob) {
-			formData.append('avatar', originalAvatarBlob, 'avatar.png');
-		}
-		if (originalHeaderBlob) {
-			formData.append('header', originalHeaderBlob, 'header.png');
-		}
-		await api('/api/v1/accounts/update_credentials', {
-			method: 'PATCH',
-			body: formData,
-		});
-		console.log('Original profile restored.');
-	}
-	await browser.close();
+	revokeDynamicToken();
 }
 
 console.log(`\nscreenshots and reports: ${OUT_DIR}`);

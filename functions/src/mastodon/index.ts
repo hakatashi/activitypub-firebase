@@ -45,7 +45,7 @@ app.get('/tags/:name', (req, res) => {
 	res.redirect(`https://elk.zone/${mastodonDomain}/tags/${encodeURIComponent(req.params.name)}`);
 });
 
-// Mastodon 本家の `/share?text=` に相当する。Elk の投稿ダイアログへ送る (→ ADR-0164)。
+// Mastodon 本家の `/share?text=` に相当する。Elk の投稿ダイアログへ送る (→ ADR-0165)。
 app.get('/share', (req, res) => {
 	const text = typeof req.query.text === 'string' ? req.query.text : undefined;
 	const query = text === undefined ? '' : `?${new URLSearchParams({ text })}`;

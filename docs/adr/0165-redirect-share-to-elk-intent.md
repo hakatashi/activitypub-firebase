@@ -1,4 +1,4 @@
-# ADR-0164: `/share` を Elk の `/intent/post` へリダイレクトする
+# ADR-0165: `/share` を Elk の `/intent/post` へリダイレクトする
 
 - **Status:** Accepted
 - **Date:** 2026-10-26

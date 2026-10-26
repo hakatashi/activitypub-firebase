@@ -21,6 +21,7 @@
 		"test:only": "node bin/run-test.js",
 		"measure:reads": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest run --config vitest.measure.config.ts\"",
 		"smoke-test": "cross-env GCLOUD_PROJECT=activitypub-firebase-dev tsx bin/smokeTest.ts",
+		"dev-token": "cross-env GCLOUD_PROJECT=activitypub-firebase-dev tsx bin/devToken.ts",
 		"test:watch": "firebase emulators:exec --project activitypub-firebase-dev --only firestore \"cross-env GCLOUD_PROJECT=activitypub-firebase-dev vitest\""
 	},
 	"dependencies": {

@@ -2,7 +2,7 @@ import request from 'supertest';
 import { describe, expect, test } from 'vitest';
 import { mastodonApi as mastodon } from '../../src/mastodon/index.js';
 
-// Mastodon 本家の `/share?text=` に相当するリダイレクト (→ ADR-0164)。
+// Mastodon 本家の `/share?text=` に相当するリダイレクト (→ ADR-0165)。
 describe('GET /share', () => {
 	test('redirects to the Elk intent page with text', async () => {
 		const res = await request(mastodon).get('/share').query({ text: 'Hello 世界 #tag&more=1' });
