@@ -45,6 +45,13 @@ app.get('/tags/:name', (req, res) => {
 	res.redirect(`https://elk.zone/${mastodonDomain}/tags/${encodeURIComponent(req.params.name)}`);
 });
 
+// Mastodon 本家の `/share?text=` に相当する。Elk の投稿ダイアログへ送る (→ ADR-0165)。
+app.get('/share', (req, res) => {
+	const text = typeof req.query.text === 'string' ? req.query.text : undefined;
+	const query = text === undefined ? '' : `?${new URLSearchParams({ text })}`;
+	res.redirect(`https://elk.zone/intent/post${query}`);
+});
+
 // 画像のない Account の `avatar` / `header` に返す既定画像 (→ ADR-0109)。
 app.use(defaultImagesRouter);
 
