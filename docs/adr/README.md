@@ -193,3 +193,4 @@ ADR は「1つの決定 = 1つの追記専用ファイル」にすることで�
 | [0164](0164-client-e2e-in-ci.md) | PR CI で Elk / Phanpy のクライアント E2E テストを実行する | Accepted |
 | [0165](0165-redirect-share-to-elk-intent.md) | `/share` を Elk の `/intent/post` へリダイレクトする | Accepted |
 | [0166](0166-dependabot-npm-updates.md) | Dependabot による npm 依存の監視とグループ更新 | Accepted |
+| [0167](0167-firestore-backup-and-pitr-per-project.md) | Firestore のバックアップと PITR をプロジェクトごとに絞る | Accepted |
