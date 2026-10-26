@@ -93,13 +93,13 @@ jobs:
           echo "phanpy_sha=$(git rev-parse :third_party/phanpy)" >> "$GITHUB_OUTPUT"
       - name: Cache Elk build
         id: cache-elk
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: third_party/elk/.output
           key: elk-build-${{ runner.os }}-${{ steps.submodules.outputs.elk_sha }}
       - name: Cache Phanpy build
         id: cache-phanpy
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: third_party/phanpy/dist
           key: phanpy-build-${{ runner.os }}-${{ steps.submodules.outputs.phanpy_sha }}
