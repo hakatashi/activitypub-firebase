@@ -21,8 +21,8 @@ Elk / Phanpy で dev 環境(`mastodon-dev.hakatashi.com`)を開き、画面が�
 
 ## 0. 準備
 
-`.env` に `MASTODON_DEV_TOKEN` が必要(発行方法は
-[`federation-testing.md`](federation-testing.md) の「dev の Mastodon API 用 OAuth アクセストークン」)。
+`.env` に `MASTODON_DEV_TOKEN` を設定するか、または GCP の認証情報(`GCP_SA_KEY` や `gcloud auth`)があれば `run.mjs` が自動的に一時トークンを発行・破棄する(→ [ADR-0164](../adr/0164-client-e2e-in-ci.md))。手動発行の方法は
+[`federation-testing.md`](federation-testing.md) の「dev の Mastodon API 用 OAuth アクセストークン」を参照。
 
 ```bash
 cd tools/client-e2e
@@ -93,7 +93,7 @@ ENV_FILE=~/Documents/GitHub/activitypub-firebase/.env node run.mjs
 
 ## 既知の出力(2026-10-10 時点)
 
-dev の実装が追いつけば消える。消えたらこの節も更新する。
+これらは `tools/client-e2e/allowlist.mjs` の許可リストに定義されており、`run.mjs` 実行時に `allowed` として集計され、終了コードに影響しないよう処理される(→ [ADR-0164](../adr/0164-client-e2e-in-ci.md))。dev の実装が追いつけば消える。消えたら許可リストとこの節も更新する。
 
 | 出力 | 原因 |
 |---|---|

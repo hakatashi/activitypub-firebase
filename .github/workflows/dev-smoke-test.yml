@@ -66,3 +66,110 @@ jobs:
         env:
           GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV }}
           GCLOUD_PROJECT: activitypub-firebase-dev
+
+  client_e2e:
+    name: Client E2E (Elk / Phanpy)
+    needs: [check_access, deploy_and_smoke_test]
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    env:
+      NUXT_STORAGE_DRIVER: fs
+      NUXT_STORAGE_FS_BASE: /tmp/elk-storage
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          submodules: recursive
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - name: Get submodule SHAs
+        id: submodules
+        run: |
+          echo "elk_sha=$(git rev-parse :third_party/elk)" >> "$GITHUB_OUTPUT"
+          echo "phanpy_sha=$(git rev-parse :third_party/phanpy)" >> "$GITHUB_OUTPUT"
+      - name: Cache Elk build
+        id: cache-elk
+        uses: actions/cache@v4
+        with:
+          path: third_party/elk/.output
+          key: elk-build-${{ runner.os }}-${{ steps.submodules.outputs.elk_sha }}
+      - name: Cache Phanpy build
+        id: cache-phanpy
+        uses: actions/cache@v4
+        with:
+          path: third_party/phanpy/dist
+          key: phanpy-build-${{ runner.os }}-${{ steps.submodules.outputs.phanpy_sha }}
+      - name: Build Elk
+        if: steps.cache-elk.outputs.cache-hit != 'true'
+        run: |
+          cd third_party/elk
+          pnpm i --frozen-lockfile
+          pnpm run build
+        env:
+          NUXT_STORAGE_DRIVER: fs
+      - name: Build Phanpy
+        if: steps.cache-phanpy.outputs.cache-hit != 'true'
+        run: |
+          cd third_party/phanpy
+          npm ci
+          npm run build
+      - name: Install dependencies
+        run: |
+          npm --prefix functions ci
+          npm --prefix tools/client-e2e ci
+          npx --prefix tools/client-e2e playwright install --with-deps chromium
+      - name: Run client E2E test
+        run: |
+          mkdir -p /tmp/elk-storage
+          PORT=5314 node third_party/elk/.output/server/index.mjs > /tmp/elk.log 2>&1 &
+          ELK_PID=$!
+          npx --yes serve -s third_party/phanpy/dist -l 5315 > /tmp/phanpy.log 2>&1 &
+          PHANPY_PID=$!
+
+          trap 'kill $ELK_PID $PHANPY_PID 2>/dev/null || true' EXIT
+
+          for i in {1..30}; do
+            elk_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5314/ || true)
+            phanpy_status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5315/ || true)
+            if [ "$elk_status" = "200" ] && [ "$phanpy_status" = "200" ]; then
+              echo "Both Elk and Phanpy are up and responding with 200."
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Timed out waiting for Elk and Phanpy."
+              echo "=== Elk Log ==="
+              cat /tmp/elk.log
+              echo "=== Phanpy Log ==="
+              cat /tmp/phanpy.log
+              exit 1
+            fi
+            echo "Waiting for clients (Elk: $elk_status, Phanpy: $phanpy_status)... attempt $i"
+            sleep 2
+          done
+
+          node tools/client-e2e/run.mjs
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ACTIVITYPUB_FIREBASE_DEV }}
+          GCLOUD_PROJECT: activitypub-firebase-dev
+          ELK_URL: http://127.0.0.1:5314
+          PHANPY_URL: http://127.0.0.1:5315
+      - name: Upload client-e2e results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-e2e-results
+          path: tools/client-e2e/out/
+          if-no-files-found: ignore
+      - name: Upload client logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-logs
+          path: |
+            /tmp/elk.log
+            /tmp/phanpy.log
+          if-no-files-found: ignore
