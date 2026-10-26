@@ -150,6 +150,13 @@
           }
         },
         {
+          "source": "/share",
+          "function": {
+            "functionId": "mastodonApi",
+            "region": "asia-northeast1"
+          }
+        },
+        {
           "source": "/tags/**",
           "function": {
             "functionId": "mastodonApi",
