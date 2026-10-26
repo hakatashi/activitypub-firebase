@@ -11,8 +11,7 @@
 apex が処理するのは `Accept` / `Announce` / `Delete` / `Like` / `Reject` / `Undo` / `Update`。
 `Follow` は apex 側にケースがなく、`functions/src/activitypub.ts` の `apex-inbox` リスナーで
 自前実装している。`Move` は apex が完全に非対応(2xx で受け取って捨てる。→ [ADR-0115](adr/0115-inbox-4xx-only-for-sender-faults.md))。
-`Add` / `Remove` は副作用を行わない方針だが(→ [ADR-0141](adr/0141-ignore-inbox-add-remove.md))、
-object が Note のもの(Mastodon のピン留め)には 400 を返している → [#363](https://github.com/hakatashi/activitypub-firebase/issues/363)。
+`Add` / `Remove` は副作用を行わない方針(→ [ADR-0141](adr/0141-ignore-inbox-add-remove.md))。
 
 ### 仕様の S2S 部分との照合で見つかった非準拠
 
