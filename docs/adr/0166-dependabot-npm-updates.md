@@ -1,0 +1,30 @@
+# ADR-0166: Dependabot による npm 依存の監視とグループ更新
+
+- **Status:** Accepted
+- **Date:** 2026-10-27
+
+## 背景
+
+Issue #395 ([[ADR-0163]]) および Issue #396 ([[ADR-0164]]) により、PR 段階での dev への Functions デプロイ・スモークテストおよび Elk / Phanpy による E2E テストが整備された。これにより、Dependabot による npm 依存の更新を安全に CI で検証し、自動マージ(`automerge.yml`)で本番へ反映できる前提が整った。
+
+## 決定
+
+1. **`.github/dependabot.yml` に `/functions` と `/tools/client-e2e` の npm 監視を追加する。** 実行間隔は既存の更新と同じく日次 (`daily`) とする。
+2. **`functions` のマイナー・パッチ更新を `dev-dependencies` と `production-dependencies` にグループ化する。** 40 を超えるパッケージの個別 PR による dev デプロイキューの詰まりや lockfile コンフリクトを防ぐ。
+3. **`supertest` および `@types/supertest` のメジャー更新を除外する。** 7 系の型が `onRequest` の戻り値を受け付けないため、[[ADR-0087]] の据え置き方針に従い `ignore` に設定する。
+4. **メジャーアップデートはグループに含めない。** 破壊的変更の精査のため、メジャー更新はパッケージごとの個別 PR として扱う。
+5. **`tools/client-e2e` (Playwright) も監視対象とする。** 追従を容易にするため、マイナー・パッチをグループ化する。
+
+## 理由
+
+- 大量の個別 PR による dev 環境の直列デプロイブロックと CI 競合を防ぎつつ、後方互換性のある日常的なマイナー・パッチ更新を安全に自動反映できる。
+- 破壊的変更を伴うメジャー更新をグループ化から分離することで、更新理由や影響範囲の個別精査を可能にする。
+
+## 結果
+
+- npm の日常的な依存更新がグループ PR として自動作成され、CI (テスト・ビルド・型チェック・dev デプロイ・スモークテスト・クライアント E2E) 通過後に自動マージされる。
+
+## 参照
+
+- 関連 ADR: [[0087-upgrade-to-express-5]], [[0163-deploy-dev-and-smoke-test-on-pr]], [[0164-client-e2e-in-ci]]
+- 関連ファイル: `.github/dependabot.yml`

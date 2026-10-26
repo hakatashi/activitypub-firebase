@@ -459,3 +459,5 @@ PR 時には `.github/workflows/dev-smoke-test.yml` により、同一リポジ�
 (→ [ADR-0041](adr/0041-vendor-fork-in-tree.md))。
 型定義のみ `masto` パッケージを利用している(`CamelToSnake` 型ユーティリティで
 camelCase の型定義を snake_case の JSON に変換している)。
+
+npm 依存の更新は Dependabot (`.github/dependabot.yml`) により日次で監視され、`functions` のマイナー・パッチ更新は `dev-dependencies` と `production-dependencies` にグループ化されて PR が作成される (→ [ADR-0166](adr/0166-dependabot-npm-updates.md))。なお `supertest` および `@types/supertest` は 6 系 / 2 系に据え置かれているためメジャー更新は除外されている (→ [ADR-0087](adr/0087-upgrade-to-express-5.md))。

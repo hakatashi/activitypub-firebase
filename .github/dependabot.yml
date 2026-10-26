@@ -10,3 +10,36 @@ updates:
     directory: /
     schedule:
       interval: daily
+  - package-ecosystem: npm
+    directory: /functions
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      production-dependencies:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # supertest 7 系の型は onRequest の戻り値 (HttpsFunction) を受け付けず、統合テスト書き換えが必要なため据え置く (→ ADR-0087)
+      - dependency-name: supertest
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/supertest"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: npm
+    directory: /tools/client-e2e
+    schedule:
+      interval: daily
+    groups:
+      client-e2e-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
