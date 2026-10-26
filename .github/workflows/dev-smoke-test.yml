@@ -159,14 +159,14 @@ jobs:
           PHANPY_URL: http://127.0.0.1:5315
       - name: Upload client-e2e results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: client-e2e-results
           path: tools/client-e2e/out/
           if-no-files-found: ignore
       - name: Upload client logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: client-logs
           path: |
