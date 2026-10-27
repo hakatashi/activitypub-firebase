@@ -267,4 +267,72 @@ describe('inbox responses to transient failures and migration side activities', 
 		expect(res.status).toBe(500);
 		expect(await streamCollections(id)).toBeUndefined();
 	});
+
+	test('accepts Add(Note) with 2xx without fetching the Note when target is not featured (ADR-0141, Issue #363)', async () => {
+		const requestObjectSpy = vi.spyOn(apex, 'requestObject');
+		const targetNoteId = `${REMOTE_ACTOR_ID}/statuses/note-1`;
+		const id = 'https://remote.example/activities/add-1';
+		const res = await postInbox({
+			'@context': 'https://www.w3.org/ns/activitystreams',
+			id,
+			type: 'Add',
+			actor: REMOTE_ACTOR_ID,
+			object: targetNoteId,
+			target: `${REMOTE_ACTOR_ID}/collections/custom`,
+		});
+
+		expect(res.status).toBe(200);
+		expect(requestObjectSpy).not.toHaveBeenCalledWith(targetNoteId);
+		expect(await streamCollections(id)).toContain(localInboxId);
+	});
+
+	test('accepts Remove(Note) with 2xx without fetching the Note when target is not featured (ADR-0141, Issue #363)', async () => {
+		const requestObjectSpy = vi.spyOn(apex, 'requestObject');
+		const targetNoteId = `${REMOTE_ACTOR_ID}/statuses/note-1`;
+		const id = 'https://remote.example/activities/remove-1';
+		const res = await postInbox({
+			'@context': 'https://www.w3.org/ns/activitystreams',
+			id,
+			type: 'Remove',
+			actor: REMOTE_ACTOR_ID,
+			object: targetNoteId,
+			target: `${REMOTE_ACTOR_ID}/collections/custom`,
+		});
+
+		expect(res.status).toBe(200);
+		expect(requestObjectSpy).not.toHaveBeenCalledWith(targetNoteId);
+		expect(await streamCollections(id)).toContain(localInboxId);
+	});
+
+	test('accepts Add(Note) and Remove(Note) with 2xx when Note is already in local store (ADR-0141, Issue #363)', async () => {
+		const targetNoteId = `${REMOTE_ACTOR_ID}/statuses/local-note`;
+		await apex.store.saveObject({
+			id: targetNoteId,
+			type: 'Note',
+			attributedTo: REMOTE_ACTOR_ID,
+			content: 'local note content',
+		});
+
+		const addId = 'https://remote.example/activities/add-local-note';
+		const addRes = await postInbox({
+			'@context': 'https://www.w3.org/ns/activitystreams',
+			id: addId,
+			type: 'Add',
+			actor: REMOTE_ACTOR_ID,
+			object: targetNoteId,
+			target: `${REMOTE_ACTOR_ID}/collections/custom`,
+		});
+		expect(addRes.status).toBe(200);
+
+		const removeId = 'https://remote.example/activities/remove-local-note';
+		const removeRes = await postInbox({
+			'@context': 'https://www.w3.org/ns/activitystreams',
+			id: removeId,
+			type: 'Remove',
+			actor: REMOTE_ACTOR_ID,
+			object: targetNoteId,
+			target: `${REMOTE_ACTOR_ID}/collections/custom`,
+		});
+		expect(removeRes.status).toBe(200);
+	});
 });

@@ -14,7 +14,7 @@ import {
 import { getApex, getLocals, getRouteParam } from './locals.js';
 
 const needsResolveObject = ['announce', 'block', 'create', 'follow', 'like'];
-const needsResolveActivity = ['accept', 'add', 'reject', 'remove'];
+const needsResolveActivity = ['accept', 'reject'];
 // inbox の Add / Remove の object は Activity に限らない (AS2)。手元にあるものだけを探し、外部へは取りに行かない (→ ADR-0144)
 const needsLocalAnyObject = ['add', 'remove'];
 const needsLocalActivity = ['undo'];
@@ -25,7 +25,7 @@ const obxNeedsInlineObject = ['create'];
 const requiresObject = ['announce', 'create', 'delete', 'follow', 'like', 'update'];
 const requiresActivityObject = ['accept', 'reject'];
 const requiresObjectId = ['add', 'remove'];
-const obxRequiresActivityObject = ['accept', 'add', 'reject', 'remove', 'undo'];
+const obxRequiresActivityObject = ['accept', 'reject', 'undo'];
 const requiresObjectOwnership = ['delete', 'undo', 'update'];
 const requiresTarget = ['add', 'remove'];
 // `id` を持たない一時的なもの (AP §3.1) として受け付ける種類。Mastodon / Misskey はピン留めの Add / Remove に
@@ -477,6 +477,9 @@ export const outboxActivityObject = (req: Request, res: Response, next: NextFunc
 	let object: ObjectResolution;
 	if (needsResolveObject.includes(type) && activity.object) {
 		object = apex.resolveObject(first(activity.object), true);
+	} else if (needsLocalAnyObject.includes(type)) {
+		const objectId = apex.objectIdFromActivity(activity);
+		object = objectId === null ? undefined : getLocalActivityOrObject(apex, objectId);
 	} else if (needsResolveActivity.includes(type) && activity.object) {
 		object = apex.resolveActivity(first(activity.object), true);
 	} else if (needsLocalActivity.includes(type)) {
@@ -559,6 +562,12 @@ export const outboxActivity = (req: Request, res: Response, next: NextFunction):
 	if (obxRequiresActivityObject.includes(type) && !apex.validateActivity(object)) {
 		resLocal.status = 400;
 		resLocal.statusMessage = `Activity type object requried for ${activity.type} activity`;
+		next();
+		return;
+	}
+	if (requiresObjectId.includes(type) && apex.objectIdFromActivity(activity) === null) {
+		resLocal.status = 400;
+		resLocal.statusMessage = `Object requried for ${activity.type} activity`;
 		next();
 		return;
 	}

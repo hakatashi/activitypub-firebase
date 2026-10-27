@@ -414,8 +414,13 @@ export const resolveThread = (req: Request, res: Response, next: NextFunction): 
 	const apex = getApex(req);
 	const resLocal = getLocals(res);
 	const body: unknown = req.body;
-	// 一時的なアクティビティは転送しないので、参照を解決しない
-	if (!resLocal.activity || resLocal.transient === true || !isAPObject(body)) {
+	// 一時的なアクティビティや Add / Remove は転送しないので、参照を解決しない (ADR-0141, ADR-0144)
+	if (
+		!resLocal.activity ||
+		resLocal.transient === true ||
+		!isAPObject(body) ||
+		(typeof body.type === 'string' && ['add', 'remove'].includes(body.type.toLowerCase()))
+	) {
 		next();
 		return;
 	}

@@ -19,6 +19,7 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 	const recipient = {
 		id: RECIPIENT_ID,
 		type: 'Person',
+		preferredUsername: ['bob'],
 		inbox: [`${RECIPIENT_ID}/inbox`],
 		outbox: [`${RECIPIENT_ID}/outbox`],
 	};
@@ -487,6 +488,51 @@ describe('apex validators for Like and Announce (ADR-0047)', () => {
 
 			expect(res.locals.apex.activity).toBe(true);
 			expect(res.locals.apex.status).toBeUndefined();
+		});
+
+		test('resolves Note for Add activity and validates without requiring an Activity object in outbox', async () => {
+			const targetCollection = `${RECIPIENT_ID}/c/featured-items`;
+			const addActivity = {
+				id: 'https://example.com/s/add-1',
+				type: 'Add',
+				actor: [RECIPIENT_ID],
+				object: [NOTE_ID],
+				target: [targetCollection],
+			};
+
+			const { req, res } = createMockReqRes(addActivity, {
+				target: recipient,
+			});
+
+			await runMiddleware(apex.net.validators.outboxActivityObject, req, res);
+
+			expect(res.locals.apex.object).toEqual(note);
+
+			await runMiddleware(apex.net.validators.outboxActivity, req, res);
+
+			expect(res.locals.apex.activity).toBe(true);
+			expect(res.locals.apex.status).toBeUndefined();
+		});
+
+		test('rejects outbox Add without object with 400', async () => {
+			const targetCollection = `${RECIPIENT_ID}/c/featured-items`;
+			const addActivity = {
+				id: 'https://example.com/s/add-1',
+				type: 'Add',
+				actor: [RECIPIENT_ID],
+				target: [targetCollection],
+			};
+
+			const { req, res } = createMockReqRes(addActivity, {
+				target: recipient,
+			});
+
+			await runMiddleware(apex.net.validators.outboxActivityObject, req, res);
+			await runMiddleware(apex.net.validators.outboxActivity, req, res);
+
+			expect(res.locals.apex.status).toBe(400);
+			expect(res.locals.apex.statusMessage).toBe('Object requried for Add activity');
+			expect(res.locals.apex.activity).toBeUndefined();
 		});
 	});
 });
