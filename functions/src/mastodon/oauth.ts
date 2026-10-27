@@ -351,7 +351,7 @@ router.post('/token', tokenCors, async (req, res) => {
 	try {
 		// Some application sends JSON instead of form-data (why?). This is a workaround.
 		// https://github.com/elk-zone/elk/issues/2244
-		if (request.headers?.['content-type'] === 'application/json') {
+		if (request.headers?.['content-type']?.includes('application/json')) {
 			request.headers['content-type'] = 'application/x-www-form-urlencoded';
 		}
 
@@ -408,7 +408,7 @@ router.post('/revoke', tokenCors, async (req, res) => {
 		return;
 	}
 
-	const client = await oauthModel.getClient(clientId, clientSecret ?? null);
+	const client = await oauthModel.getClient(clientId, clientSecret);
 	if (!client) {
 		res.status(401).json({
 			error: 'invalid_client',

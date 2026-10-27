@@ -37,6 +37,17 @@ const toDate = (timestamp: unknown): Date | undefined => {
 	return undefined;
 };
 
+export const toScopeArray = (scope: unknown): string[] | undefined => {
+	if (Array.isArray(scope)) {
+		return scope.filter((s): s is string => typeof s === 'string');
+	}
+	if (typeof scope === 'string') {
+		const trimmed = scope.trim();
+		return trimmed.length > 0 ? trimmed.split(/\s+/) : [];
+	}
+	return undefined;
+};
+
 // クエリを実行し、最初の1件(なければ undefined)を返す。
 // 各メソッドがそれぞれ独自に `results.docs[0]` を取り出して乖離するのを避ける。
 export const getFirstDoc = async <T extends FirebaseFirestore.DocumentData>(
@@ -55,12 +66,21 @@ export class Oauth2Model
 			return false;
 		}
 		const accessTokenData = doc.data();
+		const {
+			refreshTokenExpiresAt: rawRefreshTokenExpiresAt,
+			scope: rawScope,
+			...rest
+		} = accessTokenData;
+		const refreshTokenExpiresAt = toDate(rawRefreshTokenExpiresAt);
+		const scope = toScopeArray(rawScope);
 		return {
-			...accessTokenData,
+			...rest,
 			user: accessTokenData.user ?? {},
 			accessTokenExpiresAt:
 				toDate(accessTokenData.accessTokenExpiresAt) ?? ACCESS_TOKEN_NEVER_EXPIRES_AT,
-			refreshTokenExpiresAt: toDate(accessTokenData.refreshTokenExpiresAt),
+			client: accessTokenData.client,
+			...(refreshTokenExpiresAt === undefined ? {} : { refreshTokenExpiresAt }),
+			...(scope === undefined ? {} : { scope }),
 		};
 	}
 
@@ -72,9 +92,12 @@ export class Oauth2Model
 			return false;
 		}
 		const authorizationCodeData = doc.data();
+		const { scope: rawScope, ...rest } = authorizationCodeData;
+		const scope = toScopeArray(rawScope);
 		return {
-			...authorizationCodeData,
+			...rest,
 			expiresAt: toDate(authorizationCodeData.expiresAt) ?? new Date(0),
+			...(scope === undefined ? {} : { scope }),
 		};
 	}
 
@@ -91,11 +114,12 @@ export class Oauth2Model
 		client: Client,
 		user: User,
 	): Promise<AuthorizationCode | false> {
+		const scope = toScopeArray(code.scope);
 		const authorizationCode: AuthorizationCode = {
 			authorizationCode: code.authorizationCode,
 			expiresAt: code.expiresAt,
 			redirectUri: code.redirectUri,
-			...(code.scope === undefined ? {} : { scope: code.scope }),
+			...(scope === undefined ? {} : { scope }),
 			...(code.codeChallenge === undefined ? {} : { codeChallenge: code.codeChallenge }),
 			...(code.codeChallengeMethod === undefined
 				? {}
@@ -121,9 +145,9 @@ export class Oauth2Model
 		});
 	}
 
-	async getClient(clientId: string, clientSecret: string | null): Promise<Client | false> {
+	async getClient(clientId: string, clientSecret?: string | null): Promise<Client | false> {
 		let query = Clients.where('clientId', '==', clientId);
-		if (clientSecret !== null) {
+		if (clientSecret !== undefined && clientSecret !== null) {
 			query = query.where('clientSecret', '==', clientSecret);
 		}
 
@@ -146,25 +170,35 @@ export class Oauth2Model
 		};
 	}
 
-	async saveToken(token: Token, client: Client, user: User): Promise<Token | false> {
-		const accessToken = {
+	async saveToken(
+		token: Omit<Token, 'client' | 'user'>,
+		client: Client,
+		user: User,
+	): Promise<Token | false> {
+		const scope = toScopeArray(token.scope);
+		const accessToken: Token = {
 			...token,
+			accessToken: token.accessToken,
 			accessTokenExpiresAt: ACCESS_TOKEN_NEVER_EXPIRES_AT,
 			client,
 			user,
+			...(scope === undefined ? {} : { scope }),
 		};
+		if (!scope) {
+			delete accessToken.scope;
+		}
 		await AccessTokens.add(accessToken);
 
 		if (token.refreshToken !== undefined) {
-			const refreshToken = {
+			const refreshToken: RefreshToken = {
 				refreshToken: token.refreshToken,
 				...(token.refreshTokenExpiresAt === undefined
 					? {}
 					: { refreshTokenExpiresAt: token.refreshTokenExpiresAt }),
 				client,
 				user,
-				...(token.scope === undefined ? {} : { scope: token.scope }),
-			} satisfies RefreshToken;
+				...(scope === undefined ? {} : { scope }),
+			};
 			await RefreshTokens.add(refreshToken);
 		}
 
@@ -177,9 +211,19 @@ export class Oauth2Model
 			return false;
 		}
 		const refreshTokenData = doc.data();
+		const {
+			refreshTokenExpiresAt: rawRefreshTokenExpiresAt,
+			scope: rawScope,
+			...rest
+		} = refreshTokenData;
+		const refreshTokenExpiresAt = toDate(rawRefreshTokenExpiresAt);
+		const scope = toScopeArray(rawScope);
 		return {
-			...refreshTokenData,
-			refreshTokenExpiresAt: toDate(refreshTokenData.refreshTokenExpiresAt),
+			...rest,
+			client: refreshTokenData.client,
+			user: refreshTokenData.user,
+			...(refreshTokenExpiresAt === undefined ? {} : { refreshTokenExpiresAt }),
+			...(scope === undefined ? {} : { scope }),
 		};
 	}
 
@@ -231,7 +275,7 @@ export class Oauth2Model
 		return doc.data();
 	}
 
-	async getUser(username: string, password: string): Promise<User | false> {
+	async getUser(username: string, password: string, _client?: Client): Promise<User | false> {
 		const doc = await getFirstDoc(
 			Users.where('username', '==', username).where('password', '==', password),
 		);
@@ -242,17 +286,16 @@ export class Oauth2Model
 	}
 
 	verifyScope(token: Token, scope: string | string[]): Promise<boolean> {
-		if (!token.scope) {
+		const authorizedScopes = toScopeArray(token.scope);
+		if (!authorizedScopes || authorizedScopes.length === 0) {
 			return Promise.resolve(false);
 		}
 
 		const requestedScopes = new Set(Array.isArray(scope) ? scope : scope.split(' '));
-		const authorizedScopes = new Set(
-			Array.isArray(token.scope) ? token.scope : token.scope.split(' '),
-		);
+		const authorizedScopesSet = new Set(authorizedScopes);
 
 		for (const requestedScope of requestedScopes) {
-			if (!authorizedScopes.has(requestedScope)) {
+			if (!authorizedScopesSet.has(requestedScope)) {
 				return Promise.resolve(false);
 			}
 		}

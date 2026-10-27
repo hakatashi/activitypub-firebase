@@ -70,7 +70,7 @@ describe('oauth', () => {
 					vapidKey: 'vapid-key',
 				},
 				user: { id: 'user-1' },
-				scope: 'read',
+				scope: ['read'],
 			});
 
 			const response = await request(app).post('/oauth/token').type('form').send({
@@ -491,18 +491,7 @@ describe('oauth', () => {
 			expect(authCode).toBeTruthy();
 			authSpy.mockRestore();
 
-			// 4. Token Exchange with wrong code_verifier fails
-			const failTokenResponse = await request(app).post('/oauth/token').type('form').send({
-				grant_type: 'authorization_code',
-				code: authCode,
-				client_id: clientId,
-				client_secret: clientSecret,
-				redirect_uri: 'https://example.com/oauth/callback',
-				code_verifier: 'incorrect-verifier',
-			});
-			expect(failTokenResponse.status).toBe(400);
-
-			// 5. Token Exchange with valid code_verifier succeeds
+			// 4. Token Exchange with valid code_verifier succeeds
 			const tokenResponse = await request(app).post('/oauth/token').type('form').send({
 				grant_type: 'authorization_code',
 				code: authCode,
@@ -516,7 +505,7 @@ describe('oauth', () => {
 			expect(accessToken1).toBeDefined();
 			expect(refreshToken1).toBeDefined();
 
-			// 6. Verify credentials via GET /api/v1/apps/verify_credentials
+			// 5. Verify credentials via GET /api/v1/apps/verify_credentials
 			const credsResponse = await request(app)
 				.get('/api/v1/apps/verify_credentials')
 				.set('Authorization', `Bearer ${accessToken1}`);
@@ -531,7 +520,7 @@ describe('oauth', () => {
 				vapid_key: vapidKey,
 			});
 
-			// 7. Refresh token grant
+			// 6. Refresh token grant
 			const refreshResponse = await request(app).post('/oauth/token').type('form').send({
 				grant_type: 'refresh_token',
 				refresh_token: refreshToken1,
@@ -545,7 +534,7 @@ describe('oauth', () => {
 			expect(accessToken2).not.toBe(accessToken1);
 			expect(refreshToken2).not.toBe(refreshToken1);
 
-			// 8. Old refresh token cannot be reused
+			// 7. Old refresh token cannot be reused
 			const oldRefreshReplay = await request(app).post('/oauth/token').type('form').send({
 				grant_type: 'refresh_token',
 				refresh_token: refreshToken1,
@@ -554,13 +543,13 @@ describe('oauth', () => {
 			});
 			expect(oldRefreshReplay.status).toBe(400);
 
-			// 9. New access token works
+			// 8. New access token works
 			const newCredsResponse = await request(app)
 				.get('/api/v1/apps/verify_credentials')
 				.set('Authorization', `Bearer ${accessToken2}`);
 			expect(newCredsResponse.status).toBe(200);
 
-			// 10. Revoke new access token
+			// 9. Revoke new access token
 			const revokeResponse = await request(app).post('/oauth/revoke').type('form').send({
 				client_id: clientId,
 				client_secret: clientSecret,
@@ -569,13 +558,13 @@ describe('oauth', () => {
 			expect(revokeResponse.status).toBe(200);
 			expect(revokeResponse.body).toEqual({});
 
-			// 11. Revoked token fails authentication
+			// 10. Revoked token fails authentication
 			const revokedCredsResponse = await request(app)
 				.get('/api/v1/apps/verify_credentials')
 				.set('Authorization', `Bearer ${accessToken2}`);
 			expect(revokedCredsResponse.status).toBe(401);
 
-			// 12. Idempotent revoke returns 200
+			// 11. Idempotent revoke returns 200
 			const replayRevokeResponse = await request(app).post('/oauth/revoke').type('form').send({
 				client_id: clientId,
 				client_secret: clientSecret,
@@ -583,6 +572,64 @@ describe('oauth', () => {
 			});
 			expect(replayRevokeResponse.status).toBe(200);
 			expect(replayRevokeResponse.body).toEqual({});
+		});
+
+		test('rejects token exchange with invalid code_verifier and consumes the authorization code', async () => {
+			const clientId = 'client-pkce-test';
+			const clientSecret = 'secret-pkce-test';
+			await Clients.add({
+				id: 'client-pkce-id',
+				name: 'PKCE Test App',
+				redirectUris: ['https://example.com/oauth/callback'],
+				grants: ['authorization_code'],
+				clientId,
+				clientSecret,
+				scopes: ['read'],
+				vapidKey: 'test-vapid-key',
+			});
+
+			const verifier = crypto.randomBytes(32).toString('base64url');
+			const codeChallenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+			const authSpy = vi.spyOn(firebase.auth(), 'verifyIdToken').mockResolvedValue({
+				uid: 'user-uid-test',
+			} as unknown as firebase.auth.DecodedIdToken);
+
+			const approveResponse = await request(app).post('/oauth/authorize').type('form').send({
+				idToken: 'valid-id-token',
+				client_id: clientId,
+				redirect_uri: 'https://example.com/oauth/callback',
+				response_type: 'code',
+				scope: 'read',
+				code_challenge: codeChallenge,
+				code_challenge_method: 'S256',
+			});
+			expect(approveResponse.status).toBe(302);
+			const redirectUrl = new URL(approveResponse.headers.location as string);
+			const authCode = redirectUrl.searchParams.get('code');
+			expect(authCode).toBeTruthy();
+			authSpy.mockRestore();
+
+			const wrongVerifier = crypto.randomBytes(32).toString('base64url');
+			const failResponse = await request(app).post('/oauth/token').type('form').send({
+				grant_type: 'authorization_code',
+				code: authCode,
+				client_id: clientId,
+				client_secret: clientSecret,
+				redirect_uri: 'https://example.com/oauth/callback',
+				code_verifier: wrongVerifier,
+			});
+			expect(failResponse.status).toBe(400);
+
+			// The authorization code has been consumed and cannot be reused with the correct verifier
+			const retryResponse = await request(app).post('/oauth/token').type('form').send({
+				grant_type: 'authorization_code',
+				code: authCode,
+				client_id: clientId,
+				client_secret: clientSecret,
+				redirect_uri: 'https://example.com/oauth/callback',
+				code_verifier: verifier,
+			});
+			expect(retryResponse.status).toBe(400);
 		});
 	});
 });
