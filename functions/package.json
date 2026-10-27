@@ -26,7 +26,7 @@
 	},
 	"dependencies": {
 		"@google-cloud/functions-framework": "^3.5.1",
-		"@node-oauth/oauth2-server": "^4.3.3",
+		"@node-oauth/oauth2-server": "^5.3.1",
 		"blurhash": "^2.0.5",
 		"busboy": "^1.6.0",
 		"cors": "^2.8.6",
