@@ -32,7 +32,7 @@
 		"cors": "^2.8.6",
 		"deepmerge": "^4.2.2",
 		"escape-goat": "^4.0.0",
-		"express": "^5.2.1",
+		"express": "^5.3.0",
 		"firebase-admin": "^13.10.0",
 		"firebase-functions": "^6.6.0",
 		"http-message-sig": "^0.3.0",
@@ -40,13 +40,13 @@
 		"jsonld": "^8.1.0",
 		"lodash-es": "^4.18.1",
 		"node-fetch": "^3.3.2",
-		"on-finished": "^2.4.1",
+		"on-finished": "^2.4.2",
 		"overlaps": "^1.0.0",
 		"parse5": "^7.3.0",
-		"qs": "^6.16.0",
+		"qs": "^6.16.1",
 		"sharp": "^0.35.5",
 		"undici": "^6.28.1",
-		"zod": "^4.5.4"
+		"zod": "^4.6.7"
 	},
 	"devDependencies": {
 		"@google-cloud/firestore": "^6.8.0",
