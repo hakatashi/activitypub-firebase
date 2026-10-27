@@ -41,15 +41,14 @@ describe('functions/.env and parameter validation', () => {
 				projectDir,
 			});
 
-			const { paramValues } = await firebaseParams.resolveParams(
-				nonSecretParams,
-				{ projectId },
+			const { paramValues } = await firebaseParams.resolveParams({
+				params: nonSecretParams,
+				firebaseConfig: { projectId },
 				userEnvs,
-				'default',
-				true, // nonInteractive
-				false,
-				true, // isEmulator
-			);
+				codebase: 'default',
+				nonInteractive: true,
+				isEmulator: true,
+			});
 
 			for (const param of nonSecretParams) {
 				expect(userEnvs).toHaveProperty(param.name);
@@ -68,15 +67,14 @@ describe('functions/.env and parameter validation', () => {
 		];
 
 		await expect(
-			firebaseParams.resolveParams(
-				missingParam,
-				{ projectId: 'activitypub-firebase' },
-				{},
-				'default',
-				true, // nonInteractive
-				false,
-				true, // isEmulator
-			),
+			firebaseParams.resolveParams({
+				params: missingParam,
+				firebaseConfig: { projectId: 'activitypub-firebase' },
+				userEnvs: {},
+				codebase: 'default',
+				nonInteractive: true,
+				isEmulator: true,
+			}),
 		).rejects.toThrow(
 			/In non-interactive mode but have no value for the following environment variables: NON_EXISTENT_PARAM/,
 		);

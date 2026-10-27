@@ -4,7 +4,7 @@ import { BadRequestError, UnprocessableError } from './errors.js';
 
 export interface MultipartFile {
 	fieldname: string;
-	filename: string;
+	filename: string | undefined;
 	encoding: string;
 	mimeType: string;
 	buffer: Buffer;

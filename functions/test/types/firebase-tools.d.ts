@@ -11,17 +11,16 @@ declare module 'firebase-tools/lib/functions/env.js' {
 }
 
 declare module 'firebase-tools/lib/deploy/functions/params.js' {
-	type ResolveParamsArgs = [
-		params: unknown[],
-		firebaseConfig: { projectId: string },
-		userEnvs: Record<string, string>,
-		codebase: string,
-		nonInteractive: boolean,
-		force: boolean,
-		isEmulator?: boolean,
-	];
+	interface ResolveParamsOptions {
+		params: unknown[];
+		firebaseConfig: { projectId: string; [key: string]: unknown };
+		userEnvs: Record<string, string>;
+		codebase?: string;
+		nonInteractive?: boolean;
+		isEmulator?: boolean;
+	}
 	const params: {
-		resolveParams: (...args: ResolveParamsArgs) => Promise<{
+		resolveParams: (options: ResolveParamsOptions) => Promise<{
 			paramValues: Record<string, unknown>;
 			secretRefs: Record<string, unknown>;
 		}>;
