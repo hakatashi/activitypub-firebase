@@ -1,6 +1,7 @@
 import { mastodonDomain } from '../../firebase.js';
 
 export interface TagEntity {
+	id: string;
 	name: string;
 	url: string;
 	history: [];
@@ -13,6 +14,7 @@ export const hashtagUrl = (name: string) =>
 
 // Tag エンティティ。使用回数 (history) とタグのフォローは扱わない (→ ADR-0103)。
 export const toTagEntity = (name: string): TagEntity => ({
+	id: name,
 	name,
 	url: hashtagUrl(name),
 	history: [],

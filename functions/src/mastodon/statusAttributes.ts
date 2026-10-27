@@ -96,7 +96,8 @@ export const noteToHashtags = (note: APNote): mastodon.v1.Tag[] =>
 		if (!isHashtagType(tag.type) || href === undefined || name === undefined) {
 			return [];
 		}
-		return [{ name: name.replace(/^#/, ''), url: href }];
+		const tagName = name.replace(/^#/, '');
+		return [{ id: tagName, name: tagName, url: href }];
 	});
 
 export const noteToEmojis = (note: APNote): CamelToSnake<mastodon.v1.CustomEmoji>[] =>

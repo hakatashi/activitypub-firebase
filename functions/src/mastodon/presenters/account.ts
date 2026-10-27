@@ -25,7 +25,13 @@ import { Objects, UserInfo, UserInfos } from '../../schema.js';
 import type { DefaultPrivacy, ReactionKind } from '../../schema.js';
 import { FIRESTORE_IN_QUERY_LIMIT } from '../../store/limits.js';
 import type { CamelToSnake } from '../../utils.js';
-import { isAPActor, isActorDiscoverable, isActorLocked, isAutomatedActor } from '../../utils.js';
+import {
+	isAPActor,
+	isActorDiscoverable,
+	isActorLocked,
+	isAutomatedActor,
+	isGroupActor,
+} from '../../utils.js';
 import type { PageParams } from '../pagination.js';
 import { sanitizeHtml } from '../sanitizeHtml.js';
 import { getObjects } from '../../store/objects.js';
@@ -90,6 +96,21 @@ const remoteUserInfo = (actorObject: ApexObject | APActor): UserInfo => {
 const nonEmptyString = (value: unknown) =>
 	typeof value === 'string' && value !== '' ? value : undefined;
 
+export const getFeatureApproval = (
+	discoverable: boolean,
+): CamelToSnake<mastodon.v1.Account>['feature_approval'] =>
+	discoverable
+		? {
+				automatic: ['public'],
+				manual: [],
+				current_user: 'automatic',
+			}
+		: {
+				automatic: [],
+				manual: [],
+				current_user: 'denied',
+			};
+
 export const actorObjectToAccount = async (
 	actorObject: APActor,
 	userInfo?: UserInfo,
@@ -117,6 +138,8 @@ export const actorObjectToAccount = async (
 	const accountId =
 		id ?? userInfo?.id ?? (await getOrAssignMastodonId(actor.id, actorObject.published));
 
+	const discoverable = isActorDiscoverable(actorObject);
+
 	return {
 		...omit(baseUserInfo, 'source'),
 		// HTML のフィールドはサニタイズして返す (→ ADR-0145)。
@@ -134,7 +157,9 @@ export const actorObjectToAccount = async (
 		header,
 		header_static: header,
 		note: sanitizeHtml(actor.summary ?? ''),
-		discoverable: isActorDiscoverable(actorObject),
+		discoverable,
+		group: isGroupActor(actorObject),
+		feature_approval: getFeatureApproval(discoverable),
 	};
 };
 

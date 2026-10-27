@@ -165,6 +165,7 @@ describe('Mastodon hashtag API (Issue #228)', () => {
 			const res = await request(mastodon).get('/api/v1/tags/FooBar');
 			expect(res.status).toBe(200);
 			expect(res.body).toEqual({
+				id: 'FooBar',
 				name: 'FooBar',
 				url: `https://${mastodonDomain}/tags/FooBar`,
 				history: [],
@@ -195,6 +196,7 @@ describe('Mastodon hashtag API (Issue #228)', () => {
 			expect(res.status).toBe(200);
 			expect(res.body.hashtags).toEqual([
 				{
+					id: 'FOO',
 					name: 'FOO',
 					url: `https://${mastodonDomain}/tags/FOO`,
 					history: [],

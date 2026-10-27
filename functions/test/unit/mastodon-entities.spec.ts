@@ -184,6 +184,42 @@ describe('actorObjectToAccount', () => {
 		expect(account.locked).toBe(false);
 		expect(account.bot).toBe(false);
 	});
+
+	test('reflects group actor type and feature_approval', async () => {
+		const groupActor = {
+			id: 'https://remote.example/users/group',
+			type: ['Group'],
+			preferredUsername: ['group'],
+			'toot:discoverable': [true],
+		} as unknown as APActor;
+
+		const account = await actorObjectToAccount(groupActor, undefined, '00109547043225600046');
+
+		expect(account.group).toBe(true);
+		expect(account.feature_approval).toEqual({
+			automatic: ['public'],
+			manual: [],
+			current_user: 'automatic',
+		});
+
+		const nonDiscoverable = {
+			id: 'https://remote.example/users/privateuser',
+			type: 'Person',
+			preferredUsername: 'privateuser',
+		} as unknown as APActor;
+
+		const privateAccount = await actorObjectToAccount(
+			nonDiscoverable,
+			undefined,
+			'00109547043225600047',
+		);
+		expect(privateAccount.group).toBe(false);
+		expect(privateAccount.feature_approval).toEqual({
+			automatic: [],
+			manual: [],
+			current_user: 'denied',
+		});
+	});
 });
 
 describe('actorObjectToAccount sanitization', () => {
@@ -442,7 +478,7 @@ describe('noteObjectToStatus attribute derivation', () => {
 		expect(status.mentions).toEqual([
 			{ id: '1', username: 'a', acct: 'a@remote.example', url: 'https://remote.example/users/a' },
 		]);
-		expect(status.tags).toEqual([{ name: 'foo', url: 'https://example.com/tags/foo' }]);
+		expect(status.tags).toEqual([{ id: 'foo', name: 'foo', url: 'https://example.com/tags/foo' }]);
 		expect(status.emojis).toEqual([
 			{
 				shortcode: 'blob',
@@ -515,6 +551,32 @@ describe('noteObjectToStatus attribute derivation', () => {
 		expect(withViewer.bookmarked).toBe(true);
 		expect(withViewer.pinned).toBe(true);
 	});
+
+	test('sets quotes_count and quote_approval based on visibility', () => {
+		const publicStatus = noteObjectToStatus(
+			make({ to: ['https://www.w3.org/ns/activitystreams#Public'] }),
+			account,
+			'1',
+		);
+		expect(publicStatus.quotes_count).toBe(0);
+		expect(publicStatus.quote_approval).toEqual({
+			automatic: ['public'],
+			manual: [],
+			current_user: 'automatic',
+		});
+
+		const directStatus = noteObjectToStatus(
+			make({ to: ['https://remote.example/users/alice'], cc: [] }),
+			account,
+			'2',
+		);
+		expect(directStatus.quotes_count).toBe(0);
+		expect(directStatus.quote_approval).toEqual({
+			automatic: [],
+			manual: [],
+			current_user: 'denied',
+		});
+	});
 });
 
 describe('isNoteVisibleTo', () => {
@@ -561,8 +623,8 @@ describe('noteToHashtags', () => {
 		} as unknown as APNote;
 
 		expect(noteToHashtags(note)).toEqual([
-			{ name: 'foo', url: 'https://example.com/tags/foo' },
-			{ name: 'bar', url: 'https://remote.example/tags/bar' },
+			{ id: 'foo', name: 'foo', url: 'https://example.com/tags/foo' },
+			{ id: 'bar', name: 'bar', url: 'https://remote.example/tags/bar' },
 		]);
 	});
 });
@@ -1051,6 +1113,7 @@ describe('announceToStatus', () => {
 			locked: false,
 			bot: false,
 			discoverable: true,
+			group: false,
 			roles: [],
 			created_at: '2023-01-01T00:00:00.000Z',
 			note: '',
@@ -1065,6 +1128,11 @@ describe('announceToStatus', () => {
 			last_status_at: '',
 			emojis: [],
 			fields: [],
+			feature_approval: {
+				automatic: ['public'],
+				manual: [],
+				current_user: 'automatic',
+			},
 		};
 
 		const originalNote: APNote = {

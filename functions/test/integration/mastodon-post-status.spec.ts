@@ -205,7 +205,11 @@ describe('POST /api/v1/statuses (Issue #60)', () => {
 		expect(response.body.content).toContain('class="mention hashtag"');
 		expect(response.body.content).toContain('href="https://example.com"');
 		expect(response.body.tags).toEqual([
-			{ name: 'fediverse', url: 'https://mastodon-dev.hakatashi.com/tags/fediverse' },
+			{
+				id: 'fediverse',
+				name: 'fediverse',
+				url: 'https://mastodon-dev.hakatashi.com/tags/fediverse',
+			},
 		]);
 		expect(response.body.mentions).toHaveLength(1);
 		expect(response.body.mentions[0]?.username).toBe('alice');

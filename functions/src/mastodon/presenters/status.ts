@@ -18,6 +18,7 @@ import {
 } from '../../social/timelines.js';
 import type { HashtagTimelineOptions, TimelineItem } from '../../social/timelines.js';
 import type { NoteObject } from '../../social/types.js';
+import type { NoteVisibility } from '../../addressing.js';
 import {
 	domain,
 	escapeFirestoreKey,
@@ -72,7 +73,10 @@ export interface StatusContext {
 // masto の型は `application` を non-null としているが、Mastodon 本体はリモート投稿で null を返す。
 // また preview_url は仕様上 nullable であり、DELETE レスポンスでは本文プレーンテキストの `text` が含まれる。
 // PreviewCard の `blurhash` も、画像が無ければ null (masto の型は non-null)。
-export type PreviewCardEntity = Omit<CamelToSnake<mastodon.v1.PreviewCard>, 'blurhash'> & {
+export type PreviewCardEntity = Omit<
+	CamelToSnake<mastodon.v1.PreviewCard>,
+	'blurhash' | 'language' | 'authors'
+> & {
 	blurhash: string | null;
 	image_description: string;
 	language: string | null;
@@ -115,6 +119,21 @@ export const previewCardToEntity = (card: PreviewCard): PreviewCardEntity => ({
 
 const isLocalIri = (iri: string) => iri.startsWith(`https://${domain}/`);
 
+export const getQuoteApproval = (
+	visibility: NoteVisibility,
+): CamelToSnake<mastodon.v1.QuoteApproval> =>
+	visibility === 'direct'
+		? {
+				automatic: [],
+				manual: [],
+				current_user: 'denied',
+			}
+		: {
+				automatic: ['public'],
+				manual: [],
+				current_user: 'automatic',
+			};
+
 // oxlint-disable-next-line max-params -- 属性の導出元 (note/account/id) と外部参照の文脈を別引数に保つ
 export const noteObjectToStatus = (
 	note: APNote,
@@ -125,6 +144,7 @@ export const noteObjectToStatus = (
 	assert(note.id !== undefined, 'note.id is undefined');
 	assert(note.published !== undefined, 'note.published is undefined');
 	const noteId = note.id;
+	const visibility = noteToVisibility(note, context.followersIri);
 	return {
 		id,
 		created_at: note.published.toString(),
@@ -133,7 +153,7 @@ export const noteObjectToStatus = (
 		in_reply_to_account_id: context.inReplyTo?.accountId ?? null,
 		sensitive: (note as { sensitive?: unknown }).sensitive === true,
 		spoiler_text: toStringValue(note.summary) ?? '',
-		visibility: noteToVisibility(note, context.followersIri),
+		visibility,
 		language: noteToLanguage(note),
 		// Mastodon の `uri` は連合で使う ActivityPub の IRI。
 		uri: noteId,
@@ -143,6 +163,8 @@ export const noteObjectToStatus = (
 			? localStatusPageUrl(id, account.username)
 			: (toIdArray(note.url)[0] ?? noteId),
 		...noteToCounts(note, context.meta),
+		quotes_count: 0,
+		quote_approval: getQuoteApproval(visibility),
 		...noteToViewerAttributes(note, context.viewer),
 		muted: false,
 		// リモートの HTML をそのまま返さない (→ ADR-0145)。
@@ -180,6 +202,7 @@ export const announceToStatus = (
 	);
 	const activityId = activity.id;
 	const published = activity.published;
+	const visibility = noteToVisibility(activity);
 	return {
 		id,
 		created_at: published instanceof Date ? published.toISOString() : published.toString(),
@@ -188,13 +211,15 @@ export const announceToStatus = (
 		in_reply_to_account_id: null,
 		sensitive: false,
 		spoiler_text: '',
-		visibility: noteToVisibility(activity),
+		visibility,
 		language: null,
 		uri: activityId,
 		url: toIdArray(activity.url)[0] ?? activityId,
 		replies_count: 0,
 		reblogs_count: 0,
 		favourites_count: 0,
+		quotes_count: 0,
+		quote_approval: getQuoteApproval(visibility),
 		favourited: reblog.favourited ?? false,
 		reblogged: reblog.reblogged ?? false,
 		muted: false,
