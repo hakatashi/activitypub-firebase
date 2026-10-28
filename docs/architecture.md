@@ -194,6 +194,16 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `idempotencyKeys` | `sha256(actor IRI + キー)` | `POST /api/v1/statuses` の `Idempotency-Key` → Note IRI。`expiresAt` に TTL ポリシー(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md)) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 
+### Firestore のバックアップと PITR
+
+gcloud で手作業で設定しており、リポジトリでは管理していない(→ [ADR-0167](adr/0167-firestore-backup-and-pitr-per-project.md))。
+
+| プロジェクト | バックアップのスケジュール | PITR |
+|---|---|---|
+| `activitypub-firebase` | 日次(保持 7 日)と週次・木曜(保持 98 日) | 有効 |
+| `activitypub-firebase-dev` | なし | 無効 |
+| `activitypub-firebase-bots` | なし | 有効 |
+
 ### Cloud Storage
 
 アップロードされたメディア画像 (`POST /api/v2/media` 等) は Firebase 既定バケット (`${projectId}.firebasestorage.app`) に保存される (→ [ADR-0091](adr/0091-media-upload-and-storage.md))。
