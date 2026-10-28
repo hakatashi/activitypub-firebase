@@ -37,17 +37,6 @@ const toDate = (timestamp: unknown): Date | undefined => {
 	return undefined;
 };
 
-export const toScopeArray = (scope: unknown): string[] | undefined => {
-	if (Array.isArray(scope)) {
-		return scope.filter((s): s is string => typeof s === 'string');
-	}
-	if (typeof scope === 'string') {
-		const trimmed = scope.trim();
-		return trimmed.length > 0 ? trimmed.split(/\s+/) : [];
-	}
-	return undefined;
-};
-
 // クエリを実行し、最初の1件(なければ undefined)を返す。
 // 各メソッドがそれぞれ独自に `results.docs[0]` を取り出して乖離するのを避ける。
 export const getFirstDoc = async <T extends FirebaseFirestore.DocumentData>(
@@ -66,13 +55,8 @@ export class Oauth2Model
 			return false;
 		}
 		const accessTokenData = doc.data();
-		const {
-			refreshTokenExpiresAt: rawRefreshTokenExpiresAt,
-			scope: rawScope,
-			...rest
-		} = accessTokenData;
+		const { refreshTokenExpiresAt: rawRefreshTokenExpiresAt, ...rest } = accessTokenData;
 		const refreshTokenExpiresAt = toDate(rawRefreshTokenExpiresAt);
-		const scope = toScopeArray(rawScope);
 		return {
 			...rest,
 			user: accessTokenData.user ?? {},
@@ -80,7 +64,6 @@ export class Oauth2Model
 				toDate(accessTokenData.accessTokenExpiresAt) ?? ACCESS_TOKEN_NEVER_EXPIRES_AT,
 			client: accessTokenData.client,
 			...(refreshTokenExpiresAt === undefined ? {} : { refreshTokenExpiresAt }),
-			...(scope === undefined ? {} : { scope }),
 		};
 	}
 
@@ -92,12 +75,9 @@ export class Oauth2Model
 			return false;
 		}
 		const authorizationCodeData = doc.data();
-		const { scope: rawScope, ...rest } = authorizationCodeData;
-		const scope = toScopeArray(rawScope);
 		return {
-			...rest,
+			...authorizationCodeData,
 			expiresAt: toDate(authorizationCodeData.expiresAt) ?? new Date(0),
-			...(scope === undefined ? {} : { scope }),
 		};
 	}
 
@@ -114,12 +94,11 @@ export class Oauth2Model
 		client: Client,
 		user: User,
 	): Promise<AuthorizationCode | false> {
-		const scope = toScopeArray(code.scope);
 		const authorizationCode: AuthorizationCode = {
 			authorizationCode: code.authorizationCode,
 			expiresAt: code.expiresAt,
 			redirectUri: code.redirectUri,
-			...(scope === undefined ? {} : { scope }),
+			...(code.scope === undefined ? {} : { scope: code.scope }),
 			...(code.codeChallenge === undefined ? {} : { codeChallenge: code.codeChallenge }),
 			...(code.codeChallengeMethod === undefined
 				? {}
@@ -175,18 +154,13 @@ export class Oauth2Model
 		client: Client,
 		user: User,
 	): Promise<Token | false> {
-		const scope = toScopeArray(token.scope);
 		const accessToken: Token = {
 			...token,
 			accessToken: token.accessToken,
 			accessTokenExpiresAt: ACCESS_TOKEN_NEVER_EXPIRES_AT,
 			client,
 			user,
-			...(scope === undefined ? {} : { scope }),
 		};
-		if (!scope) {
-			delete accessToken.scope;
-		}
 		await AccessTokens.add(accessToken);
 
 		if (token.refreshToken !== undefined) {
@@ -197,7 +171,7 @@ export class Oauth2Model
 					: { refreshTokenExpiresAt: token.refreshTokenExpiresAt }),
 				client,
 				user,
-				...(scope === undefined ? {} : { scope }),
+				...(token.scope === undefined ? {} : { scope: token.scope }),
 			};
 			await RefreshTokens.add(refreshToken);
 		}
@@ -211,19 +185,13 @@ export class Oauth2Model
 			return false;
 		}
 		const refreshTokenData = doc.data();
-		const {
-			refreshTokenExpiresAt: rawRefreshTokenExpiresAt,
-			scope: rawScope,
-			...rest
-		} = refreshTokenData;
+		const { refreshTokenExpiresAt: rawRefreshTokenExpiresAt, ...rest } = refreshTokenData;
 		const refreshTokenExpiresAt = toDate(rawRefreshTokenExpiresAt);
-		const scope = toScopeArray(rawScope);
 		return {
 			...rest,
 			client: refreshTokenData.client,
 			user: refreshTokenData.user,
 			...(refreshTokenExpiresAt === undefined ? {} : { refreshTokenExpiresAt }),
-			...(scope === undefined ? {} : { scope }),
 		};
 	}
 
@@ -286,16 +254,17 @@ export class Oauth2Model
 	}
 
 	verifyScope(token: Token, scope: string | string[]): Promise<boolean> {
-		const authorizedScopes = toScopeArray(token.scope);
-		if (!authorizedScopes || authorizedScopes.length === 0) {
+		if (!token.scope || token.scope.length === 0) {
 			return Promise.resolve(false);
 		}
 
 		const requestedScopes = new Set(Array.isArray(scope) ? scope : scope.split(' '));
-		const authorizedScopesSet = new Set(authorizedScopes);
+		const authorizedScopes = new Set(
+			Array.isArray(token.scope) ? token.scope : (token.scope as string).split(' '),
+		);
 
 		for (const requestedScope of requestedScopes) {
-			if (!authorizedScopesSet.has(requestedScope)) {
+			if (!authorizedScopes.has(requestedScope)) {
 				return Promise.resolve(false);
 			}
 		}
