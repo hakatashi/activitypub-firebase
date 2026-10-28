@@ -65,7 +65,7 @@ const main = async () => {
 	const tokenDocRef = await AccessTokens.add({
 		accessToken: tempAccessToken,
 		accessTokenExpiresAt: expiresAt,
-		scope: 'read write',
+		scope: ['read', 'write'],
 		client: {
 			id: 'cli-delete-local-statuses',
 			grants: ['authorization_code'],

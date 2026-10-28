@@ -209,7 +209,7 @@ export const issueBotOperatorToken = async (): Promise<string> => {
 	await AccessTokens.add({
 		accessToken,
 		accessTokenExpiresAt: NEVER_EXPIRES_AT,
-		scope: 'read write',
+		scope: ['read', 'write'],
 		client: { id: BOT_OPERATOR_CLIENT_ID, grants: [] },
 		user: { userId: BOT_OPERATOR_UID },
 	});
