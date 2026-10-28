@@ -65,7 +65,7 @@
 		"cross-env": "^7.0.3",
 		"firebase-tools": "^15.34.1",
 		"http-signature": "^1.4.0",
-		"masto": "^5.11.4",
+		"masto": "^8.0.0",
 		"nock": "^14.0.17",
 		"oxfmt": "^0.74.0",
 		"oxlint": "^1.89.0",

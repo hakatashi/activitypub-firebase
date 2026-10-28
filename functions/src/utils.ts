@@ -164,6 +164,8 @@ const AUTOMATED_ACTOR_TYPES = new Set<string>(['Application', 'Service']);
 export const isAutomatedActor = (actor: object) =>
 	objectToTypeArray(actor).some((type) => AUTOMATED_ACTOR_TYPES.has(type));
 
+export const isGroupActor = (actor: object) => objectToTypeArray(actor).includes('Group');
+
 // 型ガード関数: AS2 の type が配列で届く場合でも正しく絞り込めるようにする (→ ADR-0025)
 export const isAPActor = <T>(object: T): object is T & APActor => {
 	if (typeof object !== 'object' || object === null) {

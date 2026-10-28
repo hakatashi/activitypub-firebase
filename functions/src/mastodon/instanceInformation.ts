@@ -14,10 +14,16 @@ import type { CamelToSnake } from '../utils.js';
 
 import { IMAGE_MATRIX_LIMIT, IMAGE_SIZE_LIMIT, SUPPORTED_MIME_TYPES } from './mediaProcessing.js';
 
-export type ExtendedInstanceV2 = Omit<CamelToSnake<mastodon.v2.Instance>, 'configuration'> & {
+export type ExtendedInstanceV2 = Omit<
+	CamelToSnake<mastodon.v2.Instance>,
+	'configuration' | 'api_versions' | 'thumbnail'
+> & {
 	api_versions: {
 		mastodon: number;
 		[key: string]: number | undefined;
+	};
+	thumbnail: Omit<CamelToSnake<mastodon.v2.InstanceThumbnail>, 'description'> & {
+		description: string | null;
 	};
 	/**
 	 * GoToSocial 拡張。acct のドメイン部が API のドメインと異なることをクライアントに伝える
@@ -54,7 +60,9 @@ const instanceV2: ExtendedInstanceV2 = {
 			'@1x': LOCAL_ICON_URL,
 			'@2x': LOCAL_ICON_URL,
 		},
+		description: null,
 	},
+	icon: [],
 	languages: ['ja'],
 	registrations: {
 		enabled: false,
@@ -86,9 +94,20 @@ const instanceV2: ExtendedInstanceV2 = {
 		},
 		accounts: {
 			max_featured_tags: 0,
+			max_pinned_statuses: 5,
+			max_display_name_length: 40,
+			max_note_length: 500,
+			max_avatar_description_length: 150,
+			max_header_description_length: 150,
+			max_profile_fields: 4,
+			profile_field_name_limit: 255,
+			profile_field_value_limit: 255,
 		},
 		translation: {
 			enabled: false,
+		},
+		vapid: {
+			public_key: '',
 		},
 	},
 	contact: {
@@ -101,6 +120,7 @@ const instanceV2: ExtendedInstanceV2 = {
 			locked: false,
 			bot: false,
 			discoverable: true,
+			group: false,
 			created_at: '2016-03-16T00:00:00.000Z',
 			note: LOCAL_SUMMARY,
 			url: localAccountUrl,
@@ -115,12 +135,19 @@ const instanceV2: ExtendedInstanceV2 = {
 			emojis: [],
 			fields: [],
 			roles: [],
+			feature_approval: {
+				automatic: ['public'],
+				manual: [],
+				current_user: 'automatic',
+			},
 		},
 	},
 	rules: [
 		{
 			id: '1',
 			text: 'Do anything.',
+			hint: '',
+			translations: {},
 		},
 	],
 	usage: {
