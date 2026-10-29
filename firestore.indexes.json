@@ -249,6 +249,456 @@
       "fieldPath": "refreshTokenExpiresAt",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "id",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "url",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "to",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "cc",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "bto",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "bcc",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "audience",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "attributedTo",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "inReplyTo",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "published",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "updated",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "deleted",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "formerType",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "context",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "content",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "contentMap",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "summary",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "summaryMap",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "name",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "nameMap",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "source",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "sensitive",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "attachment",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "tag",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "replies",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "likes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "shares",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "icon",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "image",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "publicKey",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "endpoints",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "inbox",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "outbox",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "followers",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "following",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "liked",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "featured",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "featuredCollections",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "preferredUsername",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "alsoKnownAs",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "movedTo",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "manuallyApprovesFollowers",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "discoverable",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`as:sensitive`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`as:manuallyApprovesFollowers`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:featured`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:featuredTags`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:discoverable`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:indexable`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:memorial`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:showRepliesInMedia`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:showFeatured`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:showMedia`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:attributionDomains`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "_meta.card",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "_meta.legacyUri",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "id",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "url",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "to",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "cc",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "bto",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "bcc",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "audience",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "attributedTo",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "published",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "content",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "object",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "likes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "shares",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "_meta.legacyUri",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "activityId",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "actorId",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "inbox",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "body",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "attempts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "statusCode",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "error",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deliveries",
+      "fieldPath": "updatedAt",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "homeFeed",
+      "fieldPath": "type",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "homeFeed",
+      "fieldPath": "iri",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "homeFeed",
+      "fieldPath": "actor",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "homeFeed",
+      "fieldPath": "objectIri",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "homeFeed",
+      "fieldPath": "createdAt",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "feed",
+      "fieldPath": "type",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "feed",
+      "fieldPath": "iri",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "feed",
+      "fieldPath": "actor",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "feed",
+      "fieldPath": "objectIri",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "feed",
+      "fieldPath": "createdAt",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "_meta.index",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        }
+      ]
     }
   ]
 }
