@@ -531,6 +531,61 @@
       "indexes": []
     },
     {
+      "collectionGroup": "objects",
+      "fieldPath": "generator",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "oneOf",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "anyOf",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "endTime",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "closed",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "sharedInbox",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "orderedItems",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "totalItems",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`as:quoteUrl`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`toot:devices`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "objects",
+      "fieldPath": "`sec:assertionMethod`",
+      "indexes": []
+    },
+    {
       "collectionGroup": "streams",
       "fieldPath": "id",
       "indexes": []
@@ -598,6 +653,61 @@
     {
       "collectionGroup": "streams",
       "fieldPath": "_meta.legacyUri",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "tag",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "attachment",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "contentMap",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "summary",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "source",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "context",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "replies",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "target",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "signature",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "`as:sensitive`",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "streams",
+      "fieldPath": "`sec:proof`",
       "indexes": []
     },
     {
