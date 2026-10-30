@@ -194,6 +194,15 @@ Firestore のドキュメント ID に URL をそのまま使えないため、
 | `idempotencyKeys` | `sha256(actor IRI + キー)` | `POST /api/v1/statuses` の `Idempotency-Key` → Note IRI。`expiresAt` に TTL ポリシー(→ [ADR-0063](adr/0063-post-status-and-idempotency-key.md)) |
 | `clients` / `accessTokens` / `refreshTokens` / `authorizationCodes` / `users` | 自動 ID | OAuth2 用 |
 
+### Firestore のインデックス
+
+複合インデックスと単一フィールドインデックスの設定は `firestore.indexes.json` にある。
+`objects` / `streams` / `deliveries` / `homeFeed` / `feed` では、クエリに使わないフィールドを
+`fieldOverrides` で単一フィールドインデックスから除外している。`streams` の `_meta.index` は昇順だけを残している
+(→ [ADR-0168](adr/0168-exempt-unqueried-fields-from-single-field-indexes.md))。
+**除外したフィールドを新しいクエリに使うときは、その除外を消す。** エミュレータはインデックスを検査しないので、
+クエリに使うフィールドの一覧は `functions/test/unit/firestore-indexes.spec.ts` にも持っている。
+
 ### Firestore のバックアップと PITR
 
 gcloud で手作業で設定しており、リポジトリでは管理していない(→ [ADR-0167](adr/0167-firestore-backup-and-pitr-per-project.md))。
