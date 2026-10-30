@@ -6,10 +6,10 @@ import { getIriByMastodonId } from '../../mastodonId.js';
 import { getFollowing } from '../../social/follows.js';
 import type { NoteObject } from '../../social/types.js';
 import { isAPAnnounce, isAPNote, toIdArray } from '../../utils.js';
-import { assertIsAPActor, resolveAccountActor } from '../presenters/account.js';
+import { resolveAccountActor } from '../presenters/account.js';
 import type { ResolvedAccountActor } from '../presenters/account.js';
 import { isNoteVisibleTo, noteToVisibility } from '../statusAttributes.js';
-import { getAuthActorId } from './auth.js';
+import { getAuthActorId, getViewerActor } from './auth.js';
 import { NotFoundError } from './errors.js';
 import { idParamSchema } from './params.js';
 
@@ -139,9 +139,7 @@ export const loadAccount = async (id: unknown): Promise<ResolvedAccountActor> =>
 	return resolved;
 };
 
-export const loadViewer = async (res: express.Response): Promise<ApexObject & APActor> => {
-	const actorId = getAuthActorId(res);
-	const actor = await apex.store.getObject(actorId, true);
-	assertIsAPActor(actor);
-	return actor;
-};
+export const loadViewer = async (
+	res: express.Response,
+	options?: { fresh?: boolean },
+): Promise<ApexObject & APActor> => await getViewerActor(getAuthActorId(res), options);

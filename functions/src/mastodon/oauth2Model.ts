@@ -9,8 +9,10 @@ import type {
 	User,
 	RefreshToken,
 } from '@node-oauth/oauth2-server';
+import { createHash } from 'node:crypto';
 import { db } from '../firebase.js';
 import { AccessTokens, AuthorizationCodes, Clients, RefreshTokens, Users } from '../schema.js';
+import { clonePlain, createTtlCache } from './http/instanceCache.js';
 
 export type { MastodonClient } from '../schema.js';
 
@@ -18,6 +20,24 @@ export type { MastodonClient } from '../schema.js';
 // oauth2-server の Token が accessTokenExpiresAt を要求するため、無期限はこの日付で表す。
 // 実データにも同じ値を保存する。
 export const ACCESS_TOKEN_NEVER_EXPIRES_AT = new Date('9999-12-31T00:00:00.000Z');
+
+// アクセストークン → uid・スコープ・有効期限・クライアント ID のインスタンス内キャッシュ (→ ADR-0169)。
+// キーはトークンのハッシュで、トークンそのものはキーにも値にも持たない。
+type CachedAccessToken = Pick<Token, 'user' | 'scope' | 'accessTokenExpiresAt'> & {
+	client: Pick<Client, 'id' | 'grants'>;
+};
+
+const accessTokenCache = createTtlCache<CachedAccessToken>({
+	maxEntries: 64,
+	maxAgeMs: 5 * 60 * 1000,
+});
+
+const hashAccessToken = (accessToken: string) =>
+	createHash('sha256').update(accessToken).digest('hex');
+
+export const clearAccessTokenCache = () => {
+	accessTokenCache.clear();
+};
 
 const toDate = (timestamp: unknown): Date | undefined => {
 	if (timestamp instanceof Date) {
@@ -50,6 +70,12 @@ export class Oauth2Model
 	implements AuthorizationCodeModel, PasswordModel, ClientCredentialsModel, RefreshTokenModel
 {
 	async getAccessToken(accessToken: string): Promise<Token | false> {
+		const cacheKey = hashAccessToken(accessToken);
+		const cached = accessTokenCache.get(cacheKey);
+		if (cached !== undefined) {
+			return { ...clonePlain(cached), accessToken };
+		}
+
 		const doc = await getFirstDoc(AccessTokens.where('accessToken', '==', accessToken));
 		if (!doc) {
 			return false;
@@ -57,7 +83,7 @@ export class Oauth2Model
 		const accessTokenData = doc.data();
 		const { refreshTokenExpiresAt: rawRefreshTokenExpiresAt, ...rest } = accessTokenData;
 		const refreshTokenExpiresAt = toDate(rawRefreshTokenExpiresAt);
-		return {
+		const token: Token = {
 			...rest,
 			user: accessTokenData.user ?? {},
 			accessTokenExpiresAt:
@@ -65,6 +91,18 @@ export class Oauth2Model
 			client: accessTokenData.client,
 			...(refreshTokenExpiresAt === undefined ? {} : { refreshTokenExpiresAt }),
 		};
+		accessTokenCache.set(
+			cacheKey,
+			clonePlain({
+				user: token.user,
+				...(token.scope === undefined ? {} : { scope: token.scope }),
+				...(token.accessTokenExpiresAt === undefined
+					? {}
+					: { accessTokenExpiresAt: token.accessTokenExpiresAt }),
+				client: { id: token.client.id, grants: token.client.grants },
+			}),
+		);
+		return token;
 	}
 
 	async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | false> {
@@ -195,8 +233,11 @@ export class Oauth2Model
 		};
 	}
 
-	revokeToken(token: RefreshToken | Token): Promise<boolean> {
-		return db.runTransaction(async (transaction) => {
+	async revokeToken(token: RefreshToken | Token): Promise<boolean> {
+		// 同じインスタンスのキャッシュだけを消す。他のインスタンスでは TTL まで使える (→ ADR-0169)。
+		const revokedAccessTokens: string[] = [];
+		const revoked = await db.runTransaction(async (transaction) => {
+			revokedAccessTokens.length = 0;
 			const docsToDelete: FirebaseFirestore.DocumentReference[] = [];
 
 			if ('refreshToken' in token && typeof token.refreshToken === 'string') {
@@ -212,6 +253,7 @@ export class Oauth2Model
 				);
 				for (const doc of accessResultsWithRefresh.docs) {
 					docsToDelete.push(doc.ref);
+					revokedAccessTokens.push(doc.data().accessToken);
 				}
 			}
 
@@ -222,6 +264,7 @@ export class Oauth2Model
 				for (const doc of accessResults.docs) {
 					docsToDelete.push(doc.ref);
 				}
+				revokedAccessTokens.push(token.accessToken);
 			}
 
 			for (const ref of docsToDelete) {
@@ -230,6 +273,10 @@ export class Oauth2Model
 
 			return docsToDelete.length > 0;
 		});
+		for (const accessToken of revokedAccessTokens) {
+			accessTokenCache.delete(hashAccessToken(accessToken));
+		}
+		return revoked;
 	}
 
 	async getUserFromClient(client: Client): Promise<User | false> {

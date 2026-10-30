@@ -129,6 +129,30 @@ describe('Oauth2Model', () => {
 		test('returns false for a non-existent access token', async () => {
 			expect(await model.getAccessToken('missing-token')).toBe(false);
 		});
+
+		test('caches a found token and forgets it on revoke (ADR-0169)', async () => {
+			const token = { accessToken: 'cached-token', scope: 'read' } as unknown as Token;
+			await model.saveToken(token, client, user);
+
+			const fetched = (await model.getAccessToken('cached-token')) as Token;
+			const raw = (await AccessTokens.where('accessToken', '==', 'cached-token').get()).docs[0];
+			await raw!.ref.delete();
+
+			// ドキュメントを消しても、キャッシュから同じトークンを返す
+			const cached = (await model.getAccessToken('cached-token')) as Token;
+			expect(cached).toMatchObject({ accessToken: 'cached-token', scope: 'read', user });
+			expect(cached.client.id).toBe(client.id);
+
+			await model.saveToken(token, client, user);
+			expect(await model.revokeToken(fetched)).toBe(true);
+			expect(await model.getAccessToken('cached-token')).toBe(false);
+		});
+
+		test('does not cache a missing token', async () => {
+			expect(await model.getAccessToken('late-token')).toBe(false);
+			await model.saveToken({ accessToken: 'late-token' } as unknown as Token, client, user);
+			expect(await model.getAccessToken('late-token')).not.toBe(false);
+		});
 	});
 
 	describe('saveAuthorizationCode / getAuthorizationCode / revokeAuthorizationCode', () => {
