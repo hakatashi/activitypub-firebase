@@ -290,3 +290,13 @@ firebase deploy --only functions,firestore -P dev    # dev プロジェクト
 **ログに秘密鍵やトークンを出力しないこと。** リクエストヘッダは `functions/src/utils.ts` の
 `pickSafeHeaders` で許可リスト方式にし、レスポンスボディは `redactSensitiveBody` で
 機微なフィールドをマスクしている。新しいログ出力を追加する際もこの方式に合わせること。
+
+## Hosting の preview channel の掃除
+
+PR ごとの preview channel が溜まって上限に達すると、PR の CI が
+`HTTP Error: 429, Couldn't create channel ... channel quota reached` で失敗する。
+クローズ済み PR の channel を削除するには次を実行する(`--delete` なしは dry run)。
+
+```bash
+scripts/cleanup_preview_channels.sh --delete
+```
