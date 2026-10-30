@@ -19,7 +19,7 @@ router.delete(
 	touchesTimelineView,
 	async (req, res) => {
 		const actorId = getAuthActorId(res);
-		const actor = await loadViewer(res);
+		const actor = await loadViewer(res, { fresh: true });
 
 		const userInfoRef = UserInfos.doc(escapeFirestoreKey(actorId));
 		const userInfoDoc = await userInfoRef.get();
@@ -52,7 +52,7 @@ router.delete(
 	touchesTimelineView,
 	async (req, res) => {
 		const actorId = getAuthActorId(res);
-		const actor = await loadViewer(res);
+		const actor = await loadViewer(res, { fresh: true });
 
 		const userInfoRef = UserInfos.doc(escapeFirestoreKey(actorId));
 		const userInfoDoc = await userInfoRef.get();

@@ -6,6 +6,8 @@ import { describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/apex.js';
 import { db } from '../../src/firebase.js';
+import { clearAuthCache } from '../../src/mastodon/http/auth.js';
+import { clearAccessTokenCache } from '../../src/mastodon/oauth2Model.js';
 import { clearTimelineHeadCache } from '../../src/mastodon/presenters/timelineHeadCache.js';
 import { clearMastodonIdCache } from '../../src/mastodonId.js';
 import { rebuildTimelineFeeds } from '../../src/projections/timelineFeeds.js';
@@ -224,7 +226,7 @@ describe('Firestore reads per request', () => {
 			return res.body as { id: string }[];
 		};
 
-		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138、ADR-0139) が空の状態、2 回目は効いた状態。
+		// 1 回目はインスタンス内のキャッシュ (ADR-0135、ADR-0138、ADR-0139、ADR-0169) が空の状態、2 回目は効いた状態。
 		// タイムラインは、先頭ページのキャッシュ (ADR-0139) だけを捨てて組み立て直す回 (rebuild) も測る。
 		// 2 ページ目 (ADR-0147) は、組み立てる回 (rebuild) とキャッシュが効いた回を測る。
 		const timelinePaths = {
@@ -233,6 +235,8 @@ describe('Firestore reads per request', () => {
 		};
 		for (const [label, path] of Object.entries(timelinePaths)) {
 			clearMastodonIdCache();
+			clearAccessTokenCache();
+			clearAuthCache();
 			clearTimelineHeadCache();
 			await measure(`${label} (cold)`, path);
 			clearTimelineHeadCache();
@@ -256,6 +260,8 @@ describe('Firestore reads per request', () => {
 		}
 		const notificationsPath = '/api/v1/notifications?limit=80';
 		clearMastodonIdCache();
+		clearAccessTokenCache();
+		clearAuthCache();
 		await measure('notifications (cold)', notificationsPath);
 		await measure('notifications', notificationsPath);
 		const [latest] = await measure('notifications', notificationsPath);

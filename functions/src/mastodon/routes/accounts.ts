@@ -13,7 +13,6 @@ import { getImageUrl, isActorLocked, toIdArray } from '../../utils.js';
 import {
 	authRequired,
 	getAuthActorId,
-	getAuthUserInfo,
 	getLocalActor,
 	getOptionalViewer,
 	scopeRequired,
@@ -114,7 +113,9 @@ router.get(
 router.get('/v1/accounts/verify_credentials', authRequired, async (req, res) => {
 	const actorId = getAuthActorId(res);
 	const actor = await getLocalActor(actorId);
-	const userInfo = getAuthUserInfo(res);
+	// 認証のキャッシュの UserInfo はフォロワー数・投稿数が古いことがあるので読み直す (→ ADR-0169 決定6)。
+	const userInfo = (await UserInfos.doc(escapeFirestoreKey(actorId)).get()).data();
+	assert(userInfo !== undefined, 'userInfo is undefined');
 	const account = await actorObjectToAccount(actor, userInfo);
 	res.json(accountToCredentialAccount(account, userInfo));
 });
@@ -148,7 +149,8 @@ router.patch(
 		const body = parsed.data;
 
 		const actorId = getAuthActorId(res);
-		const actor = await loadViewer(res);
+		// 保存する actor なので、キャッシュの古い actor を書き戻さないように読み直す (→ ADR-0169 決定5)。
+		const actor = await loadViewer(res, { fresh: true });
 
 		const userInfoRef = UserInfos.doc(escapeFirestoreKey(actorId));
 		const userInfoDoc = await userInfoRef.get();

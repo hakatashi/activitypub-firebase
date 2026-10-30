@@ -1,6 +1,8 @@
 import type { Timestamp } from '@google-cloud/firestore';
 import firebase from 'firebase-admin';
 import { escapeFirestoreKey } from '../../src/firebase.js';
+import { clearAuthCache } from '../../src/mastodon/http/auth.js';
+import { clearAccessTokenCache } from '../../src/mastodon/oauth2Model.js';
 import { clearTimelineHeadCache } from '../../src/mastodon/presenters/timelineHeadCache.js';
 import { clearMastodonIdCache } from '../../src/mastodonId.js';
 import { timelineFeedsMarkerRef } from '../../src/projections/timelineFeeds.js';
@@ -25,8 +27,11 @@ export const resetFirestore = async (): Promise<void> => {
 	if (!res.ok) {
 		throw new Error(`Failed to reset Firestore emulator: ${res.status} ${res.statusText}`);
 	}
-	// 消えた対応・タイムラインをキャッシュから返さないようにする (→ ADR-0138、ADR-0139、ADR-0155)。
+	// 消えた対応・タイムライン・トークン・閲覧者をキャッシュから返さないようにする
+	// (→ ADR-0138、ADR-0139、ADR-0155、ADR-0169)。
 	clearMastodonIdCache();
+	clearAccessTokenCache();
+	clearAuthCache();
 	clearTimelineHeadCache();
 	clearTimelineVersionCache();
 };
