@@ -388,7 +388,8 @@ actor には `manuallyApprovesFollowers: true` を出す。`open` のボット�
 | `presenters/list.ts` | リスト → List エンティティの変換と、リストのメンバー一覧のページング(アカウント ID の降順。→ [ADR-0134](adr/0134-lists-stored-per-user-and-filtered-on-read.md)) |
 | `presenters/tag.ts` | タグ名 → Tag エンティティの変換(→ [ADR-0103](adr/0103-hashtag-timeline-and-search.md)) |
 | `presenters/timelineHeadCache.ts` | ホーム・リストのタイムラインの先頭ページと `max_id` のページのインスタンス内キャッシュ(→ [ADR-0139](adr/0139-cache-timeline-head-page-in-instance.md)、[ADR-0147](adr/0147-cache-timeline-max-id-pages-in-instance.md)) |
-| `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `authIfPresent` / `getOptionalViewer`)と有効なスコープの一覧 |
+| `http/auth.ts` | OAuth トークンの検証(`authRequired` / `scopeRequired` / `authIfPresent` / `getOptionalViewer`)、UserInfo と閲覧者の actor のキャッシュ、有効なスコープの一覧 |
+| `http/instanceCache.ts` | 認証の結果と閲覧者の actor に使う、TTL 付きの LRU キャッシュ(→ [ADR-0169](adr/0169-cache-auth-and-viewer-in-instance.md)) |
 | `http/params.ts` | フォーム由来の真偽値などパラメータの解釈 |
 | `http/responses.ts` | `Link` ヘッダの付与や 422 応答などの共通レスポンス |
 | `statusAttributes.ts` | Note から Status の属性(visibility・language・各種カウント・mentions・tags・media_attachments など)を導出する純粋関数(→ [ADR-0060](adr/0060-derive-status-attributes-from-note.md)、[ADR-0090](adr/0090-derive-media-attachments-from-note.md)、[ADR-0092](adr/0092-post-status-with-media-and-attachment-lifecycle.md)) |
@@ -451,6 +452,10 @@ Status の `favourited` / `reblogged` / `bookmarked` / `pinned` は認証ユー�
 (→ [ADR-0070](adr/0070-status-viewer-attributes-and-storage.md)、[ADR-0084](adr/0084-project-favourites-and-reblogs.md))。
 unfavourite / unreblog は射影に載っている Like / Announce をすべて Undo する。
 認証・スコープのエラーは Mastodon と同じく 401 / 403 を JSON で返す(→ [ADR-0074](adr/0074-mastodon-api-authentication-error-handling.md))。
+アクセストークン(トークンのハッシュ → uid・スコープ)、uid → UserInfo と actor の IRI、閲覧者の actor は
+インスタンス内に 5 分キャッシュする。`revokeToken` と `touchesTimelineView` は同じインスタンスのキャッシュを消す。
+actor を保存するルートと `verify_credentials` の UserInfo はキャッシュを使わない
+(→ [ADR-0169](adr/0169-cache-auth-and-viewer-in-instance.md))。
 
 実装状況は [`mastodon-api-coverage.md`](mastodon-api-coverage.md) を参照。
 未定義のルートは 404 にフォールバックする(→ [ADR-0067](adr/0067-stubs-markers-and-instance-info.md))。

@@ -3,7 +3,7 @@ import type express from 'express';
 import { logger } from 'firebase-functions/v2';
 import { touchTimelineViewVersion } from '../../social/timelines.js';
 import { toError } from '../../utils.js';
-import { getAuthActorId } from './auth.js';
+import { getAuthActorId, invalidateViewerCache } from './auth.js';
 
 export const mastodonCors = cors({
 	origin: true,
@@ -31,10 +31,12 @@ export const noStoreErrors: express.RequestHandler = (_req, res, next) => {
 // タイムラインの先頭ページのキャッシュを捨てさせる (→ ADR-0139 決定3)。応答の後に書くと、直後の再読み込みが
 // キャッシュから操作前の Status (`favourited: false` など) を返し、クライアントの表示が巻き戻る。
 // 途中で失敗した操作も書き込みを済ませているかもしれないので、エラーの応答でも書き直す。
+// プロフィールの更新もここを通るので、同じインスタンスの閲覧者のキャッシュも消す (→ ADR-0169)。
 export const touchesTimelineView: express.RequestHandler = (_req, res, next) => {
 	const actorId = getAuthActorId(res);
 	const originalJson = res.json.bind(res);
 	res.json = ((body: unknown) => {
+		invalidateViewerCache(actorId);
 		touchTimelineViewVersion(actorId)
 			.catch((error: unknown) => {
 				logger.error({ type: 'touchTimelineViewVersion', error: toError(error).message });
