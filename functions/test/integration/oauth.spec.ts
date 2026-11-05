@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import firebase from 'firebase-admin';
+import type { Credential } from 'firebase-admin';
+import type { DecodedIdToken } from 'firebase-admin/auth';
+import { getAuth } from 'firebase-admin/auth';
 import nock from 'nock';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -136,9 +139,9 @@ describe('oauth', () => {
 		});
 
 		test('renders authorization page on valid query parameters', async () => {
-			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
+			const credentialSpy = vi.spyOn(firebase, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as unknown as firebase.credential.Credential);
+			} as unknown as Credential);
 
 			nock('https://firebase.googleapis.com')
 				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
@@ -164,9 +167,9 @@ describe('oauth', () => {
 		});
 
 		test('renders authorization page with state and PKCE hidden inputs', async () => {
-			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
+			const credentialSpy = vi.spyOn(firebase, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as unknown as firebase.credential.Credential);
+			} as unknown as Credential);
 
 			nock('https://firebase.googleapis.com')
 				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
@@ -199,9 +202,9 @@ describe('oauth', () => {
 		});
 
 		test('returns 500 if external webapp config retrieval fails', async () => {
-			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
+			const credentialSpy = vi.spyOn(firebase, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.reject(new Error('ADC failure')),
-			} as unknown as firebase.credential.Credential);
+			} as unknown as Credential);
 
 			try {
 				const response = await request(app).get('/oauth/authorize').query({
@@ -217,9 +220,9 @@ describe('oauth', () => {
 		});
 
 		test('returns 500 if Firebase WebApps API returns non-ok status', async () => {
-			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
+			const credentialSpy = vi.spyOn(firebase, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as unknown as firebase.credential.Credential);
+			} as unknown as Credential);
 
 			nock('https://firebase.googleapis.com')
 				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
@@ -239,9 +242,9 @@ describe('oauth', () => {
 		});
 
 		test('returns 500 if Firebase WebApps API returns invalid schema', async () => {
-			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
+			const credentialSpy = vi.spyOn(firebase, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as unknown as firebase.credential.Credential);
+			} as unknown as Credential);
 
 			nock('https://firebase.googleapis.com')
 				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
@@ -438,9 +441,9 @@ describe('oauth', () => {
 			const state = 'secure-state-12345';
 
 			// Mock Firebase WebApps ADC for GET /oauth/authorize
-			const credentialSpy = vi.spyOn(firebase.credential, 'applicationDefault').mockReturnValue({
+			const credentialSpy = vi.spyOn(firebase, 'applicationDefault').mockReturnValue({
 				getAccessToken: () => Promise.resolve({ access_token: 'mock-token', expires_in: 3600 }),
-			} as unknown as firebase.credential.Credential);
+			} as unknown as Credential);
 			nock('https://firebase.googleapis.com')
 				.get(/\/v1beta1\/projects\/[^/]+\/webApps$/)
 				.reply(200, { apps: [{ appId: 'test-app-id' }] });
@@ -468,9 +471,9 @@ describe('oauth', () => {
 			credentialSpy.mockRestore();
 
 			// 3. User Approves via POST /oauth/authorize
-			const authSpy = vi.spyOn(firebase.auth(), 'verifyIdToken').mockResolvedValue({
+			const authSpy = vi.spyOn(getAuth(), 'verifyIdToken').mockResolvedValue({
 				uid: 'user-uid-test',
-			} as unknown as firebase.auth.DecodedIdToken);
+			} as unknown as DecodedIdToken);
 
 			const approveResponse = await request(app).post('/oauth/authorize').type('form').send({
 				idToken: 'valid-id-token',
@@ -590,9 +593,9 @@ describe('oauth', () => {
 
 			const verifier = crypto.randomBytes(32).toString('base64url');
 			const codeChallenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-			const authSpy = vi.spyOn(firebase.auth(), 'verifyIdToken').mockResolvedValue({
+			const authSpy = vi.spyOn(getAuth(), 'verifyIdToken').mockResolvedValue({
 				uid: 'user-uid-test',
-			} as unknown as firebase.auth.DecodedIdToken);
+			} as unknown as DecodedIdToken);
 
 			const approveResponse = await request(app).post('/oauth/authorize').type('form').send({
 				idToken: 'valid-id-token',

@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import assert from 'node:assert';
 import type {
 	CollectionReference,
@@ -7,7 +8,6 @@ import type {
 import { chunk, uniq } from 'lodash-es';
 import type { APActor } from 'activitypub-types';
 import type { APObject } from '../apex/index.js';
-import firebase from 'firebase-admin';
 import {
 	db,
 	domain,
@@ -706,8 +706,7 @@ const timelineViewVersionRef = (key: FirestoreKey) =>
 	ProjectionVersions(key).doc(toFirestoreKey('timelineView'));
 
 const timelineViewVersionData = () => ({
-	updatedAt:
-		firebase.firestore.FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
+	updatedAt: FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
 });
 
 // 検証に使うバージョンのインスタンス内キャッシュ (→ ADR-0155)。キーはローカル actor の IRI。

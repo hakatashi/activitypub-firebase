@@ -1,5 +1,5 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import type { APObject } from '../../src/apex/index.js';
-import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
@@ -329,7 +329,7 @@ describe('POST /api/v1/statuses (Issue #60)', () => {
 			const docs = await IdempotencyKeys.get();
 			expect(docs.size).toBe(1);
 			await docs.docs[0]?.ref.update({
-				expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() - 1000),
+				expiresAt: Timestamp.fromMillis(Date.now() - 1000),
 			});
 			const second = await post({ status: 'a' }).set('Idempotency-Key', 'key-1');
 			expect(second.body.id).not.toBe(first.body.id);

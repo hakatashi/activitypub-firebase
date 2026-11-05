@@ -1,6 +1,6 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import assert from 'node:assert';
 import type { Transaction } from '@google-cloud/firestore';
-import firebase from 'firebase-admin';
 import { isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
 import { escapeFirestoreKey, toFirestoreKey } from '../firebase.js';
@@ -108,8 +108,7 @@ export const followingVersionRef = (userInfoKey: FirestoreKey) =>
 	ProjectionVersions(userInfoKey).doc(toFirestoreKey('following'));
 
 const followingVersionData = () => ({
-	updatedAt:
-		firebase.firestore.FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
+	updatedAt: FieldValue.serverTimestamp() as unknown as ProjectionVersion['updatedAt'],
 });
 
 // トランザクション内で射影の更新を準備する。Firestore のトランザクションは「すべての読み取りの後に
@@ -172,7 +171,7 @@ export const prepareFollowProjectionUpdate = async (
 				counterpart,
 				follows,
 				existing?.createdAt ??
-					(firebase.firestore.FieldValue.serverTimestamp() as unknown as FollowRelation['createdAt']),
+					(FieldValue.serverTimestamp() as unknown as FollowRelation['createdAt']),
 			);
 
 			if (relation === undefined) {
@@ -258,7 +257,7 @@ export const rebuildFollowProjection = async ({ dryRun = false } = {}) => {
 				counterpart,
 				entries,
 				existingRelation?.createdAt ??
-					(firebase.firestore.FieldValue.serverTimestamp() as unknown as FollowRelation['createdAt']),
+					(FieldValue.serverTimestamp() as unknown as FollowRelation['createdAt']),
 			);
 			assert(relation !== undefined);
 			if (isCounted(side, relation)) {

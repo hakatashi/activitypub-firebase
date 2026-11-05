@@ -1,5 +1,5 @@
 // 配送タスクの発行と、tasks.ts の配送タスクが記録する配送結果 (→ ADR-0003、ADR-0012)。
-import firebase from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { escapeFirestoreKey, taskQueueName } from '../firebase.js';
@@ -60,7 +60,7 @@ export const recordDeliveryResult = async ({
 		status,
 		statusCode: statusCode ?? null,
 		error: error ?? null,
-		updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+		updatedAt: FieldValue.serverTimestamp(),
 	});
 };
 

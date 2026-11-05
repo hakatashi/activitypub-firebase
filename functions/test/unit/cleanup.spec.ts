@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanUnattachedMedia } from '../../src/cleanup.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
@@ -31,10 +31,10 @@ describe('cleanUnattachedMedia (ADR-0092)', () => {
 
 	test('deletes unattached media created over 24 hours ago', async () => {
 		const now = new Date('2026-10-07T12:00:00.000Z');
-		const oldTime = firebase.firestore.Timestamp.fromDate(
+		const oldTime = Timestamp.fromDate(
 			new Date('2026-10-06T10:00:00.000Z'), // 26 hours ago
 		);
-		const recentTime = firebase.firestore.Timestamp.fromDate(
+		const recentTime = Timestamp.fromDate(
 			new Date('2026-10-07T11:00:00.000Z'), // 1 hour ago
 		);
 

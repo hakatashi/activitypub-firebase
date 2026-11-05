@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { countBy, isEqual } from 'lodash-es';
 import { db, toFirestoreKey, unescapeFirestoreKey } from '../src/firebase.js';
 import { localFollowersId, localFollowingId } from '../src/localActor.js';
@@ -97,7 +97,7 @@ db.runTransaction(async (transaction) => {
 		for (const field of LEGACY_META_FIELDS) {
 			const [, key] = field.split('.');
 			if (key !== undefined && stream._meta?.[key] !== undefined) {
-				updates[field] = firebase.firestore.FieldValue.delete();
+				updates[field] = FieldValue.delete();
 			}
 		}
 

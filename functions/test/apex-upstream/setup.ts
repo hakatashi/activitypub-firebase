@@ -1,8 +1,8 @@
+import { CollectionReference } from 'firebase-admin/firestore';
 import express from 'express';
 import nock from 'nock';
 import fetch from 'node-fetch';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
-import firebase from 'firebase-admin';
 import ActivitypubExpress from '../../src/apex/index.js';
 import { computeHttpSignatureHeaders } from '../../src/apex/pub/federation.js';
 import { escapeFirestoreKey } from '../../src/firebase.js';
@@ -10,7 +10,7 @@ import Store from '../../src/store/index.js';
 import { resetFirestore } from '../helpers/index.js';
 
 // MongoDB native driver compatibility for upstream specs
-(firebase.firestore.CollectionReference.prototype as any).findOne = async function (query?: any) {
+(CollectionReference.prototype as any).findOne = async function (query?: any) {
 	if (query?.id) {
 		const doc = await this.doc(escapeFirestoreKey(query.id)).get();
 		if (!doc.exists) return null;
@@ -42,13 +42,13 @@ import { resetFirestore } from '../helpers/index.js';
 	return null;
 };
 
-(firebase.firestore.CollectionReference.prototype as any).insertOne = async function (doc: any) {
+(CollectionReference.prototype as any).insertOne = async function (doc: any) {
 	const ref = doc.id ? this.doc(escapeFirestoreKey(doc.id)) : this.doc();
 	await ref.set(doc);
 	return { insertedId: ref.id };
 };
 
-(firebase.firestore.CollectionReference.prototype as any).insertMany = async function (docs: any[]) {
+(CollectionReference.prototype as any).insertMany = async function (docs: any[]) {
 	const batch = this.firestore.batch();
 	for (const doc of docs) {
 		const ref = doc.id ? this.doc(escapeFirestoreKey(doc.id)) : this.doc();
@@ -57,7 +57,7 @@ import { resetFirestore } from '../helpers/index.js';
 	await batch.commit();
 };
 
-(firebase.firestore.CollectionReference.prototype as any).find = function (query?: any) {
+(CollectionReference.prototype as any).find = function (query?: any) {
 	const col = this;
 	return {
 		toArray: async () => {

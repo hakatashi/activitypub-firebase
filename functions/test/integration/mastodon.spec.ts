@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
@@ -515,7 +515,7 @@ describe('mastodon', () => {
 			});
 
 			test('returns 401 with WWW-Authenticate header when expired token is provided', async () => {
-				const past = firebase.firestore.Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
+				const past = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
 				await AccessTokens.add({
 					accessToken: 'expired-token',
 					accessTokenExpiresAt: past,
@@ -556,7 +556,7 @@ describe('mastodon', () => {
 			});
 
 			test('returns 401 when token has no user context (e.g. client credentials token)', async () => {
-				const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
+				const farFuture = Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
 				await AccessTokens.add({
 					accessToken: 'client-credentials-token',
 					accessTokenExpiresAt: farFuture,

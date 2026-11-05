@@ -1,5 +1,5 @@
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { CollectionReference, Transaction, WriteBatch } from '@google-cloud/firestore';
-import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import { chunk, isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
@@ -77,7 +77,7 @@ export const buildTimelineFeedEntry = (
 	actor: candidate.actor,
 	objectIri: candidate.objectIri,
 	// バックフィルで比較できるよう、書くたびに同じ値になる ID の時刻を使う。
-	createdAt: firebase.firestore.Timestamp.fromMillis(
+	createdAt: Timestamp.fromMillis(
 		mastodonIdToTimestamp(id),
 	) as unknown as TimelineFeedEntry['createdAt'],
 });
@@ -261,8 +261,7 @@ export const rebuildTimelineFeeds = async ({ dryRun = false } = {}) => {
 	if (!dryRun) {
 		await commitInBatches(operations);
 		await timelineFeedsMarkerRef(key).set({
-			updatedAt:
-				firebase.firestore.FieldValue.serverTimestamp() as unknown as TimelineFeedEntry['createdAt'],
+			updatedAt: FieldValue.serverTimestamp() as unknown as TimelineFeedEntry['createdAt'],
 		});
 	}
 	return stats;

@@ -1,6 +1,6 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { randomInt } from 'node:crypto';
 import type { Timestamp } from '@google-cloud/firestore';
-import firebase from 'firebase-admin';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { buildMastodonId, MAX_SEQUENCE } from '../mastodonId.js';
 import { Bookmarks } from '../schema.js';
@@ -26,7 +26,7 @@ export const addBookmark = async (actorId: string, noteIri: string) => {
 		transaction.set(ref, {
 			noteIri,
 			cursorId: buildBookmarkCursorId(Date.now()),
-			createdAt: firebase.firestore.FieldValue.serverTimestamp() as unknown as Timestamp,
+			createdAt: FieldValue.serverTimestamp() as unknown as Timestamp,
 		});
 	});
 };

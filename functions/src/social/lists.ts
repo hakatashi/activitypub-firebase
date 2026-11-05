@@ -1,8 +1,7 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import assert from 'node:assert';
 import { randomInt } from 'node:crypto';
-import type { Timestamp } from '@google-cloud/firestore';
 import type { APActor } from 'activitypub-types';
-import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import { uniq } from 'lodash-es';
 import { db, escapeFirestoreKey, toFirestoreKey } from '../firebase.js';
@@ -59,7 +58,7 @@ export const createList = async (
 			id,
 			...attributes,
 			accounts: [],
-			createdAt: firebase.firestore.Timestamp.fromMillis(now) as unknown as Timestamp,
+			createdAt: Timestamp.fromMillis(now) as unknown as Timestamp,
 		};
 		transaction.create(lists.doc(toFirestoreKey(id)), list);
 		return list;

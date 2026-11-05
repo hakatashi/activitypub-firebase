@@ -6,6 +6,8 @@ import cors from 'cors';
 import { htmlEscape } from 'escape-goat';
 import express from 'express';
 import firebase from 'firebase-admin';
+import type { DecodedIdToken } from 'firebase-admin/auth';
+import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions/v2';
 import fetch from 'node-fetch';
 import { z } from 'zod';
@@ -100,7 +102,7 @@ const getFirebaseWebappConfig = async (accessToken: string, appId: string) => {
 };
 
 const getWebappConfig = async () => {
-	const credential = firebase.credential.applicationDefault();
+	const credential = firebase.applicationDefault();
 	const accessToken = await credential.getAccessToken();
 
 	const apps = await getFirebaseWebapps(accessToken.access_token);
@@ -289,9 +291,9 @@ router.post('/authorize', async (req, res) => {
 
 	const { idToken } = parsedBody.data;
 
-	let authUser: firebase.auth.DecodedIdToken;
+	let authUser: DecodedIdToken;
 	try {
-		authUser = await firebase.auth().verifyIdToken(idToken);
+		authUser = await getAuth().verifyIdToken(idToken);
 	} catch (error) {
 		logger.error({
 			type: 'oauthAuthorizeVerifyIdTokenError',

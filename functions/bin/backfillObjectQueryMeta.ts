@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { isEqual, pick } from 'lodash-es';
 import { OBJECT_QUERY_META_KEYS, buildObjectQueryMeta } from '../src/meta.js';
 import { Objects } from '../src/schema.js';
@@ -21,10 +21,7 @@ for (const doc of objects.docs) {
 	if (!dryRun) {
 		await doc.ref.update(
 			Object.fromEntries(
-				OBJECT_QUERY_META_KEYS.map((key) => [
-					`_meta.${key}`,
-					expected[key] ?? firebase.firestore.FieldValue.delete(),
-				]),
+				OBJECT_QUERY_META_KEYS.map((key) => [`_meta.${key}`, expected[key] ?? FieldValue.delete()]),
 			),
 		);
 	}

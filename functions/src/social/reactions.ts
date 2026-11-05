@@ -1,5 +1,5 @@
+import { FieldPath } from 'firebase-admin/firestore';
 import type { APActor } from 'activitypub-types';
-import firebase from 'firebase-admin';
 import { chunk, uniq } from 'lodash-es';
 import { apex } from '../apex.js';
 import type { APObject } from '../apex/index.js';
@@ -37,9 +37,7 @@ export const getReactedNoteIris = async (
 	const collection = ReactionRelations(escapeFirestoreKey(actorId), kind);
 	const idChunks = chunk(uniq(noteIris).map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
 	const snaps = await Promise.all(
-		idChunks.map((idChunk) =>
-			collection.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
-		),
+		idChunks.map((idChunk) => collection.where(FieldPath.documentId(), 'in', idChunk).get()),
 	);
 	return new Set(snaps.flatMap((snap) => snap.docs.map((doc) => doc.get('object') as string)));
 };

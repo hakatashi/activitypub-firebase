@@ -1,5 +1,5 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import express from 'express';
-import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import sharp from 'sharp';
 import { escapeFirestoreKey } from '../../firebase.js';
@@ -43,7 +43,7 @@ const handleUploadMedia = async (req: express.Request, res: express.Response) =>
 		extension: processed.extension,
 	});
 
-	const nowTimestamp = firebase.firestore.Timestamp.now();
+	const nowTimestamp = Timestamp.now();
 
 	const record: MediaAttachmentRecord = {
 		id,
@@ -142,7 +142,7 @@ router.put('/v1/media/:id', authRequired, scopeRequired('write:media'), async (r
 	}
 
 	const updates: Partial<MediaAttachmentRecord> = {
-		updatedAt: firebase.firestore.Timestamp.now(),
+		updatedAt: Timestamp.now(),
 	};
 
 	if (description !== undefined) {

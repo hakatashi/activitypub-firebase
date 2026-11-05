@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { FieldPath } from 'firebase-admin/firestore';
 import type { FirestoreKey } from './firebase.js';
 import { escapeFirestoreKey } from './firebase.js';
 import { getObjectHashtags } from './hashtags.js';
@@ -61,7 +61,7 @@ export const toIdIndex = (ids: Iterable<string>): IdIndex =>
 // `_meta.index.<field>.<エスケープした IRI>` を指す FieldPath。IRI に含まれるドットが
 // パス区切りと誤解釈されないよう、文字列連結ではなく必ず配列形式の FieldPath を使う。
 export const metaIndexPath = (field: MetaIndexField, key: FirestoreKey) =>
-	new firebase.firestore.FieldPath('_meta', 'index', field, key);
+	new FieldPath('_meta', 'index', field, key);
 
 // stream ドキュメントの現在の内容から、あるべき `_meta.index` を計算する。
 export const buildMetaIndex = (stream: {

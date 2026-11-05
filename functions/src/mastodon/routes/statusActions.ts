@@ -1,6 +1,6 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import express from 'express';
 import assert from 'node:assert';
-import firebase from 'firebase-admin';
 import { apex } from '../../apex.js';
 import { escapeFirestoreKey } from '../../firebase.js';
 import { UserInfos } from '../../schema.js';
@@ -215,7 +215,7 @@ router.post(
 
 		await pinsCollection
 			.doc(noteKey)
-			.set({ noteIri: note.id, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+			.set({ noteIri: note.id, createdAt: FieldValue.serverTimestamp() });
 
 		if (!alreadyPinned) {
 			await publishPinActivity(actor, note, 'Add');

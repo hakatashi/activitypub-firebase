@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
 import { apex } from '../../src/apex.js';
@@ -267,7 +267,7 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 		// ADR-0100 より前の、cursorId のない射影
 		await ReactionRelations(escapeFirestoreKey(me.id), 'reblogs')
 			.doc(escapeFirestoreKey(note.id))
-			.update({ cursorId: firebase.firestore.FieldValue.delete() });
+			.update({ cursorId: FieldValue.delete() });
 
 		expect(await rebuildReactionProjection({ dryRun: true })).toMatchObject({
 			written: 2,
@@ -304,7 +304,7 @@ describe('favourite / reblog projection (Issue #195, ADR-0084)', () => {
 					object: iri,
 					activityIris: [`${iri}/like`],
 					cursorId: null,
-					createdAt: firebase.firestore.Timestamp.now(),
+					createdAt: Timestamp.now(),
 				});
 		}
 

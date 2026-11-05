@@ -1,8 +1,8 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import assert from 'node:assert';
 import type { Firestore, QueryDocumentSnapshot } from '@google-cloud/firestore';
 import type { APObject, ApexStore, SaveActivityResult } from '../apex/index.js';
 import IApexStore from '../apex/store/interface.js';
-import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import { isEmpty, omit, omitBy, sortBy } from 'lodash-es';
 import { db, escapeFirestoreKey, toFirestoreKey } from '../firebase.js';
@@ -287,7 +287,7 @@ export default class Store extends IApexStore implements ApexStore {
 				// 更新するフィールドに対応する検索用の `_meta` だけを書き直す (→ ADR-0086、ADR-0103)。
 				...Object.fromEntries(
 					OBJECT_QUERY_META_KEYS.filter((key) => OBJECT_QUERY_META_SOURCES[key] in obj).map(
-						(key) => [`_meta.${key}`, queryMeta[key] ?? firebase.firestore.FieldValue.delete()],
+						(key) => [`_meta.${key}`, queryMeta[key] ?? FieldValue.delete()],
 					),
 				),
 			});
