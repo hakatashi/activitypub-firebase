@@ -13,6 +13,7 @@ import fetch from 'node-fetch';
 import { z } from 'zod';
 import { AccessTokens, RefreshTokens } from '../schema.js';
 import { projectId } from '../firebase.js';
+import { CORS_PREFLIGHT_MAX_AGE_SECONDS } from './http/cors.js';
 import { redactSensitiveBody } from '../utils.js';
 import { getFirstDoc, Oauth2Model } from './oauth2Model.js';
 
@@ -131,6 +132,7 @@ const tokenCors = cors({
 	origin: true,
 	methods: ['POST'],
 	allowedHeaders: ['Authorization', 'Content-Type'],
+	maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS,
 });
 router.options('/token', tokenCors);
 router.options('/revoke', tokenCors);

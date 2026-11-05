@@ -4,6 +4,7 @@ import { logger } from 'firebase-functions/v2';
 import { touchTimelineViewVersion } from '../../social/timelines.js';
 import { toError } from '../../utils.js';
 import { getAuthActorId, invalidateViewerCache } from './auth.js';
+import { CORS_PREFLIGHT_MAX_AGE_SECONDS } from './cors.js';
 
 export const mastodonCors = cors({
 	origin: true,
@@ -11,6 +12,7 @@ export const mastodonCors = cors({
 	allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
 	// これがないとブラウザ上のクライアントが Link ヘッダを読めずページネーションできない。
 	exposedHeaders: ['Link'],
+	maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS,
 });
 
 // 4xx / 5xx 応答を CDN やブラウザにキャッシュさせない (→ ADR-0129)。

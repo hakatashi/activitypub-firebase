@@ -158,6 +158,7 @@ describe('oauth CORS', () => {
 			expect(res.status).toBe(204);
 			expect(res.headers.get('access-control-allow-origin')).toBe('https://phanpy.social');
 			expect(res.headers.get('access-control-allow-methods')).toContain('POST');
+			expect(res.headers.get('access-control-max-age')).toBe('7200');
 		});
 	});
 
