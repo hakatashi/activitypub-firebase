@@ -7,6 +7,7 @@ import {
 import type { APActor } from 'activitypub-types';
 import type express from 'express';
 import { apex } from '../../apex.js';
+import type { APObject as ApexObject } from '../../apex/index.js';
 import { toFirestoreKey, unescapeFirestoreKey } from '../../firebase.js';
 import { UserInfos } from '../../schema.js';
 import { BOT_OPERATOR_UID, resolveBotUserInfo } from '../../social/bots.js';
@@ -14,6 +15,7 @@ import { oauth } from '../oauth.js';
 import { assertIsAPActor } from '../presenters/account.js';
 
 import { HttpError } from './errors.js';
+import { clonePlain, createTtlCache } from './instanceCache.js';
 import type { UserInfo } from '../../schema.js';
 import './locals.js';
 
@@ -67,6 +69,70 @@ export const getAuthUserInfo = (res: express.Response): UserInfo => {
 	return auth;
 };
 
+// uid → UserInfo と actor の IRI、actor の IRI → 閲覧者の actor (`_meta` 込み) のインスタンス内キャッシュ
+// (→ ADR-0169)。返すときは複製して、呼び出し側の書き換えがキャッシュに残らないようにする。
+const AUTH_CACHE_MAX_ENTRIES = 64;
+const AUTH_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+const userInfoByUidCache = createTtlCache<{ userInfo: UserInfo; actorId: string }>({
+	maxEntries: AUTH_CACHE_MAX_ENTRIES,
+	maxAgeMs: AUTH_CACHE_MAX_AGE_MS,
+});
+const viewerActorCache = createTtlCache<ApexObject & APActor>({
+	maxEntries: AUTH_CACHE_MAX_ENTRIES,
+	maxAgeMs: AUTH_CACHE_MAX_AGE_MS,
+});
+
+// 閲覧者のプロフィールや設定を変えるルートが呼ぶ。同じインスタンスのキャッシュだけを消す。
+export const invalidateViewerCache = (actorId: string) => {
+	userInfoByUidCache.deleteWhere((entry) => entry.actorId === actorId);
+	viewerActorCache.delete(actorId);
+};
+
+export const clearAuthCache = () => {
+	userInfoByUidCache.clear();
+	viewerActorCache.clear();
+};
+
+const findUserInfoByUid = async (uid: string) => {
+	const cached = userInfoByUidCache.get(uid);
+	if (cached !== undefined) {
+		return clonePlain(cached);
+	}
+
+	const userInfoDocs = await UserInfos.where('uid', '==', uid).get();
+	if (userInfoDocs.empty) {
+		return undefined;
+	}
+	assert(userInfoDocs.size === 1, `Multiple UserInfos found for uid: ${uid}`);
+
+	const userInfoDoc = userInfoDocs.docs[0];
+	assert(userInfoDoc !== undefined);
+
+	const entry = {
+		userInfo: userInfoDoc.data(),
+		actorId: unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id)),
+	};
+	userInfoByUidCache.set(uid, clonePlain(entry));
+	return entry;
+};
+
+// `fresh` は actor を書き換えて保存するルート用。古い actor を書き戻さないように、キャッシュを使わない。
+export const getViewerActor = async (
+	actorId: string,
+	{ fresh = false }: { fresh?: boolean } = {},
+): Promise<ApexObject & APActor> => {
+	const cached = fresh ? undefined : viewerActorCache.get(actorId);
+	if (cached !== undefined) {
+		return clonePlain(cached);
+	}
+	const actor = await apex.store.getObject(actorId, true);
+	assert(actor !== undefined, 'actor is undefined');
+	assertIsAPActor(actor);
+	viewerActorCache.set(actorId, clonePlain(actor));
+	return actor;
+};
+
 // OAuth トークンから、ログイン中のローカル actor の IRI と UserInfo を引く。
 const resolveAuth = async (req: express.Request, res: express.Response) => {
 	const request = new OauthRequest(req);
@@ -100,20 +166,12 @@ const resolveAuth = async (req: express.Request, res: express.Response) => {
 		return { userInfo: result.userInfo, actorId: result.actorId, scope: token.scope };
 	}
 
-	const userInfoDocs = await UserInfos.where('uid', '==', uid).get();
-	if (userInfoDocs.empty) {
+	const found = await findUserInfoByUid(uid);
+	if (found === undefined) {
 		throw new AuthenticationError('This method requires an authenticated user', 401);
 	}
-	assert(userInfoDocs.size === 1, `Multiple UserInfos found for uid: ${uid}`);
 
-	const userInfoDoc = userInfoDocs.docs[0];
-	assert(userInfoDoc !== undefined);
-
-	return {
-		userInfo: userInfoDoc.data(),
-		actorId: unescapeFirestoreKey(toFirestoreKey(userInfoDoc.id)),
-		scope: token.scope,
-	};
+	return { ...found, scope: token.scope };
 };
 
 export const authRequired = async (
@@ -184,9 +242,8 @@ export const authIfPresent =
 	};
 
 export const getLocalActor = async (actorId: string): Promise<APActor> => {
-	const actor = await apex.store.getObject(actorId);
-	assert(actor !== undefined, 'actor is undefined');
-	assertIsAPActor(actor);
+	const actor = await getViewerActor(actorId);
+	delete actor._meta;
 	return actor;
 };
 
