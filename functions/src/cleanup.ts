@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions/v2';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { escapeFirestoreKey } from './firebase.js';
@@ -17,7 +17,7 @@ export interface CleanUnattachedMediaOptions {
 export const cleanUnattachedMedia = async (options: CleanUnattachedMediaOptions = {}) => {
 	const now = options.now ?? new Date();
 	const maxAgeMs = options.maxAgeMs ?? DEFAULT_UNATTACHED_MEDIA_MAX_AGE_MS;
-	const threshold = firebase.firestore.Timestamp.fromDate(new Date(now.getTime() - maxAgeMs));
+	const threshold = Timestamp.fromDate(new Date(now.getTime() - maxAgeMs));
 
 	const snapshot = await MediaAttachments.where('statusIri', '==', null)
 		.where('createdAt', '<', threshold)

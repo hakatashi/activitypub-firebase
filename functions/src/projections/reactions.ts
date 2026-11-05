@@ -1,5 +1,5 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import type { Transaction } from '@google-cloud/firestore';
-import firebase from 'firebase-admin';
 import { isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
 import { db, escapeFirestoreKey } from '../firebase.js';
@@ -45,7 +45,7 @@ const contributionKey = ({ actor, kind, object }: ReactionContribution) =>
 	`${actor} ${kind} ${object}`;
 
 const serverTimestamp = () =>
-	firebase.firestore.FieldValue.serverTimestamp() as unknown as ReactionRelation['createdAt'];
+	FieldValue.serverTimestamp() as unknown as ReactionRelation['createdAt'];
 
 // 生きているアクティビティの一覧から射影を組み立てる。一覧が空なら undefined (射影を消す)。
 // cursorId は一覧の Mastodon ID の最大値 (= 最新のアクティビティ。→ ADR-0100)。

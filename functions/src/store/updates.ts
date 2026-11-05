@@ -1,7 +1,7 @@
 // Store の更新系メソッド (updateObject / updateActivity) が共有する内部処理。
+import { FieldValue } from 'firebase-admin/firestore';
 import type { DocumentReference, Transaction } from '@google-cloud/firestore';
 import type { APObject } from '../apex/index.js';
-import firebase from 'firebase-admin';
 import { isEqual, mapValues, omit } from 'lodash-es';
 import { db, escapeFirestoreKey } from '../firebase.js';
 import { metaIndexPath } from '../meta.js';
@@ -44,7 +44,7 @@ export const replaceKeepingMeta = (
 export const objectToUpdateDoc = (object: APObject) =>
 	mapValues(object, (value) => {
 		if (value === null) {
-			return firebase.firestore.FieldValue.delete();
+			return FieldValue.delete();
 		}
 		return value;
 	});

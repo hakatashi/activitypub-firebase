@@ -1,7 +1,7 @@
+import { FieldPath } from 'firebase-admin/firestore';
 import assert from 'node:assert';
 import type { APObject as ApexObject, JsonLdActor } from '../../apex/index.js';
 import type { APActor } from 'activitypub-types';
-import firebase from 'firebase-admin';
 import { chunk, last, omit, uniq } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
@@ -253,9 +253,7 @@ export const resolveAccountIds = async (iris: string[]): Promise<Map<string, str
 
 	const idChunks = chunk(uniqIris.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
 	const userInfoDocsChunks = await Promise.all(
-		idChunks.map((idChunk) =>
-			UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
-		),
+		idChunks.map((idChunk) => UserInfos.where(FieldPath.documentId(), 'in', idChunk).get()),
 	);
 
 	for (const chunkSnap of userInfoDocsChunks) {
@@ -305,7 +303,7 @@ export const userIdsToAccountsMap = async (
 		getObjects(uniqUserIds, true),
 		Promise.all(
 			chunk(uniqUserIds.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT).map((idChunk) =>
-				UserInfos.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+				UserInfos.where(FieldPath.documentId(), 'in', idChunk).get(),
 			),
 		),
 		knownAccountIds ?? resolveAccountIds(uniqUserIds),

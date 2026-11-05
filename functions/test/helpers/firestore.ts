@@ -1,5 +1,4 @@
-import type { Timestamp } from '@google-cloud/firestore';
-import firebase from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import { escapeFirestoreKey } from '../../src/firebase.js';
 import { clearAuthCache } from '../../src/mastodon/http/auth.js';
 import { clearAccessTokenCache } from '../../src/mastodon/oauth2Model.js';
@@ -42,6 +41,6 @@ export const resetFirestore = async (): Promise<void> => {
  */
 export const enableTimelineFeeds = async (actorId: string): Promise<void> => {
 	await timelineFeedsMarkerRef(escapeFirestoreKey(actorId)).set({
-		updatedAt: firebase.firestore.Timestamp.now() as unknown as Timestamp,
+		updatedAt: Timestamp.now() as unknown as Timestamp,
 	});
 };

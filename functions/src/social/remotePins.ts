@@ -1,5 +1,4 @@
-import firebase from 'firebase-admin';
-import { GrpcStatus } from 'firebase-admin/firestore';
+import { FieldValue, GrpcStatus, Timestamp } from 'firebase-admin/firestore';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
@@ -172,9 +171,7 @@ export const handleRemotePinActivity = async (actor: APObject, activity: APObjec
 		logger.info({ type: 'remotePinIgnored', actorIri, noteIri, reason: 'too many pins' });
 		return;
 	}
-	await pins
-		.doc(noteKey)
-		.set({ noteIri, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+	await pins.doc(noteKey).set({ noteIri, createdAt: FieldValue.serverTimestamp() });
 	logger.info({ type: 'remotePinAdded', actorIri, noteIri });
 };
 
@@ -260,7 +257,7 @@ export const syncRemoteFeatured = async (actorIri: string, now = new Date()) => 
 		for (const [index, noteIri] of noteIris.entries()) {
 			batch.set(pins.doc(escapeFirestoreKey(noteIri)), {
 				noteIri,
-				createdAt: firebase.firestore.Timestamp.fromMillis(now.getTime() - index),
+				createdAt: Timestamp.fromMillis(now.getTime() - index),
 			});
 		}
 		await batch.commit();

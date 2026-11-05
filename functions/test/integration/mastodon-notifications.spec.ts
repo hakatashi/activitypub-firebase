@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { APObject } from '../../src/apex/index.js';
@@ -95,7 +95,7 @@ describe('Mastodon notifications API (Issue #222, ADR-0089)', () => {
 				activityIri,
 				accountIri,
 				statusIri,
-				createdAt: firebase.firestore.Timestamp.fromMillis(timestampMs),
+				createdAt: Timestamp.fromMillis(timestampMs),
 			});
 	};
 
@@ -576,7 +576,7 @@ describe('Mastodon notifications API (Issue #222, ADR-0089)', () => {
 				timeline: 'notifications',
 				lastReadId: ids[2]!,
 				version: 1,
-				updatedAt: firebase.firestore.Timestamp.now(),
+				updatedAt: Timestamp.now(),
 			});
 
 			const resWithMarker = await request(mastodon)

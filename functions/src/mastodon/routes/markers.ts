@@ -1,5 +1,5 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import express from 'express';
-import firebase from 'firebase-admin';
 import { z } from 'zod';
 import { db, escapeFirestoreKey, toFirestoreKey } from '../../firebase.js';
 import { Markers } from '../../schema.js';
@@ -117,7 +117,7 @@ router.post('/v1/markers', authRequired, scopeRequired('write:statuses'), async 
 			for (let i = 0; i < docRefs.length; i++) {
 				const { timeline, input, ref } = docRefs[i]!;
 				const doc = docs[i];
-				const now = firebase.firestore.Timestamp.now();
+				const now = Timestamp.now();
 				if (doc && doc.exists) {
 					const existing = doc.data()!;
 					if (input.version !== undefined && input.version !== existing.version) {

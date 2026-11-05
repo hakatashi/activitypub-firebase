@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import { AccessTokens } from '../../src/schema.js';
 
 export interface AddAccessTokenOptions {
@@ -19,7 +19,7 @@ export const addAccessToken = async (
 		typeof uidOrOptions === 'string' ? { uid: uidOrOptions } : uidOrOptions;
 	const uid = options.uid ?? 'uid-hakatashi';
 	const expiresInMs = options.expiresInMs ?? 60 * 60 * 1000;
-	const farFuture = firebase.firestore.Timestamp.fromMillis(Date.now() + expiresInMs);
+	const farFuture = Timestamp.fromMillis(Date.now() + expiresInMs);
 	await AccessTokens.add({
 		accessToken: token,
 		accessTokenExpiresAt: farFuture,

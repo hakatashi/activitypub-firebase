@@ -1,11 +1,6 @@
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import assert from 'node:assert';
-import type {
-	DocumentReference,
-	DocumentSnapshot,
-	Transaction,
-	Timestamp,
-} from '@google-cloud/firestore';
-import firebase from 'firebase-admin';
+import type { DocumentReference, DocumentSnapshot, Transaction } from '@google-cloud/firestore';
 import { isEqual } from 'lodash-es';
 import type { APObject } from '../apex/index.js';
 import { escapeFirestoreKey } from '../firebase.js';
@@ -28,8 +23,7 @@ import {
 // Store が、アクティビティを書き換えるのと同じトランザクションの中で呼ぶ。
 // `social/` や `mastodon/` を import しないこと。
 
-const serverTimestamp = () =>
-	firebase.firestore.FieldValue.serverTimestamp() as unknown as Timestamp;
+const serverTimestamp = () => FieldValue.serverTimestamp() as unknown as Timestamp;
 
 const hasLocalMention = (note: APObject): boolean =>
 	toArray(note.tag).some((tag) => {
@@ -297,7 +291,7 @@ export const rebuildNotificationProjection = async ({ dryRun = false } = {}) => 
 			if (typeof candidate.published === 'string' || typeof candidate.published === 'number') {
 				const date = new Date(candidate.published);
 				if (!Number.isNaN(date.getTime())) {
-					createdAt = firebase.firestore.Timestamp.fromDate(date) as unknown as Timestamp;
+					createdAt = Timestamp.fromDate(date) as unknown as Timestamp;
 				}
 			}
 			if (createdAt === undefined) {

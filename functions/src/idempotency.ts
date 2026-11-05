@@ -1,5 +1,5 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import crypto from 'node:crypto';
-import firebase from 'firebase-admin';
 import { db, toFirestoreKey } from './firebase.js';
 import { IdempotencyKeys } from './schema.js';
 
@@ -40,7 +40,7 @@ export const reserveIdempotencyKey = async ({
 		transaction.set(ref, {
 			actorId,
 			noteIri,
-			expiresAt: firebase.firestore.Timestamp.fromMillis(now + IDEMPOTENCY_KEY_TTL_MS),
+			expiresAt: Timestamp.fromMillis(now + IDEMPOTENCY_KEY_TTL_MS),
 		});
 		return undefined;
 	});

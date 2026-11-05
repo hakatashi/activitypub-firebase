@@ -1,6 +1,6 @@
+import { FieldPath, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { createHash } from 'node:crypto';
 import { encode } from 'blurhash';
-import firebase from 'firebase-admin';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions/v2';
 import { parse, parseFragment } from 'parse5';
@@ -494,13 +494,13 @@ export const getOrFetchPreviewCard = async (
 	await ref.set({
 		url,
 		card,
-		fetchedAt: firebase.firestore.Timestamp.fromMillis(now),
-		expiresAt: firebase.firestore.Timestamp.fromMillis(now + ttl),
+		fetchedAt: Timestamp.fromMillis(now),
+		expiresAt: Timestamp.fromMillis(now + ttl),
 	});
 	return card;
 };
 
-const cardPath = new firebase.firestore.FieldPath('_meta', 'card');
+const cardPath = new FieldPath('_meta', 'card');
 
 // Note の `_meta.card` を書き換える。本文が変わって対象の URL が変わっていれば何もしない。
 // 書き換えたら true。
@@ -515,7 +515,7 @@ const writeNoteCard = (noteIri: string, url: string | undefined, card: PreviewCa
 			if (note._meta?.card === undefined) {
 				return false;
 			}
-			transaction.update(ref, cardPath, firebase.firestore.FieldValue.delete());
+			transaction.update(ref, cardPath, FieldValue.delete());
 			return true;
 		}
 		transaction.update(ref, cardPath, card);

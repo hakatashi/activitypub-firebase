@@ -1,5 +1,5 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import type { APObject } from '../../src/apex/index.js';
-import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { app } from '../../src/activitypub.js';
@@ -32,7 +32,7 @@ describe('bot external media URLs (Issue #398, ADR-0162)', () => {
 		actorId: string,
 		overrides: Partial<MediaAttachmentRecord> = {},
 	): Promise<MediaAttachmentRecord> => {
-		const nowTimestamp = firebase.firestore.Timestamp.now();
+		const nowTimestamp = Timestamp.now();
 		const record: MediaAttachmentRecord = {
 			id,
 			actorId,

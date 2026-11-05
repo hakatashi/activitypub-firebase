@@ -1,6 +1,6 @@
+import { FieldPath } from 'firebase-admin/firestore';
 import assert from 'node:assert';
 import type { APNote, APActor } from 'activitypub-types';
-import firebase from 'firebase-admin';
 import { chunk, uniq } from 'lodash-es';
 import type { mastodon } from 'masto';
 import { apex } from '../../apex.js';
@@ -286,7 +286,7 @@ export const getViewerRelationships = async (
 	const noteIdChunks = chunk(noteIris.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
 	const bookmarkSnaps = await Promise.all(
 		noteIdChunks.map((idChunk) =>
-			bookmarksCollection.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+			bookmarksCollection.where(FieldPath.documentId(), 'in', idChunk).get(),
 		),
 	);
 	for (const snap of bookmarkSnaps) {
@@ -303,7 +303,7 @@ export const getViewerRelationships = async (
 		const ownIdChunks = chunk(ownNoteIris.map(escapeFirestoreKey), FIRESTORE_IN_QUERY_LIMIT);
 		const pinSnaps = await Promise.all(
 			ownIdChunks.map((idChunk) =>
-				pinsCollection.where(firebase.firestore.FieldPath.documentId(), 'in', idChunk).get(),
+				pinsCollection.where(FieldPath.documentId(), 'in', idChunk).get(),
 			),
 		);
 		for (const snap of pinSnaps) {

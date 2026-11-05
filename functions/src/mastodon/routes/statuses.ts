@@ -1,6 +1,6 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import express from 'express';
 import assert from 'node:assert';
-import firebase from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import { z } from 'zod';
 import { apex } from '../../apex.js';
@@ -229,7 +229,7 @@ router.post(
 			});
 
 			if (mediaRecords.length > 0) {
-				const nowTimestamp = firebase.firestore.Timestamp.now();
+				const nowTimestamp = Timestamp.now();
 				await Promise.all(
 					mediaRecords.map((record) =>
 						MediaAttachments.doc(escapeFirestoreKey(record.id)).update({

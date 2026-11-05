@@ -1,4 +1,4 @@
-import firebase from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { isEqual, pick } from 'lodash-es';
 import { toPublishedSortKey } from '../src/mastodonId.js';
 import { ACTIVITY_QUERY_META_KEYS, buildActivityQueryMeta } from '../src/meta.js';
@@ -35,11 +35,11 @@ for (const doc of streams.docs) {
 	if (!dryRun) {
 		const updates: Record<string, unknown> = {};
 		if (needsPublishedUpdate) {
-			updates['_meta.published'] = expectedPublished ?? firebase.firestore.FieldValue.delete();
+			updates['_meta.published'] = expectedPublished ?? FieldValue.delete();
 		}
 		if (needsQueryMetaUpdate) {
 			for (const key of ACTIVITY_QUERY_META_KEYS) {
-				updates[`_meta.${key}`] = expectedQueryMeta[key] ?? firebase.firestore.FieldValue.delete();
+				updates[`_meta.${key}`] = expectedQueryMeta[key] ?? FieldValue.delete();
 			}
 		}
 		await doc.ref.update(updates);

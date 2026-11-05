@@ -1,5 +1,5 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import type { APObject } from '../../src/apex/index.js';
-import firebase from 'firebase-admin';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { apex } from '../../src/apex.js';
@@ -25,7 +25,7 @@ describe('POST /api/v1/statuses with media_ids (Issue #219, ADR-0092)', () => {
 		actorId: string,
 		overrides: Partial<MediaAttachmentRecord> = {},
 	): Promise<MediaAttachmentRecord> => {
-		const nowTimestamp = firebase.firestore.Timestamp.now();
+		const nowTimestamp = Timestamp.now();
 		const record: MediaAttachmentRecord = {
 			id,
 			actorId,
